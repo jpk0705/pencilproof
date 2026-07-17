@@ -139,8 +139,9 @@ export default function AnalyzePage() {
     const lowerName = file.name.toLowerCase();
     const isPdf = file.type === "application/pdf" || lowerName.endsWith(".pdf");
     const isJpeg = file.type === "image/jpeg" || /\.jpe?g$/.test(lowerName);
-    if (!isPdf && !isJpeg) {
-      setDealImport({ status: "error", message: "Choose a PDF, JPG, or JPEG file from the dealership.", fields: [] });
+    const isPng = file.type === "image/png" || lowerName.endsWith(".png");
+    if (!isPdf && !isJpeg && !isPng) {
+      setDealImport({ status: "error", message: "Choose a PDF, JPG, JPEG, or PNG file from the dealership.", fields: [] });
       return;
     }
     if (file.size > 15 * 1024 * 1024) {
@@ -176,20 +177,17 @@ export default function AnalyzePage() {
       setDeal((current) => ({ ...current, ...(result.fields as Partial<Deal>) }));
       setDealImport({
         status: "success",
-        message: `Filled ${result.fieldNames.length} field${result.fieldNames.length === 1 ? "" : "s"} from ${file.name}${result.sourceType === "pdf" ? ` (${result.pageCount} page${result.pageCount === 1 ? "" : "s"})` : ""}. Review every imported value against the original before using the audit.`,
+        message: `Filled ${result.fieldNames.length} field${result.fieldNames.length === 1 ? "" : "s"} from ${file.name}${result.sourceType === "pdf" ? ` (${result.pageCount} page${result.pageCount === 1 ? "" : "s"}${result.usedOcr ? ", scanned-document OCR" : ""})` : ""}. Review every imported value against the original before using the audit.`,
         fields: result.fieldNames,
       });
     } catch (error) {
       console.error("PencilProof document import failed", error);
-      const scanned = error instanceof Error && error.message === "SCANNED_PDF";
       const unreadableImage = error instanceof Error && error.message === "UNREADABLE_IMAGE";
       setDealImport({
         status: "error",
-        message: scanned
-          ? "This appears to be an image-only or scanned PDF. Save the relevant page as a clear JPG/JPEG and try again, or enter the figures manually."
-          : unreadableImage
-            ? "PencilProof could not find enough readable text in that image. Try a brighter, sharper, straight-on photo or enter the figures manually."
-            : "PencilProof could not read this file. It may be password-protected, blurry, or use an unsupported format. Your file was not uploaded; enter the figures manually.",
+        message: unreadableImage
+          ? "PencilProof could not find enough readable text in that image or scanned PDF. Try a brighter, sharper copy or enter the figures manually."
+          : "PencilProof could not read this file. It may be password-protected, blurry, or use an unsupported format. Your file was not uploaded; enter the figures manually.",
         fields: [],
       });
     }
@@ -416,10 +414,10 @@ export default function AnalyzePage() {
           <div>
             <p className="pdf-kicker">OPTIONAL QUICK START</p>
             <h2 id="pdf-import-title">Upload the dealer worksheet or photo</h2>
-            <p>Choose a PDF, JPG, or JPEG. PencilProof reads it in this browser and fills recognizable fields; the document is not sent to PencilProof.</p>
+            <p>Choose a digital or scanned PDF, JPG, JPEG, or PNG. PencilProof reads it in this browser and fills recognizable fields; the document is not sent to PencilProof.</p>
           </div>
           <label className={`pdf-upload-button ${dealImport.status === "loading" ? "pdf-upload-loading" : ""}`}>
-            <input type="file" accept="application/pdf,image/jpeg,.pdf,.jpg,.jpeg" disabled={dealImport.status === "loading"} onChange={handleDealFileChange} />
+            <input type="file" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" disabled={dealImport.status === "loading"} onChange={handleDealFileChange} />
             {dealImport.status === "loading" ? "Reading file…" : "Choose PDF or image"}
           </label>
         </div>
@@ -432,7 +430,7 @@ export default function AnalyzePage() {
             </div>
           </div>
         ) : null}
-        <p className="pdf-import-note">Best results: use a dealer-generated PDF or a bright, sharp, straight-on photo with the full figures visible. OCR can make mistakes, so compare every imported value with the original.</p>
+        <p className="pdf-import-note">Best results: use a dealer-generated PDF or a bright, sharp, straight-on image with the full figures visible. Scanned PDFs use OCR on up to the first five pages. OCR can make mistakes, so compare every imported value with the original.</p>
       </section>
 
       <div className="analyzer-layout shell">
