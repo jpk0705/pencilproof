@@ -180,6 +180,7 @@ export default function AnalyzePage() {
         fields: result.fieldNames,
       });
     } catch (error) {
+      console.error("PencilProof document import failed", error);
       const scanned = error instanceof Error && error.message === "SCANNED_PDF";
       const unreadableImage = error instanceof Error && error.message === "UNREADABLE_IMAGE";
       setDealImport({
