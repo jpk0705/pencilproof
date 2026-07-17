@@ -330,6 +330,7 @@ export const extractDealFromImage = async (
   file: File,
   onProgress?: (update: DealImportProgress) => void,
 ): Promise<DealPdfResult> => {
+  const imageData = new Uint8Array(await file.arrayBuffer());
   const { createWorker } = await import("tesseract.js");
   const firstPathSegment = window.location.pathname.split("/").filter(Boolean)[0];
   const siteBasePath = window.location.hostname.endsWith("github.io") && firstPathSegment
@@ -344,7 +345,7 @@ export const extractDealFromImage = async (
   });
 
   try {
-    const result = await worker.recognize(file, { rotateAuto: true });
+    const result = await worker.recognize(imageData as unknown as File, { rotateAuto: true });
     const text = result.data.text.trim();
     if (text.replace(/\s/g, "").length < 30) throw new Error("UNREADABLE_IMAGE");
 
