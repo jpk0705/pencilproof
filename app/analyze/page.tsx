@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState, type ChangeEvent } from "react";
-import { extractDealFromPdf } from "@/lib/deal-pdf";
+import { extractDealFromFile } from "@/lib/deal-pdf";
 
 type Deal = {
   vehicle: string;
@@ -32,7 +32,7 @@ type ProductInsight = {
   question: string;
 };
 
-type PdfImportState = {
+type DealImportState = {
   status: "idle" | "loading" | "success" | "error";
   message: string;
   fields: string[];
@@ -130,54 +130,74 @@ function MoneyField({
 export default function AnalyzePage() {
   const [deal, setDeal] = useState<Deal>(blank);
   const [copied, setCopied] = useState(false);
-  const [pdfImport, setPdfImport] = useState<PdfImportState>({ status: "idle", message: "", fields: [] });
+  const [dealImport, setDealImport] = useState<DealImportState>({ status: "idle", message: "", fields: [] });
 
   const setNumber = (field: keyof Deal, value: string) =>
     setDeal((current) => ({ ...current, [field]: value === "" ? 0 : Number(value) }));
 
-  const importPdf = async (file: File) => {
-    if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
-      setPdfImport({ status: "error", message: "Choose a PDF file from the dealership.", fields: [] });
+  const importDealFile = async (file: File) => {
+    const lowerName = file.name.toLowerCase();
+    const isPdf = file.type === "application/pdf" || lowerName.endsWith(".pdf");
+    const isJpeg = file.type === "image/jpeg" || /\.jpe?g$/.test(lowerName);
+    if (!isPdf && !isJpeg) {
+      setDealImport({ status: "error", message: "Choose a PDF, JPG, or JPEG file from the dealership.", fields: [] });
       return;
     }
     if (file.size > 15 * 1024 * 1024) {
-      setPdfImport({ status: "error", message: "That PDF is larger than 15 MB. Use a smaller copy or enter the figures manually.", fields: [] });
+      setDealImport({ status: "error", message: "That file is larger than 15 MB. Use a smaller copy or enter the figures manually.", fields: [] });
       return;
     }
 
-    setPdfImport({ status: "loading", message: `Reading ${file.name} in your browser…`, fields: [] });
+    setDealImport({
+      status: "loading",
+      message: isPdf
+        ? `Reading ${file.name} in your browser…`
+        : `Preparing image recognition for ${file.name}… The first image can take a moment.`,
+      fields: [],
+    });
     try {
-      const result = await extractDealFromPdf(file);
+      const result = await extractDealFromFile(file, ({ progress, status }) => {
+        const percent = Math.max(0, Math.min(100, Math.round(progress * 100)));
+        const readableStatus = status.replace(/_/g, " ");
+        setDealImport({
+          status: "loading",
+          message: `${readableStatus.charAt(0).toUpperCase()}${readableStatus.slice(1)}${progress > 0 ? ` · ${percent}%` : ""}`,
+          fields: [],
+        });
+      });
       if (!result.fieldNames.length) {
-        setPdfImport({
+        setDealImport({
           status: "error",
-          message: "The PDF contains readable text, but its labels did not match the supported dealer fields. Enter the figures manually and double-check the worksheet.",
+          message: "The file contains readable text, but its labels did not match the supported dealer fields. Enter the figures manually and double-check the worksheet.",
           fields: [],
         });
         return;
       }
       setDeal((current) => ({ ...current, ...(result.fields as Partial<Deal>) }));
-      setPdfImport({
+      setDealImport({
         status: "success",
-        message: `Filled ${result.fieldNames.length} field${result.fieldNames.length === 1 ? "" : "s"} from ${file.name} (${result.pageCount} page${result.pageCount === 1 ? "" : "s"}). Review every imported value before using the audit.`,
+        message: `Filled ${result.fieldNames.length} field${result.fieldNames.length === 1 ? "" : "s"} from ${file.name}${result.sourceType === "pdf" ? ` (${result.pageCount} page${result.pageCount === 1 ? "" : "s"})` : ""}. Review every imported value against the original before using the audit.`,
         fields: result.fieldNames,
       });
     } catch (error) {
       const scanned = error instanceof Error && error.message === "SCANNED_PDF";
-      setPdfImport({
+      const unreadableImage = error instanceof Error && error.message === "UNREADABLE_IMAGE";
+      setDealImport({
         status: "error",
         message: scanned
-          ? "This appears to be an image-only or scanned PDF, so it has no reliable text to import. Enter the figures manually or request a digital buyer's order from the dealership."
-          : "PencilProof could not read this PDF. It may be password-protected or use an unsupported format. Your file was not uploaded; enter the figures manually.",
+          ? "This appears to be an image-only or scanned PDF. Save the relevant page as a clear JPG/JPEG and try again, or enter the figures manually."
+          : unreadableImage
+            ? "PencilProof could not find enough readable text in that image. Try a brighter, sharper, straight-on photo or enter the figures manually."
+            : "PencilProof could not read this file. It may be password-protected, blurry, or use an unsupported format. Your file was not uploaded; enter the figures manually.",
         fields: [],
       });
     }
   };
 
-  const handlePdfChange = async (event: ChangeEvent<HTMLInputElement>) => {
+  const handleDealFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (file) await importPdf(file);
+    if (file) await importDealFile(file);
   };
 
   const analysis = useMemo(() => {
@@ -384,34 +404,34 @@ export default function AnalyzePage() {
           <p>Use the written figures from the dealership. The audit updates as you type and separates the vehicle, financing, trade, and products.</p>
         </div>
         <div className="analyzer-actions">
-          <button type="button" onClick={() => { setDeal(sample); setPdfImport({ status: "idle", message: "", fields: [] }); }}>Load sample</button>
-          <button type="button" onClick={() => { setDeal(blank); setPdfImport({ status: "idle", message: "", fields: [] }); }}>Clear all</button>
+          <button type="button" onClick={() => { setDeal(sample); setDealImport({ status: "idle", message: "", fields: [] }); }}>Load sample</button>
+          <button type="button" onClick={() => { setDeal(blank); setDealImport({ status: "idle", message: "", fields: [] }); }}>Clear all</button>
         </div>
       </header>
 
       <section className="pdf-import shell" aria-labelledby="pdf-import-title">
         <div className="pdf-import-main">
-          <div className="pdf-badge" aria-hidden="true">PDF</div>
+          <div className="pdf-badge" aria-hidden="true">SCAN</div>
           <div>
             <p className="pdf-kicker">OPTIONAL QUICK START</p>
-            <h2 id="pdf-import-title">Upload the dealer worksheet</h2>
-            <p>PencilProof reads text from the PDF in this browser and fills recognizable fields. The file is not sent to our servers.</p>
+            <h2 id="pdf-import-title">Upload the dealer worksheet or photo</h2>
+            <p>Choose a PDF, JPG, or JPEG. PencilProof reads it in this browser and fills recognizable fields; the document is not sent to PencilProof.</p>
           </div>
-          <label className={`pdf-upload-button ${pdfImport.status === "loading" ? "pdf-upload-loading" : ""}`}>
-            <input type="file" accept="application/pdf,.pdf" disabled={pdfImport.status === "loading"} onChange={handlePdfChange} />
-            {pdfImport.status === "loading" ? "Reading PDF…" : "Choose PDF"}
+          <label className={`pdf-upload-button ${dealImport.status === "loading" ? "pdf-upload-loading" : ""}`}>
+            <input type="file" accept="application/pdf,image/jpeg,.pdf,.jpg,.jpeg" disabled={dealImport.status === "loading"} onChange={handleDealFileChange} />
+            {dealImport.status === "loading" ? "Reading file…" : "Choose PDF or image"}
           </label>
         </div>
-        {pdfImport.status !== "idle" ? (
-          <div className={`pdf-import-status pdf-status-${pdfImport.status}`} role="status" aria-live="polite">
-            <span aria-hidden="true">{pdfImport.status === "success" ? "✓" : pdfImport.status === "error" ? "!" : "…"}</span>
+        {dealImport.status !== "idle" ? (
+          <div className={`pdf-import-status pdf-status-${dealImport.status}`} role="status" aria-live="polite">
+            <span aria-hidden="true">{dealImport.status === "success" ? "✓" : dealImport.status === "error" ? "!" : "…"}</span>
             <div>
-              <p>{pdfImport.message}</p>
-              {pdfImport.fields.length ? <div className="pdf-field-list">{pdfImport.fields.map((field) => <small key={field}>{field}</small>)}</div> : null}
+              <p>{dealImport.message}</p>
+              {dealImport.fields.length ? <div className="pdf-field-list">{dealImport.fields.map((field) => <small key={field}>{field}</small>)}</div> : null}
             </div>
           </div>
         ) : null}
-        <p className="pdf-import-note">Best with dealer-generated buyer&apos;s orders and worksheets that contain selectable text. Scanned PDFs currently require manual entry.</p>
+        <p className="pdf-import-note">Best results: use a dealer-generated PDF or a bright, sharp, straight-on photo with the full figures visible. OCR can make mistakes, so compare every imported value with the original.</p>
       </section>
 
       <div className="analyzer-layout shell">
