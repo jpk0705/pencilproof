@@ -1,15 +1,18 @@
 # PencilProof
 
-PencilProof is a privacy-first car finance deal analyzer. It rebuilds a dealer
-quote from the numbers a buyer enters, checks the payment math, highlights
-optional products and APR differences, and creates a copy-ready list of
-questions for the dealership.
+PencilProof is a privacy-first car finance Deal Audit. It rebuilds a dealer
+quote from the numbers a buyer enters, compares the payment with and without
+optional products, explains common finance-office products, highlights APR
+and trade-equity differences, and creates a copy-ready list of questions for
+the dealership.
 
 ## What it checks
 
 - estimated amount financed and monthly payment
 - dealer APR versus an outside approval
-- service contracts, GAP, protection products, and accessories
+- vehicle service contracts (VSC), GAP, prepaid maintenance (PPM), protection
+  products, and accessories
+- estimated payment and full-term cost with and without entered products
 - trade equity or negative equity
 - full-term finance charge
 
