@@ -31,7 +31,7 @@ export default function Home() {
             <a className="button button-primary" href={CHECKOUT_URL}>
               Get my deal review <Arrow />
             </a>
-            <a className="button button-quiet" href="#sample">See a sample</a>
+            <a className="button button-quiet" href="#how-it-works">See how it works</a>
           </div>
           <div className="proof-row" aria-label="Product highlights">
             <span><b>Instant access</b> after secure checkout</span>
