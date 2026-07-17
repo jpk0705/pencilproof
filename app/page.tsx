@@ -46,7 +46,7 @@ export default function Home() {
           <div className="eyebrow"><span /> AT THE DEALERSHIP—OR SHOPPING SOON?</div>
           <h1>Know what the deal is really costing you before you sign.</h1>
           <p className="hero-lede">
-            Upload a readable dealer PDF or a clear JPG/JPEG photo—or enter the figures yourself.
+            Upload a digital or scanned dealer PDF, or a clear JPG/JPEG/PNG image—or enter the figures yourself.
             PencilProof rebuilds the payment, separates optional products from
             the vehicle, explains the finance-office language, and gives you
             the exact questions to ask while you still have leverage.
@@ -164,7 +164,7 @@ export default function Home() {
           <article>
             <span>2</span>
             <h3>Upload or enter the worksheet</h3>
-            <p>Import a readable dealer PDF or clear JPG/JPEG photo, or copy the selling price, taxes, products, trade, APR, term, and payment yourself.</p>
+            <p>Import a digital or scanned dealer PDF or clear JPG/JPEG/PNG image, or copy the selling price, taxes, products, trade, APR, term, and payment yourself.</p>
           </article>
           <article>
             <span>3</span>
@@ -211,7 +211,7 @@ export default function Home() {
           <article><h3>Is this just a payment calculator?</h3><p>No. It rebuilds the payment, separates entered products, explains common finance-office products, measures APR and trade impact, and creates an action plan.</p></article>
           <article><h3>Does PencilProof guarantee savings?</h3><p>No. It may identify costs worth questioning, but actual savings depend on the deal, lender, products, dealer, and choices you make.</p></article>
           <article><h3>Can I update the deal after the dealer responds?</h3><p>Yes. Change the inputs to compare a revised worksheet, then print or save the updated review before signing.</p></article>
-          <article><h3>Can PencilProof read every document?</h3><p>No. It can autofill recognizable text from many digital PDFs and clear JPG/JPEG photos. Blurry, cropped, handwritten, password-protected, or unusually formatted documents may require manual entry.</p></article>
+          <article><h3>Can PencilProof read every document?</h3><p>No. It can autofill recognizable text from many digital or scanned PDFs and clear JPG/JPEG/PNG images. Blurry, cropped, handwritten, password-protected, or unusually formatted documents may require manual entry.</p></article>
           <article><h3>Does PencilProof negotiate or provide advice?</h3><p>No. It is an independent educational estimate. It does not contact dealers, arrange financing, or provide legal or financial advice.</p></article>
           <article><h3>Do you store my deal?</h3><p>No. Deal inputs stay in your browser. Stripe and Link process checkout information, but PencilProof does not receive your full card number.</p></article>
           <article><h3>What should I have ready?</h3><p>Use the dealer&apos;s buyer&apos;s order, worksheet, or written quote showing price, taxes, fees, products, trade, APR, term, and payment.</p></article>
