@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CHECKOUT_URL } from "@/lib/checkout";
 
 const Arrow = () => <span aria-hidden="true">→</span>;
 
@@ -13,7 +14,7 @@ export default function Home() {
         <div className="nav-links">
           <a href="#how-it-works">How it works</a>
           <a href="#pricing">Pricing</a>
-          <Link className="nav-cta" href="/analyze">Check my deal</Link>
+          <a className="nav-cta" href={CHECKOUT_URL}>Get my review · $39</a>
         </div>
       </nav>
 
@@ -27,13 +28,13 @@ export default function Home() {
             you a clean list of what to question before you sign.
           </p>
           <div className="hero-actions">
-            <Link className="button button-primary" href="/analyze">
-              Check my deal <Arrow />
-            </Link>
+            <a className="button button-primary" href={CHECKOUT_URL}>
+              Get my deal review <Arrow />
+            </a>
             <a className="button button-quiet" href="#sample">See a sample</a>
           </div>
           <div className="proof-row" aria-label="Product highlights">
-            <span><b>10+ years</b> auto retail experience</span>
+            <span><b>Instant access</b> after secure checkout</span>
             <span><b>Private</b> numbers stay in your browser</span>
             <span><b>No commissions</b> from dealers</span>
           </div>
@@ -68,7 +69,7 @@ export default function Home() {
           </div>
           <div className="deal-card-foot">
             <span>Clear numbers. No scare tactics.</span>
-            <Link href="/analyze">Run yours <Arrow /></Link>
+            <a href={CHECKOUT_URL}>Review my deal <Arrow /></a>
           </div>
         </div>
       </section>
@@ -90,18 +91,18 @@ export default function Home() {
         <div className="steps">
           <article>
             <span>1</span>
-            <h3>Enter the quote</h3>
-            <p>Copy the vehicle price, taxes, fees, add-ons, trade, APR, term, and payment.</p>
+            <h3>Start secure checkout</h3>
+            <p>Pay once through Stripe and Link. There is no subscription or recurring charge.</p>
           </article>
           <article>
             <span>2</span>
-            <h3>See what moves the deal</h3>
-            <p>We rebuild the payment and show which line items are driving your total cost.</p>
+            <h3>Enter the quote</h3>
+            <p>Copy the price, taxes, fees, add-ons, trade, APR, term, and payment into the private analyzer.</p>
           </article>
           <article>
             <span>3</span>
-            <h3>Use the exact questions</h3>
-            <p>Leave with a prioritized checklist and a copy-ready message for the dealership.</p>
+            <h3>Save your action plan</h3>
+            <p>See what moves the deal, then print the review and copy the exact questions for the dealership.</p>
           </article>
         </div>
       </section>
@@ -109,24 +110,24 @@ export default function Home() {
       <section className="section dark-section" id="pricing">
         <div className="shell offer-grid">
           <div>
-            <p className="kicker kicker-light">PRIVATE BETA</p>
-            <h2>Know before you sign.</h2>
+            <p className="kicker kicker-light">ONE-TIME DEAL REVIEW</p>
+            <h2>One clear review before you sign.</h2>
             <p className="offer-copy">
-              We are opening PencilProof to a small group of buyers while we
-              finish the paid report. The complete deal calculator is free
-              during beta—no account and no credit card.
+              Pay once, then get immediate access to the browser-based deal
+              analyzer. Rebuild the quote, identify the pressure points, and
+              leave with a dealer-ready action plan.
             </p>
           </div>
           <div className="price-card">
-            <div className="price-line"><span>Beta access</span><strong>$0</strong></div>
+            <div className="price-line"><span>Deal review</span><strong>$39</strong></div>
             <ul>
               <li>Finance payment cross-check</li>
               <li>Add-on and fee breakdown</li>
               <li>APR comparison and total cost</li>
               <li>Copy-ready dealer questions</li>
             </ul>
-            <Link className="button button-light" href="/analyze">Run my numbers <Arrow /></Link>
-            <small>No purchase is completed through PencilProof.</small>
+            <a className="button button-light" href={CHECKOUT_URL}>Get instant access <Arrow /></a>
+            <small>One-time payment. Secure checkout. No subscription.</small>
           </div>
         </div>
       </section>
@@ -139,8 +140,8 @@ export default function Home() {
         <div className="faq-grid">
           <article><h3>Does PencilProof negotiate for me?</h3><p>No. We never contact a dealer, arrange a purchase, or act as a broker. We help you understand the numbers you already received.</p></article>
           <article><h3>Is this legal or financial advice?</h3><p>No. Results are educational estimates based on the numbers you enter. Verify final terms with the dealer and your lender.</p></article>
-          <article><h3>Do you store my deal?</h3><p>No. The beta calculator runs in your browser. Your deal inputs are not uploaded to our servers.</p></article>
-          <article><h3>What deals can I check?</h3><p>The current beta is built for financed purchases. Cash and lease-specific analysis are next.</p></article>
+          <article><h3>How is the review delivered?</h3><p>After payment, you receive immediate access to the browser-based analyzer. Enter the quote, then print or save the finished review.</p></article>
+          <article><h3>Do you store my deal?</h3><p>No. Deal inputs stay in your browser. Link and Stripe process checkout information, but PencilProof does not receive your full card number.</p></article>
         </div>
       </section>
 

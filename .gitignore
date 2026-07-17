@@ -4,6 +4,8 @@ out/
 .env*
 !.env.example
 *.log
+*.tsbuildinfo
+next-env.d.ts
 .DS_Store
 .sites-runtime/
 .wrangler/

@@ -13,7 +13,9 @@ questions for the dealership.
 - trade equity or negative equity
 - full-term finance charge
 
-The calculator runs in the browser. Deal inputs are not uploaded or stored.
+Customers purchase one-time access through a Stripe Managed Payments payment
+link, then use the analyzer in the browser. Deal inputs are not uploaded or
+stored by PencilProof.
 
 ## Important limitation
 
