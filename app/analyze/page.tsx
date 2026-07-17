@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ChangeEvent } from "react";
+import { extractDealFromPdf } from "@/lib/deal-pdf";
 
 type Deal = {
   vehicle: string;
@@ -29,6 +30,12 @@ type ProductInsight = {
   amount: number;
   explanation: string;
   question: string;
+};
+
+type PdfImportState = {
+  status: "idle" | "loading" | "success" | "error";
+  message: string;
+  fields: string[];
 };
 
 const sample: Deal = {
@@ -123,9 +130,55 @@ function MoneyField({
 export default function AnalyzePage() {
   const [deal, setDeal] = useState<Deal>(blank);
   const [copied, setCopied] = useState(false);
+  const [pdfImport, setPdfImport] = useState<PdfImportState>({ status: "idle", message: "", fields: [] });
 
   const setNumber = (field: keyof Deal, value: string) =>
     setDeal((current) => ({ ...current, [field]: value === "" ? 0 : Number(value) }));
+
+  const importPdf = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
+      setPdfImport({ status: "error", message: "Choose a PDF file from the dealership.", fields: [] });
+      return;
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      setPdfImport({ status: "error", message: "That PDF is larger than 15 MB. Use a smaller copy or enter the figures manually.", fields: [] });
+      return;
+    }
+
+    setPdfImport({ status: "loading", message: `Reading ${file.name} in your browser…`, fields: [] });
+    try {
+      const result = await extractDealFromPdf(file);
+      if (!result.fieldNames.length) {
+        setPdfImport({
+          status: "error",
+          message: "The PDF contains readable text, but its labels did not match the supported dealer fields. Enter the figures manually and double-check the worksheet.",
+          fields: [],
+        });
+        return;
+      }
+      setDeal((current) => ({ ...current, ...(result.fields as Partial<Deal>) }));
+      setPdfImport({
+        status: "success",
+        message: `Filled ${result.fieldNames.length} field${result.fieldNames.length === 1 ? "" : "s"} from ${file.name} (${result.pageCount} page${result.pageCount === 1 ? "" : "s"}). Review every imported value before using the audit.`,
+        fields: result.fieldNames,
+      });
+    } catch (error) {
+      const scanned = error instanceof Error && error.message === "SCANNED_PDF";
+      setPdfImport({
+        status: "error",
+        message: scanned
+          ? "This appears to be an image-only or scanned PDF, so it has no reliable text to import. Enter the figures manually or request a digital buyer's order from the dealership."
+          : "PencilProof could not read this PDF. It may be password-protected or use an unsupported format. Your file was not uploaded; enter the figures manually.",
+        fields: [],
+      });
+    }
+  };
+
+  const handlePdfChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) await importPdf(file);
+  };
 
   const analysis = useMemo(() => {
     const addons =
@@ -331,10 +384,35 @@ export default function AnalyzePage() {
           <p>Use the written figures from the dealership. The audit updates as you type and separates the vehicle, financing, trade, and products.</p>
         </div>
         <div className="analyzer-actions">
-          <button type="button" onClick={() => setDeal(sample)}>Load sample</button>
-          <button type="button" onClick={() => setDeal(blank)}>Clear all</button>
+          <button type="button" onClick={() => { setDeal(sample); setPdfImport({ status: "idle", message: "", fields: [] }); }}>Load sample</button>
+          <button type="button" onClick={() => { setDeal(blank); setPdfImport({ status: "idle", message: "", fields: [] }); }}>Clear all</button>
         </div>
       </header>
+
+      <section className="pdf-import shell" aria-labelledby="pdf-import-title">
+        <div className="pdf-import-main">
+          <div className="pdf-badge" aria-hidden="true">PDF</div>
+          <div>
+            <p className="pdf-kicker">OPTIONAL QUICK START</p>
+            <h2 id="pdf-import-title">Upload the dealer worksheet</h2>
+            <p>PencilProof reads text from the PDF in this browser and fills recognizable fields. The file is not sent to our servers.</p>
+          </div>
+          <label className={`pdf-upload-button ${pdfImport.status === "loading" ? "pdf-upload-loading" : ""}`}>
+            <input type="file" accept="application/pdf,.pdf" disabled={pdfImport.status === "loading"} onChange={handlePdfChange} />
+            {pdfImport.status === "loading" ? "Reading PDF…" : "Choose PDF"}
+          </label>
+        </div>
+        {pdfImport.status !== "idle" ? (
+          <div className={`pdf-import-status pdf-status-${pdfImport.status}`} role="status" aria-live="polite">
+            <span aria-hidden="true">{pdfImport.status === "success" ? "✓" : pdfImport.status === "error" ? "!" : "…"}</span>
+            <div>
+              <p>{pdfImport.message}</p>
+              {pdfImport.fields.length ? <div className="pdf-field-list">{pdfImport.fields.map((field) => <small key={field}>{field}</small>)}</div> : null}
+            </div>
+          </div>
+        ) : null}
+        <p className="pdf-import-note">Best with dealer-generated buyer&apos;s orders and worksheets that contain selectable text. Scanned PDFs currently require manual entry.</p>
+      </section>
 
       <div className="analyzer-layout shell">
         <form className="deal-form" onSubmit={(event) => event.preventDefault()}>
