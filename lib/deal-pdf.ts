@@ -331,7 +331,23 @@ export const extractDealFromImage = async (
   onProgress?: (update: DealImportProgress) => void,
 ): Promise<DealPdfResult> => {
   const { createWorker } = await import("tesseract.js");
-  const worker = await createWorker("eng", 1, {
+  const workerPath = new URL("tesseract.js/dist/worker.min.js", import.meta.url).toString();
+  const corePath = new URL(
+    "tesseract.js-core/tesseract-core-lstm.wasm.js",
+    import.meta.url,
+  ).toString();
+  const languageUrl = new URL(
+    "@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz",
+    import.meta.url,
+  ).toString();
+  onProgress?.({ progress: 0, status: "loading local OCR files" });
+  const languageResponse = await fetch(languageUrl);
+  if (!languageResponse.ok) throw new Error("OCR_ASSET_ERROR");
+  const languageData = new Uint8Array(await languageResponse.arrayBuffer());
+
+  const worker = await createWorker([{ code: "eng", data: languageData }], 1, {
+    workerPath,
+    corePath,
     logger: ({ progress, status }) => onProgress?.({ progress, status }),
   });
 
