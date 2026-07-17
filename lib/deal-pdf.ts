@@ -44,6 +44,12 @@ export type DealPdfResult = {
   fields: ImportedDealFields;
   fieldNames: string[];
   pageCount: number;
+  sourceType: "pdf" | "image";
+};
+
+export type DealImportProgress = {
+  progress: number;
+  status: string;
 };
 
 type PdfTextItem = {
@@ -317,5 +323,40 @@ export const extractDealFromPdf = async (file: File): Promise<DealPdfResult> => 
 
   const fields = parseDealerText(lines);
   const fieldNames = Object.keys(fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]);
-  return { fields, fieldNames, pageCount: document.numPages };
+  return { fields, fieldNames, pageCount: document.numPages, sourceType: "pdf" };
+};
+
+export const extractDealFromImage = async (
+  file: File,
+  onProgress?: (update: DealImportProgress) => void,
+): Promise<DealPdfResult> => {
+  const { createWorker } = await import("tesseract.js");
+  const worker = await createWorker("eng", 1, {
+    logger: ({ progress, status }) => onProgress?.({ progress, status }),
+  });
+
+  try {
+    const result = await worker.recognize(file, { rotateAuto: true });
+    const text = result.data.text.trim();
+    if (text.replace(/\s/g, "").length < 30) throw new Error("UNREADABLE_IMAGE");
+
+    const fields = parseDealerText(text.split(/\r?\n/));
+    const fieldNames = Object.keys(fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]);
+    return { fields, fieldNames, pageCount: 1, sourceType: "image" };
+  } finally {
+    await worker.terminate();
+  }
+};
+
+export const extractDealFromFile = async (
+  file: File,
+  onProgress?: (update: DealImportProgress) => void,
+): Promise<DealPdfResult> => {
+  const name = file.name.toLowerCase();
+  const isPdf = file.type === "application/pdf" || name.endsWith(".pdf");
+  const isJpeg = file.type === "image/jpeg" || /\.jpe?g$/.test(name);
+
+  if (isPdf) return extractDealFromPdf(file);
+  if (isJpeg) return extractDealFromImage(file, onProgress);
+  throw new Error("UNSUPPORTED_FILE");
 };
