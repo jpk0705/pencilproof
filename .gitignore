@@ -10,3 +10,6 @@ next-env.d.ts
 .sites-runtime/
 .wrangler/
 .github-export/
+
+# Generated from installed OCR packages before each build
+/public/ocr/
