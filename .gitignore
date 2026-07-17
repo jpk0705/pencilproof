@@ -7,3 +7,4 @@ out/
 .DS_Store
 .sites-runtime/
 .wrangler/
+.github-export/
