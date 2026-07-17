@@ -45,6 +45,8 @@ export type DealPdfResult = {
   fieldNames: string[];
   pageCount: number;
   sourceType: "pdf" | "image";
+  usedOcr?: boolean;
+  pagesProcessed?: number;
 };
 
 export type DealImportProgress = {
@@ -59,6 +61,20 @@ type PdfTextItem = {
 
 type PdfPageLike = {
   getTextContent: () => Promise<{ items: unknown[] }>;
+};
+
+type PdfViewportLike = {
+  width: number;
+  height: number;
+};
+
+type PdfRenderablePageLike = PdfPageLike & {
+  getViewport: (options: { scale: number }) => PdfViewportLike;
+  render: (options: {
+    canvas: HTMLCanvasElement;
+    canvasContext: CanvasRenderingContext2D;
+    viewport: PdfViewportLike;
+  }) => { promise: Promise<unknown> };
 };
 
 const moneyPattern = /(?:\(\s*)?-?\$?\s*\d[\d,]*(?:\.\d{1,2})?(?:\s*\))?/g;
@@ -301,36 +317,9 @@ const pageLines = async (page: PdfPageLike) => {
     .map(([, items]) => items.sort((first, second) => first.x - second.x).map((item) => item.text).join(" "));
 };
 
-export const extractDealFromPdf = async (file: File): Promise<DealPdfResult> => {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-    "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
-    import.meta.url,
-  ).toString();
-
-  const data = new Uint8Array(await file.arrayBuffer());
-  const document = await pdfjs.getDocument({ data }).promise;
-  const lines: string[] = [];
-
-  for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
-    const page = await document.getPage(pageNumber);
-    lines.push(...await pageLines(page));
-  }
-
-  if (lines.join("").replace(/\s/g, "").length < 30) {
-    throw new Error("SCANNED_PDF");
-  }
-
-  const fields = parseDealerText(lines);
-  const fieldNames = Object.keys(fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]);
-  return { fields, fieldNames, pageCount: document.numPages, sourceType: "pdf" };
-};
-
-export const extractDealFromImage = async (
-  file: File,
+const createDealOcrWorker = async (
   onProgress?: (update: DealImportProgress) => void,
-): Promise<DealPdfResult> => {
-  const imageData = new Uint8Array(await file.arrayBuffer());
+) => {
   const { createWorker } = await import("tesseract.js");
   const firstPathSegment = window.location.pathname.split("/").filter(Boolean)[0];
   const siteBasePath = window.location.hostname.endsWith("github.io") && firstPathSegment
@@ -343,18 +332,107 @@ export const extractDealFromImage = async (
     langPath: ocrBasePath,
     logger: ({ progress, status }) => onProgress?.({ progress, status }),
   });
+  return worker;
+};
+
+const recognizeImages = async (
+  images: Uint8Array[],
+  onProgress?: (update: DealImportProgress) => void,
+) => {
+  const worker = await createDealOcrWorker(onProgress);
+  const text: string[] = [];
 
   try {
-    const result = await worker.recognize(imageData as unknown as File, { rotateAuto: true });
-    const text = result.data.text.trim();
-    if (text.replace(/\s/g, "").length < 30) throw new Error("UNREADABLE_IMAGE");
-
-    const fields = parseDealerText(text.split(/\r?\n/));
-    const fieldNames = Object.keys(fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]);
-    return { fields, fieldNames, pageCount: 1, sourceType: "image" };
+    for (let index = 0; index < images.length; index += 1) {
+      if (images.length > 1) {
+        onProgress?.({ progress: 0, status: `reading scanned PDF page ${index + 1} of ${images.length}` });
+      }
+      const result = await worker.recognize(images[index] as unknown as File, { rotateAuto: true });
+      text.push(result.data.text);
+    }
   } finally {
     await worker.terminate();
   }
+
+  return text.join("\n").trim();
+};
+
+const renderPdfPageForOcr = async (page: PdfRenderablePageLike) => {
+  const viewport = page.getViewport({ scale: 2 });
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.ceil(viewport.width);
+  canvas.height = Math.ceil(viewport.height);
+  const canvasContext = canvas.getContext("2d", { alpha: false });
+  if (!canvasContext) throw new Error("PDF_RENDER_ERROR");
+
+  await page.render({ canvas, canvasContext, viewport }).promise;
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((value) => value ? resolve(value) : reject(new Error("PDF_RENDER_ERROR")), "image/jpeg", 0.9);
+  });
+  const image = new Uint8Array(await blob.arrayBuffer());
+  canvas.width = 1;
+  canvas.height = 1;
+  return image;
+};
+
+export const extractDealFromPdf = async (
+  file: File,
+  onProgress?: (update: DealImportProgress) => void,
+): Promise<DealPdfResult> => {
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+    "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
+    import.meta.url,
+  ).toString();
+
+  const data = new Uint8Array(await file.arrayBuffer());
+  const pdfDocument = await pdfjs.getDocument({ data }).promise;
+  const lines: string[] = [];
+
+  for (let pageNumber = 1; pageNumber <= pdfDocument.numPages; pageNumber += 1) {
+    const page = await pdfDocument.getPage(pageNumber);
+    lines.push(...await pageLines(page));
+  }
+
+  const digitalFields = parseDealerText(lines);
+  if (Object.keys(digitalFields).length) {
+    const fieldNames = Object.keys(digitalFields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]);
+    return { fields: digitalFields, fieldNames, pageCount: pdfDocument.numPages, sourceType: "pdf" };
+  }
+
+  const pagesProcessed = Math.min(pdfDocument.numPages, 5);
+  const images: Uint8Array[] = [];
+  for (let pageNumber = 1; pageNumber <= pagesProcessed; pageNumber += 1) {
+    onProgress?.({ progress: (pageNumber - 1) / pagesProcessed, status: `preparing scanned PDF page ${pageNumber} of ${pagesProcessed}` });
+    const page = await pdfDocument.getPage(pageNumber);
+    images.push(await renderPdfPageForOcr(page as unknown as PdfRenderablePageLike));
+  }
+
+  const ocrText = await recognizeImages(images, onProgress);
+  if (ocrText.replace(/\s/g, "").length < 30) throw new Error("UNREADABLE_IMAGE");
+  const fields = parseDealerText([...lines, ...ocrText.split(/\r?\n/)]);
+  const fieldNames = Object.keys(fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]);
+  return {
+    fields,
+    fieldNames,
+    pageCount: pdfDocument.numPages,
+    sourceType: "pdf",
+    usedOcr: true,
+    pagesProcessed,
+  };
+};
+
+export const extractDealFromImage = async (
+  file: File,
+  onProgress?: (update: DealImportProgress) => void,
+): Promise<DealPdfResult> => {
+  const imageData = new Uint8Array(await file.arrayBuffer());
+  const text = await recognizeImages([imageData], onProgress);
+  if (text.replace(/\s/g, "").length < 30) throw new Error("UNREADABLE_IMAGE");
+
+  const fields = parseDealerText(text.split(/\r?\n/));
+  const fieldNames = Object.keys(fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]);
+  return { fields, fieldNames, pageCount: 1, sourceType: "image", usedOcr: true, pagesProcessed: 1 };
 };
 
 export const extractDealFromFile = async (
@@ -364,8 +442,9 @@ export const extractDealFromFile = async (
   const name = file.name.toLowerCase();
   const isPdf = file.type === "application/pdf" || name.endsWith(".pdf");
   const isJpeg = file.type === "image/jpeg" || /\.jpe?g$/.test(name);
+  const isPng = file.type === "image/png" || name.endsWith(".png");
 
-  if (isPdf) return extractDealFromPdf(file);
-  if (isJpeg) return extractDealFromImage(file, onProgress);
+  if (isPdf) return extractDealFromPdf(file, onProgress);
+  if (isJpeg || isPng) return extractDealFromImage(file, onProgress);
   throw new Error("UNSUPPORTED_FILE");
 };
