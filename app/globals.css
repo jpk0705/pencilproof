@@ -142,6 +142,26 @@ footer { border-top: 1px solid var(--line); padding: 34px 0; }
 .analyzer-actions { display: flex; gap: 8px; }
 .analyzer-actions button { padding: 10px 14px; border: 1px solid #bdb8ad; border-radius: 4px; color: var(--ink); background: transparent; font-size: 11px; font-weight: 800; cursor: pointer; }
 .analyzer-actions button:hover { background: var(--card); }
+.pdf-import { margin-bottom: 24px; padding: 22px; border: 1px solid #cbc7bd; border-radius: 10px; background: var(--card); box-shadow: 0 10px 30px rgba(11, 28, 37, .06); }
+.pdf-import-main { display: grid; grid-template-columns: auto 1fr auto; gap: 18px; align-items: center; }
+.pdf-badge { width: 52px; height: 58px; display: grid; place-items: center; border-radius: 5px 5px 5px 1px; color: var(--accent); background: var(--ink); font-size: 11px; font-weight: 900; letter-spacing: .08em; position: relative; }
+.pdf-badge::after { content: ''; position: absolute; right: 0; top: 0; border-style: solid; border-width: 0 13px 13px 0; border-color: transparent var(--card) transparent transparent; }
+.pdf-kicker { margin: 0 0 5px; color: var(--green); font-size: 8px; font-weight: 900; letter-spacing: .14em; }
+.pdf-import h2 { margin: 0; font-family: Georgia, serif; font-size: 23px; font-weight: 500; }
+.pdf-import-main > div:nth-child(2) > p:last-child { max-width: 650px; margin: 6px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.pdf-upload-button { min-width: 125px; min-height: 43px; display: inline-flex; align-items: center; justify-content: center; padding: 0 17px; border: 1px solid var(--ink); border-radius: 4px; color: var(--ink); background: var(--accent); font-size: 11px; font-weight: 900; cursor: pointer; }
+.pdf-upload-button:hover { box-shadow: 0 6px 16px rgba(11, 28, 37, .12); transform: translateY(-1px); }
+.pdf-upload-button input { display: none; }
+.pdf-upload-loading { opacity: .65; cursor: wait; }
+.pdf-import-status { display: flex; gap: 11px; align-items: flex-start; margin-top: 17px; padding: 13px; border-radius: 6px; font-size: 10px; }
+.pdf-import-status > span { width: 23px; height: 23px; display: grid; place-items: center; flex: 0 0 23px; border-radius: 50%; font-size: 10px; font-weight: 900; }
+.pdf-import-status p { margin: 3px 0 0; line-height: 1.5; }
+.pdf-status-loading { color: #38556c; background: #e5eef5; }.pdf-status-loading > span { color: #285f88; background: #cddfec; }
+.pdf-status-success { color: #15543f; background: #e3f1eb; }.pdf-status-success > span { color: white; background: var(--green); }
+.pdf-status-error { color: #743a12; background: #f9e9da; }.pdf-status-error > span { color: white; background: #ae591a; }
+.pdf-field-list { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+.pdf-field-list small { padding: 5px 7px; border: 1px solid rgba(21, 84, 63, .22); border-radius: 999px; background: rgba(255,255,255,.5); font-size: 8px; font-weight: 800; }
+.pdf-import-note { margin: 13px 0 0; padding-top: 12px; border-top: 1px solid #e0dbd0; color: #7b888e; font-size: 8px; line-height: 1.45; }
 .analyzer-layout { display: grid; grid-template-columns: minmax(0, 1fr) 480px; align-items: start; gap: 22px; padding-bottom: 90px; }
 .deal-form { display: flex; flex-direction: column; gap: 14px; }
 .form-section { padding: 30px; background: var(--card); border: 1px solid #d4cfc4; border-radius: 10px; }
@@ -207,7 +227,7 @@ footer { border-top: 1px solid var(--line); padding: 34px 0; }
 .legal-copy .legal-note { margin-top: 48px; padding: 18px; border: 1px solid var(--line); background: var(--card); font-size: 11px !important; }
 
 @media print {
-  .analyzer-nav, .analyzer-header, .deal-form, .print-button { display: none !important; }
+  .analyzer-nav, .analyzer-header, .pdf-import, .deal-form, .print-button { display: none !important; }
   .analyzer-layout { display: block; padding: 0; }.results-panel { width: 100%; }.results-sticky { position: static; box-shadow: none; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
 }
 
@@ -221,7 +241,7 @@ footer { border-top: 1px solid var(--line); padding: 34px 0; }
   .deal-card { padding: 20px; box-shadow: 8px 10px 0 #dfe5cf; transform: none; }.deal-metrics { grid-template-columns: 1fr; }.deal-metrics div { flex-direction: row; justify-content: space-between; }.deal-card-foot > span { display: none; }
   .signal-grid { grid-template-columns: 1fr; }.signal-grid div { padding: 18px 0; border-right: 0; border-bottom: 1px solid rgba(255,255,255,.15); }.signal-grid div:last-child { border-bottom: 0; }
   .section { padding-top: 78px; padding-bottom: 78px; }.audit-preview { box-shadow: 7px 8px 0 #dfe5cf; }.audit-preview-head { align-items: flex-start; flex-direction: column; gap: 7px; }.audit-finding { grid-template-columns: 32px 1fr; }.audit-finding > strong { grid-column: 2; }.audit-unlock ul { grid-template-columns: 1fr; }.product-grid { grid-template-columns: 1fr; }.product-grid article { min-height: 230px; }.steps { grid-template-columns: 1fr; }.steps article { min-height: 220px; }.offer-grid { gap: 40px; }.faq-grid { grid-template-columns: 1fr; }.footer-grid { grid-template-columns: 1fr; gap: 18px; text-align: center; }.footer-grid p { order: 3; }.footer-grid div { justify-content: center; }.brand-footer { justify-self: center; }
-  .privacy-chip { display: none; }.analyzer-header { align-items: flex-start; flex-direction: column; gap: 24px; padding-top: 42px; }.analyzer-actions { width: 100%; }.analyzer-actions button { flex: 1; }.analyzer-layout { width: 100%; padding-bottom: 50px; }.deal-form { padding: 0 15px; }.form-section { padding: 22px 18px; }.field-grid, .field-grid-four { grid-template-columns: 1fr; }.results-sticky { border-radius: 0; padding: 23px 18px; }.result-flags { display: flex; }.analyzer-header.shell { width: min(100% - 30px, 1180px); }
+  .privacy-chip { display: none; }.analyzer-header { align-items: flex-start; flex-direction: column; gap: 24px; padding-top: 42px; }.analyzer-actions { width: 100%; }.analyzer-actions button { flex: 1; }.pdf-import { padding: 18px; }.pdf-import-main { grid-template-columns: auto 1fr; }.pdf-upload-button { grid-column: 1 / -1; width: 100%; }.analyzer-layout { width: 100%; padding-bottom: 50px; }.deal-form { padding: 0 15px; }.form-section { padding: 22px 18px; }.field-grid, .field-grid-four { grid-template-columns: 1fr; }.results-sticky { border-radius: 0; padding: 23px 18px; }.result-flags { display: flex; }.analyzer-header.shell { width: min(100% - 30px, 1180px); }
 }
 
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; }.button { transition: none; } }
