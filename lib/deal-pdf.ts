@@ -331,7 +331,10 @@ export const extractDealFromImage = async (
   onProgress?: (update: DealImportProgress) => void,
 ): Promise<DealPdfResult> => {
   const { createWorker } = await import("tesseract.js");
-  const siteBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+  const firstPathSegment = window.location.pathname.split("/").filter(Boolean)[0];
+  const siteBasePath = window.location.hostname.endsWith("github.io") && firstPathSegment
+    ? `/${firstPathSegment}`
+    : "";
   const ocrBasePath = `${siteBasePath}/ocr`;
   const worker = await createWorker("eng", 1, {
     workerPath: `${ocrBasePath}/worker.min.js`,
