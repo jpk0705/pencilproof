@@ -225,10 +225,11 @@ export default function AnalyzePage() {
     const productPaymentImpact = Math.max(0, calculatedPayment - paymentWithoutProducts);
     const productCostOverTerm = productPaymentImpact * deal.term;
     const productFinancingCost = Math.max(0, productCostOverTerm - addons);
-    const outsidePayment = deal.outsideApr > 0 ? paymentFor(amountFinanced, deal.outsideApr, deal.term) : 0;
+    const desiredPayment = deal.outsideApr > 0 ? paymentFor(amountFinanced, deal.outsideApr, deal.term) : 0;
     const paymentGap = deal.quotedPayment > 0 ? deal.quotedPayment - calculatedPayment : 0;
     const financeCharge = Math.max(0, calculatedPayment * deal.term - amountFinanced);
-    const aprCost = outsidePayment > 0 ? Math.max(0, (calculatedPayment - outsidePayment) * deal.term) : 0;
+    const totalPayments = calculatedPayment * deal.term;
+    const aprCost = desiredPayment > 0 ? Math.max(0, (calculatedPayment - desiredPayment) * deal.term) : 0;
     const aprGap = deal.outsideApr > 0 ? deal.apr - deal.outsideApr : 0;
 
     let score = 100;
@@ -262,16 +263,16 @@ export default function AnalyzePage() {
     if (aprGap >= 0.25) {
       flags.push({
         tone: "warn",
-        title: `Dealer APR is ${aprGap.toFixed(2)} points higher`,
+        title: `Dealer APR is ${aprGap.toFixed(2)} points above your desired APR`,
         detail: aprCost > 0
-          ? `Compared with the outside rate entered, the difference is about ${dollars(aprCost)} over the full term.`
-          : "Compare the dealer offer with your own lender before signing.",
+          ? `At your desired rate, the estimated payment is ${dollars(desiredPayment)}/month—about ${dollars(aprCost)} less over the full term.`
+          : "Compare the dealer offer with your target rate before signing.",
       });
     } else if (deal.outsideApr > 0) {
       flags.push({
         tone: "good",
-        title: "Dealer APR is competitive",
-        detail: "The entered dealer rate is close to or below the outside offer entered.",
+        title: "Dealer APR meets your desired rate",
+        detail: "The entered dealer rate is close to or below your desired APR.",
       });
     }
     if (deal.quotedPayment > 0 && Math.abs(paymentGap) > 4) {
@@ -367,6 +368,8 @@ export default function AnalyzePage() {
       productCostOverTerm,
       productFinancingCost,
       financeCharge,
+      totalPayments,
+      desiredPayment,
       aprCost,
       aprGap,
       score,
@@ -379,7 +382,7 @@ export default function AnalyzePage() {
     ? `Removes the entered optional products totaling ${dollars(analysis.addons)} and shows the revised payment without them.`
     : "Confirms in writing whether any optional products are included or required.";
   const rateRequest = analysis.aprGap >= 0.25
-    ? `Shows whether you can match or beat my ${deal.outsideApr.toFixed(2)}% outside approval.`
+    ? `Shows whether you can match or beat my desired APR of ${deal.outsideApr.toFixed(2)}%.`
     : "Confirms the final APR and term, subject only to lender approval.";
   const message = `Thanks for the quote on the ${deal.vehicle || "vehicle"}. Before I move forward, please send a revised buyer's order that:\n\n1. Shows the selling price of ${dollars(deal.sellingPrice)} before tax and government fees.\n2. Separately itemizes every dealer fee and optional product.\n3. ${productRequest}\n4. ${rateRequest}\n5. Confirms there are no additional mandatory dealer charges beyond the revised buyer's order.\n\nPlease quote the out-the-door total, amount financed, APR, term, and payment—not only the monthly payment.`;
 
@@ -467,7 +470,7 @@ export default function AnalyzePage() {
             </div>
             <div className="field-grid field-grid-four">
               <label className="input-field"><span>Dealer APR</span><div className="input-money input-percent"><input aria-label="Dealer APR" inputMode="decimal" type="number" min="0" step="0.01" value={deal.apr || ""} onChange={(event) => setNumber("apr", event.target.value)} /><i>%</i></div></label>
-              <label className="input-field"><span>Your outside APR</span><div className="input-money input-percent"><input aria-label="Your outside APR" inputMode="decimal" type="number" min="0" step="0.01" value={deal.outsideApr || ""} onChange={(event) => setNumber("outsideApr", event.target.value)} /><i>%</i></div></label>
+              <label className="input-field"><span>Your desired APR</span><div className="input-money input-percent"><input aria-label="Your desired APR" inputMode="decimal" type="number" min="0" step="0.01" value={deal.outsideApr || ""} onChange={(event) => setNumber("outsideApr", event.target.value)} /><i>%</i></div><small>See the estimated payment at your target rate</small></label>
               <label className="input-field"><span>Loan term</span><select aria-label="Loan term" value={deal.term} onChange={(event) => setNumber("term", event.target.value)}><option value="36">36 months</option><option value="48">48 months</option><option value="60">60 months</option><option value="72">72 months</option><option value="75">75 months</option><option value="84">84 months</option><option value="96">96 months</option></select></label>
               <MoneyField label="Quoted monthly payment" field="quotedPayment" value={deal.quotedPayment} onChange={setNumber} />
             </div>
@@ -485,14 +488,14 @@ export default function AnalyzePage() {
             <div className="payment-compare">
               <div><span>REBUILT PAYMENT</span><strong>{dollars(analysis.calculatedPayment)}<small>/mo</small></strong><small>with entered products</small></div>
               <b aria-hidden="true">→</b>
-              <div><span>WITHOUT PRODUCTS</span><strong>{dollars(analysis.paymentWithoutProducts)}<small>/mo</small></strong><small>same entered rate and term</small></div>
+              <div><span>AT YOUR DESIRED APR</span><strong>{deal.outsideApr > 0 ? dollars(analysis.desiredPayment) : "—"}{deal.outsideApr > 0 ? <small>/mo</small> : null}</strong><small>{deal.outsideApr > 0 ? `${deal.outsideApr.toFixed(2)}% · same amount and term` : "Enter your desired APR to compare"}</small></div>
             </div>
 
             <div className="result-numbers">
               <div><span>Estimated amount financed</span><strong>{dollars(analysis.amountFinanced)}</strong></div>
               <div><span>Entered optional products</span><strong>{dollars(analysis.addons)}</strong></div>
-              <div><span>Products over full term</span><strong>{dollars(analysis.productCostOverTerm)}</strong></div>
-              <div><span>Interest on products</span><strong>{dollars(analysis.productFinancingCost)}</strong></div>
+              <div><span>Total of payments</span><strong>{dollars(analysis.totalPayments)}</strong></div>
+              <div><span>Total finance charge</span><strong>{dollars(analysis.financeCharge)}</strong></div>
             </div>
 
             <div className="result-section-title"><span>PRIORITY FINDINGS</span></div>
