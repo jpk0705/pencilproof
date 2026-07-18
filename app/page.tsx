@@ -71,10 +71,10 @@ export default function Home() {
               <p>SAMPLE DEAL AUDIT</p>
               <h2>2026 compact SUV</h2>
             </div>
-            <div className="score-ring"><strong>64</strong><span>/100</span></div>
+            <div className="score-ring"><strong>60</strong><span>/100</span></div>
           </div>
           <div className="deal-metrics">
-            <div><span>Quoted payment</span><strong>$736/mo</strong></div>
+            <div><span>With products</span><strong>$742/mo</strong></div>
             <div><span>Without products</span><strong>$694/mo</strong></div>
             <div><span>Products financed</span><strong>$2,790</strong></div>
           </div>
@@ -85,7 +85,7 @@ export default function Home() {
             </div>
             <div className="flag flag-warn">
               <span className="flag-icon">!</span>
-              <p><b>APR is 2.10 points over preapproval</b><small>The rate difference is about $3,086 over 72 months.</small></p>
+              <p><b>Dealer APR is 2.10 points above the desired APR</b><small>At 5.39%, the estimated payment is $699/month—about $3,086 less over 72 months.</small></p>
             </div>
             <div className="flag flag-good">
               <span className="flag-icon">✓</span>
@@ -103,7 +103,7 @@ export default function Home() {
         <div className="shell signal-grid">
           <div><span>01</span><b>Payment rebuild</b><small>Check the dealer math</small></div>
           <div><span>02</span><b>Product impact</b><small>See with-and-without payments</small></div>
-          <div><span>03</span><b>APR cost</b><small>Measure the rate difference</small></div>
+          <div><span>03</span><b>Desired APR</b><small>See the payment at your target rate</small></div>
           <div><span>04</span><b>Trade equity</b><small>Expose rolled-in debt</small></div>
         </div>
       </section>
@@ -123,7 +123,7 @@ export default function Home() {
           <div className="audit-preview-head"><span>EXAMPLE FINDINGS</span><strong>What the paid audit reveals</strong></div>
           <div className="audit-finding"><span>01</span><div><b>Payment without optional products</b><p>Compare the rebuilt $742 payment with an estimated $694 payment after removing entered products.</p></div><strong>−$48/mo</strong></div>
           <div className="audit-finding"><span>02</span><div><b>Products plus estimated financing</b><p>See that $2,790 in entered products may cost roughly $3,472 when financed for the full term.</p></div><strong>$3,472</strong></div>
-          <div className="audit-finding"><span>03</span><div><b>Dealer APR versus your desired APR</b><p>See the estimated payment and total cost at the rate you want to achieve.</p></div><strong>COMPARE</strong></div>
+          <div className="audit-finding"><span>03</span><div><b>Dealer APR versus your desired APR</b><p>Compare the $742 rebuilt payment with an estimated $699 payment at the desired 5.39% APR.</p></div><strong>−$43/mo</strong></div>
           <div className="audit-unlock">
             <span>THE COMPLETE AUDIT ALSO INCLUDES</span>
             <ul><li>Plain-language product explanations</li><li>Prioritized questions for the finance office</li><li>A copy-ready request for a revised quote</li><li>Printable action plan</li></ul>
