@@ -35,7 +35,7 @@ export const DEAL_FIELD_LABELS: Record<keyof ImportedDealFields, string> = {
   cashDown: "Cash down",
   rebate: "Rebate / discount",
   apr: "Dealer APR",
-  outsideApr: "Outside APR",
+  outsideApr: "Desired APR",
   term: "Loan term",
   quotedPayment: "Quoted monthly payment",
 };
