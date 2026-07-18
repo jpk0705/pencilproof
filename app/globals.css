@@ -190,10 +190,9 @@ footer { border-top: 1px solid var(--line); padding: 34px 0; }
 .big-score { width: 68px; height: 68px; flex: 0 0 68px; display: flex; align-items: baseline; justify-content: center; padding-top: 22px; border: 5px solid var(--accent); border-radius: 50%; }
 .score-mid { border-color: #f0b76f; }.score-low { border-color: #e97b6d; }.big-score strong { font-size: 19px; }.big-score span { color: #a8b5bb; font-size: 8px; }
 .score-note { margin: 18px 0 0; padding: 12px; color: #a8b5bb; background: rgba(255,255,255,.05); border-radius: 5px; font-size: 9px; line-height: 1.45; }
-.payment-compare { display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: center; margin: 18px 0 0; padding: 14px; background: var(--accent); color: var(--ink); border-radius: 7px; }
-.payment-compare > div { display: flex; flex-direction: column; gap: 4px; }.payment-compare > div:last-child { text-align: right; }
-.payment-compare span { font-size: 7px; font-weight: 900; letter-spacing: .08em; }.payment-compare strong { font-family: Georgia, serif; font-size: 23px; font-weight: 500; }.payment-compare strong small { font: 8px Arial, sans-serif; }.payment-compare div > small { color: #4d5d36; font-size: 7px; }
-.payment-compare > b { font-size: 16px; }
+.payment-compare { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; align-items: stretch; margin: 18px 0 0; padding: 14px; background: var(--accent); color: var(--ink); border-radius: 7px; }
+.payment-compare > div { min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 0 10px; border-left: 1px solid rgba(11, 28, 37, .16); }.payment-compare > div:first-child { padding-left: 0; border-left: 0; }.payment-compare > div:last-child { padding-right: 0; text-align: right; }
+.payment-compare span { font-size: 7px; font-weight: 900; letter-spacing: .06em; }.payment-compare strong { font-family: Georgia, serif; font-size: 18px; font-weight: 500; white-space: nowrap; }.payment-compare strong small { font: 8px Arial, sans-serif; }.payment-compare div > small { color: #4d5d36; font-size: 7px; line-height: 1.35; }
 .result-numbers { display: grid; grid-template-columns: 1fr 1fr; margin: 20px 0 17px; border-top: 1px solid rgba(255,255,255,.14); border-left: 1px solid rgba(255,255,255,.14); }
 .result-numbers div { min-height: 72px; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 12px; border-right: 1px solid rgba(255,255,255,.14); border-bottom: 1px solid rgba(255,255,255,.14); }
 .result-numbers span { color: #99a9b0; font-size: 8px; }.result-numbers strong { color: var(--accent); font-family: Georgia, serif; font-size: 20px; font-weight: 500; }.result-numbers strong small { color: #a8b5bb; font-family: Arial, sans-serif; font-size: 8px; }
