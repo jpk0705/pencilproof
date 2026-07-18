@@ -221,6 +221,7 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     /\bprice of vehicle\b/i,
   ]);
   if (sellingPrice) fields.sellingPrice = sellingPrice;
+  const askingPrice = findAmount(lines, [/\basking price\b/i]);
 
   const tax = findAmount(lines, [
     /\b(?:sales|state|local|vehicle)\s+tax\b/i,
@@ -326,6 +327,7 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     /\brebate(?:s)?\b/i,
   ]);
   if (rebate) fields.rebate = rebate;
+  if (rebate && askingPrice) fields.sellingPrice = askingPrice;
 
   const apr = findPercent(lines, [
     /\bAPR\b/i,
@@ -609,6 +611,10 @@ export const extractDealFromImage = async (
     const alternateText = await recognizeImages([preparedImage], onProgress, "sparse");
     const alternateFields = parseDealerText(alternateText.split(/\r?\n/));
     fields = { ...alternateFields, ...fields };
+    if (alternateFields.rebate && alternateFields.sellingPrice &&
+      (!fields.sellingPrice || alternateFields.sellingPrice > fields.sellingPrice)) {
+      fields.sellingPrice = alternateFields.sellingPrice;
+    }
     text = `${text}\n${alternateText}`;
   }
   if (!Object.keys(fields).length) {
