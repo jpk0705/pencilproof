@@ -592,10 +592,17 @@ export const extractDealFromImage = async (
   if (text.replace(/\s/g, "").length < 30) throw new Error("UNREADABLE_IMAGE");
 
   let fields = parseDealerText(text.split(/\r?\n/));
-  if (!Object.keys(fields).length) {
+  if (Object.keys(fields).length < 12) {
     onProgress?.({ progress: 0, status: "trying an alternate image layout" });
-    text = await recognizeImages([imageData], onProgress, "sparse");
-    fields = parseDealerText(text.split(/\r?\n/));
+    const alternateText = await recognizeImages([preparedImage], onProgress, "sparse");
+    const alternateFields = parseDealerText(alternateText.split(/\r?\n/));
+    fields = { ...alternateFields, ...fields };
+    text = `${text}\n${alternateText}`;
+  }
+  if (!Object.keys(fields).length) {
+    onProgress?.({ progress: 0, status: "trying the full camera frame" });
+    const fullFrameText = await recognizeImages([imageData], onProgress, "sparse");
+    fields = parseDealerText(fullFrameText.split(/\r?\n/));
   }
   const fieldNames = Object.keys(fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]);
   return { fields, fieldNames, pageCount: 1, sourceType: "image", usedOcr: true, pagesProcessed: 1 };
