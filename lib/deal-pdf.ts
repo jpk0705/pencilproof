@@ -275,7 +275,7 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
   if (prepaidMaintenance) fields.prepaidMaintenance = prepaidMaintenance;
 
   const protection = findAmount(lines, [
-    /^appearance(?:\*+)?\b/i,
+    /\bappearance(?:\*+)?\b/i,
     /\bappearance protection\b/i,
     /\bpaint(?: and|\s*&)? fabric\b/i,
     /\btheft protection\b/i,
@@ -344,7 +344,12 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     /\bestimated payment\b/i,
   ];
   const quotedPayment = findAmount(lines, paymentLabels) ?? findAmountWithin(lines, paymentLabels, 15);
-  if (quotedPayment) fields.quotedPayment = quotedPayment;
+  const joinedPaymentText = lines.join(" ");
+  const splitCentsPayment = joinedPaymentText.match(/\$\s*(\d{2,4})\s+(\d)\s+(\d)\b/);
+  const resolvedQuotedPayment = splitCentsPayment
+    ? Number(`${splitCentsPayment[1]}.${splitCentsPayment[2]}${splitCentsPayment[3]}`)
+    : quotedPayment;
+  if (resolvedQuotedPayment) fields.quotedPayment = resolvedQuotedPayment;
 
   return fields;
 };
