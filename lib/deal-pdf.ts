@@ -155,16 +155,32 @@ const vehicleFromLines = (lines: string[]) => {
 };
 
 const sumDistinctAmounts = (lines: string[], labels: RegExp[]) => {
-  const matched = new Set<number>();
+  const matchedAmountLines = new Set<number>();
   let total = 0;
   lines.forEach((line, index) => {
     if (!labels.some((label) => label.test(line))) return;
-    const values = valuesOnLine(line).filter(({ value }) => value > 0);
-    if (!values.length || matched.has(index)) return;
-    matched.add(index);
-    total += values[values.length - 1].value;
+    const candidates = [index, index + 1, index - 1];
+    for (const amountLineIndex of candidates) {
+      if (amountLineIndex < 0 || matchedAmountLines.has(amountLineIndex)) continue;
+      const values = valuesOnLine(lines[amountLineIndex] ?? "").filter(({ value }) => value > 0);
+      if (!values.length) continue;
+      matchedAmountLines.add(amountLineIndex);
+      total += values[values.length - 1].value;
+      break;
+    }
   });
   return total || undefined;
+};
+
+const findAmountWithin = (lines: string[], labels: RegExp[], lookahead: number) => {
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!labels.some((label) => label.test(lines[index]))) continue;
+    for (let offset = 0; offset <= lookahead; offset += 1) {
+      const values = valuesOnLine(lines[index + offset] ?? "").filter(({ value }) => value > 0);
+      if (values.length) return values[values.length - 1].value;
+    }
+  }
+  return undefined;
 };
 
 export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
@@ -177,7 +193,7 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
   if (vehicle) fields.vehicle = vehicle;
 
   const sellingPrice = findAmount(lines, [
-    /\b(?:selling|sale|vehicle|cash)\s+price\b/i,
+    /\b(?:selling|sales?|vehicle|cash)\s+price\b/i,
     /\bagreed(?: upon)? (?:price|value)\b/i,
     /\bprice of vehicle\b/i,
   ]);
@@ -191,15 +207,17 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
 
   const combinedGovernmentFees = findAmount(lines, [
     /\bgovernment fees?\b/i,
-    /\bDMV\s*(?:\/|&|and)?\s*(?:title|registration|fees?)\b/i,
     /\btitle(?:,|\s+and)?\s+registration\b/i,
     /\blicense(?:,|\s+and)?\s+registration\b/i,
   ]);
   const itemizedGovernmentFees = sumDistinctAmounts(lines, [
-    /\bregistration fee\b/i,
-    /\btitle fee\b/i,
-    /\blicense fee\b/i,
-    /\bfiling fee\b/i,
+    /\bDMV\s+License\s*\/\s*Title Fees?\b/i,
+    /\bDMV\s+Reg(?:istration)?\s*\/\s*Transfer Fees?\b/i,
+    /\bregistration fees?\b/i,
+    /\btitle fees?\b/i,
+    /\blicense fees?\b/i,
+    /\btire fees?\b/i,
+    /\b(?:electronic\s+)?filing fees?\b/i,
   ]);
   if (combinedGovernmentFees || itemizedGovernmentFees) fields.govFees = combinedGovernmentFees ?? itemizedGovernmentFees;
 
@@ -215,6 +233,8 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     /\bvehicle service contract\b/i,
     /\bservice contract\b/i,
     /\bextended warranty\b/i,
+    /\bAPP\s+Major Guard\b/i,
+    /\bMajor Guard\b/i,
   ]);
   if (serviceContract) fields.serviceContract = serviceContract;
 
@@ -232,6 +252,7 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
   if (prepaidMaintenance) fields.prepaidMaintenance = prepaidMaintenance;
 
   const protection = findAmount(lines, [
+    /^appearance(?:\*+)?\b/i,
     /\bappearance protection\b/i,
     /\bpaint(?: and|\s*&)? fabric\b/i,
     /\btheft protection\b/i,
@@ -242,6 +263,7 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
   if (protection) fields.protection = protection;
 
   const accessories = findAmount(lines, [
+    /\bconnected car(?: \d+ year)? plan\b/i,
     /\bdealer installed (?:options|accessories)\b/i,
     /\baccessories\b/i,
     /\bother add[- ]?ons\b/i,
@@ -265,8 +287,9 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     /\bcash down\b/i,
     /\bdown payment\b/i,
     /\bcash deposit\b/i,
-  ]);
-  if (cashDown) fields.cashDown = cashDown;
+    /\bdeposit\s*\/\s*cash down\b/i,
+  ], { allowZero: true });
+  if (cashDown !== undefined) fields.cashDown = cashDown;
 
   const rebate = findAmount(lines, [
     /\bmanufacturer rebate\b/i,
@@ -282,17 +305,21 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     /\bannual percentage rate\b/i,
     /\binterest rate\b/i,
   ]);
-  if (apr !== undefined) fields.apr = apr;
+  const termAndApr = lines.join(" ").match(/\b(24|30|36|39|42|48|54|60|63|66|72|75|78|84|96)\s*months?\s*@\s*(\d{1,2}(?:\.\d{1,4})?)\s*%/i);
+  const resolvedApr = apr ?? (termAndApr ? Number(termAndApr[2]) : undefined);
+  if (resolvedApr !== undefined) fields.apr = resolvedApr;
 
   const term = findTerm(lines);
   if (term) fields.term = term;
 
-  const quotedPayment = findAmount(lines, [
+  const paymentLabels = [
     /\bmonthly payment\b/i,
     /\bpayment amount\b/i,
     /\bamount of (?:each )?payment\b/i,
     /\bpayment per month\b/i,
-  ]);
+    /\bestimated payment\b/i,
+  ];
+  const quotedPayment = findAmount(lines, paymentLabels) ?? findAmountWithin(lines, paymentLabels, 15);
   if (quotedPayment) fields.quotedPayment = quotedPayment;
 
   return fields;
@@ -320,7 +347,7 @@ const pageLines = async (page: PdfPageLike) => {
 const createDealOcrWorker = async (
   onProgress?: (update: DealImportProgress) => void,
 ) => {
-  const { createWorker } = await import("tesseract.js");
+  const { createWorker, PSM } = await import("tesseract.js");
   const firstPathSegment = window.location.pathname.split("/").filter(Boolean)[0];
   const siteBasePath = window.location.hostname.endsWith("github.io") && firstPathSegment
     ? `/${firstPathSegment}`
@@ -332,6 +359,7 @@ const createDealOcrWorker = async (
     langPath: ocrBasePath,
     logger: ({ progress, status }) => onProgress?.({ progress, status }),
   });
+  await worker.setParameters({ tessedit_pageseg_mode: PSM.SPARSE_TEXT });
   return worker;
 };
 
