@@ -236,6 +236,7 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
   const itemizedGovernmentFees = sumDistinctAmounts(lines, [
     /\bDMV\s+License\s*\/\s*Title Fees?\b/i,
     /\bDMV\s+Reg(?:istration)?\s*\/\s*Transfer Fees?\b/i,
+    /\bReg\s*\/\s*Trans[a-z]*\s*\/\s*DMV Fees?\b/i,
     /\bregistration fees?\b/i,
     /\btitle fees?\b/i,
     /\blicense fees?\b/i,
@@ -285,9 +286,10 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
   ]);
   if (protection) fields.protection = protection;
 
-  const accessories = findAmount(lines, [
+  const accessories = sumDistinctAmounts(lines, [
     /\bconnected car(?: \d+ year)? plan\b/i,
     /\bcarnamic connect(?: \d+ year)? plan\b/i,
+    /\bshipping\b/i,
     /\bdealer installed (?:options|accessories)\b/i,
     /\baccessories\b/i,
     /\bother add[- ]?ons\b/i,
@@ -319,6 +321,7 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     /\bmanufacturer rebate\b/i,
     /\bcash rebate\b/i,
     /\bdealer discount\b/i,
+    /^discount(?:\s*\(-\))?\b/i,
     /\bincentive(?:s)?\b/i,
     /\brebate(?:s)?\b/i,
   ]);
@@ -345,8 +348,12 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
   ];
   const quotedPayment = findAmount(lines, paymentLabels) ?? findAmountWithin(lines, paymentLabels, 15);
   const joinedPaymentText = lines.join(" ");
+  const individuallySpacedPayment = joinedPaymentText.match(/\$\s*((?:\d\s+){3,6}\d)\b/);
   const splitCentsPayment = joinedPaymentText.match(/\$\s*(\d{2,4})\s+(\d)\s+(\d)\b/);
-  const resolvedQuotedPayment = splitCentsPayment
+  const spacedPaymentDigits = individuallySpacedPayment?.[1].replace(/\s/g, "");
+  const resolvedQuotedPayment = spacedPaymentDigits && spacedPaymentDigits.length >= 3
+    ? Number(`${spacedPaymentDigits.slice(0, -2)}.${spacedPaymentDigits.slice(-2)}`)
+    : splitCentsPayment
     ? Number(`${splitCentsPayment[1]}.${splitCentsPayment[2]}${splitCentsPayment[3]}`)
     : quotedPayment;
   if (resolvedQuotedPayment) fields.quotedPayment = resolvedQuotedPayment;
