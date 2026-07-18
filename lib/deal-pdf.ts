@@ -90,19 +90,35 @@ const valuesOnLine = (line: string) =>
     .map((match) => ({ value: parseMoney(match[0]), raw: match[0] }))
     .filter((entry): entry is { value: number; raw: string } => entry.value !== undefined);
 
+const usableValues = (line: string, allowZero = false) =>
+  valuesOnLine(line).filter(({ value }) => allowZero || value > 0);
+
+const currencyValues = (line: string, allowZero = false) =>
+  usableValues(line, allowZero).filter(({ raw }) => raw.includes("$") || raw.includes(","));
+
 const findAmount = (lines: string[], labels: RegExp[], options?: { allowZero?: boolean }) => {
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
     if (!labels.some((label) => label.test(line))) continue;
 
-    const values = valuesOnLine(line);
-    const usable = values.filter(({ value }) => options?.allowZero || value > 0);
+    const onLineCurrency = currencyValues(line, options?.allowZero);
+    if (onLineCurrency.length) return onLineCurrency[onLineCurrency.length - 1].value;
+
+    for (let offset = 1; offset <= 2; offset += 1) {
+      const nextLine = lines[index + offset];
+      if (!nextLine) break;
+      const nextValues = currencyValues(nextLine, options?.allowZero);
+      if (nextValues.length) return nextValues[0].value;
+      if (/[A-Za-z]{4,}/.test(nextLine) && !/^\s*[$\d(.-]/.test(nextLine)) break;
+    }
+
+    const usable = usableValues(line, options?.allowZero);
     if (usable.length) return usable[usable.length - 1].value;
 
     for (let offset = 1; offset <= 2; offset += 1) {
       const nextLine = lines[index + offset];
       if (!nextLine) break;
-      const nextValues = valuesOnLine(nextLine).filter(({ value }) => options?.allowZero || value > 0);
+      const nextValues = usableValues(nextLine, options?.allowZero);
       if (nextValues.length) return nextValues[0].value;
       if (/[A-Za-z]{4,}/.test(nextLine) && !/^\s*[$\d(.-]/.test(nextLine)) break;
     }
@@ -162,7 +178,9 @@ const sumDistinctAmounts = (lines: string[], labels: RegExp[]) => {
     const candidates = [index, index + 1, index - 1];
     for (const amountLineIndex of candidates) {
       if (amountLineIndex < 0 || matchedAmountLines.has(amountLineIndex)) continue;
-      const values = valuesOnLine(lines[amountLineIndex] ?? "").filter(({ value }) => value > 0);
+      const amountLine = lines[amountLineIndex] ?? "";
+      if (amountLineIndex !== index && /[A-Za-z]{3,}/.test(amountLine)) continue;
+      const values = currencyValues(amountLine);
       if (!values.length) continue;
       matchedAmountLines.add(amountLineIndex);
       total += values[values.length - 1].value;
@@ -176,7 +194,7 @@ const findAmountWithin = (lines: string[], labels: RegExp[], lookahead: number) 
   for (let index = 0; index < lines.length; index += 1) {
     if (!labels.some((label) => label.test(lines[index]))) continue;
     for (let offset = 0; offset <= lookahead; offset += 1) {
-      const values = valuesOnLine(lines[index + offset] ?? "").filter(({ value }) => value > 0);
+      const values = currencyValues(lines[index + offset] ?? "");
       if (values.length) return values[values.length - 1].value;
     }
   }
