@@ -9,7 +9,7 @@ the dealership.
 ## What it checks
 
 - estimated amount financed and monthly payment
-- dealer APR versus an outside approval
+- dealer APR versus the customer’s desired APR
 - vehicle service contracts (VSC), GAP, prepaid maintenance (PPM), protection
   products, and accessories
 - estimated payment and full-term cost with and without entered products
