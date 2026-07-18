@@ -123,7 +123,7 @@ export default function Home() {
           <div className="audit-preview-head"><span>EXAMPLE FINDINGS</span><strong>What the paid audit reveals</strong></div>
           <div className="audit-finding"><span>01</span><div><b>Payment without optional products</b><p>Compare the rebuilt $742 payment with an estimated $694 payment after removing entered products.</p></div><strong>−$48/mo</strong></div>
           <div className="audit-finding"><span>02</span><div><b>Products plus estimated financing</b><p>See that $2,790 in entered products may cost roughly $3,472 when financed for the full term.</p></div><strong>$3,472</strong></div>
-          <div className="audit-finding"><span>03</span><div><b>Dealer APR versus outside approval</b><p>Translate a 2.10-point rate difference into estimated dollars over the life of the loan.</p></div><strong>+$3,086</strong></div>
+          <div className="audit-finding"><span>03</span><div><b>Dealer APR versus your desired APR</b><p>See the estimated payment and total cost at the rate you want to achieve.</p></div><strong>COMPARE</strong></div>
           <div className="audit-unlock">
             <span>THE COMPLETE AUDIT ALSO INCLUDES</span>
             <ul><li>Plain-language product explanations</li><li>Prioritized questions for the finance office</li><li>A copy-ready request for a revised quote</li><li>Printable action plan</li></ul>
