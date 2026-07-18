@@ -486,9 +486,9 @@ export default function AnalyzePage() {
             <p className="score-note">This scores the transparency and structure of the entered figures—not the vehicle&apos;s market value, condition, or reliability.</p>
 
             <div className="payment-compare">
-              <div><span>REBUILT PAYMENT</span><strong>{dollars(analysis.calculatedPayment)}<small>/mo</small></strong><small>with entered products</small></div>
-              <b aria-hidden="true">→</b>
-              <div><span>AT YOUR DESIRED APR</span><strong>{deal.outsideApr > 0 ? dollars(analysis.desiredPayment) : "—"}{deal.outsideApr > 0 ? <small>/mo</small> : null}</strong><small>{deal.outsideApr > 0 ? `${deal.outsideApr.toFixed(2)}% · same amount and term` : "Enter your desired APR to compare"}</small></div>
+              <div><span>WITH PRODUCTS</span><strong>{dollars(analysis.calculatedPayment)}<small>/mo</small></strong><small>dealer APR and entered term</small></div>
+              <div><span>WITHOUT PRODUCTS</span><strong>{dollars(analysis.paymentWithoutProducts)}<small>/mo</small></strong><small>same dealer APR and term</small></div>
+              <div><span>AT YOUR DESIRED APR</span><strong>{deal.outsideApr > 0 ? dollars(analysis.desiredPayment) : "—"}{deal.outsideApr > 0 ? <small>/mo</small> : null}</strong><small>{deal.outsideApr > 0 ? `${deal.outsideApr.toFixed(2)}% · with products` : "Enter a desired APR"}</small></div>
             </div>
 
             <div className="result-numbers">
