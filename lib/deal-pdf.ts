@@ -195,12 +195,15 @@ const sumDistinctAmounts = (lines: string[], labels: RegExp[]) => {
   return total || undefined;
 };
 
-const findAmountWithin = (lines: string[], labels: RegExp[], lookahead: number) => {
+const findPaymentNearLabel = (lines: string[], labels: RegExp[]) => {
   for (let index = 0; index < lines.length; index += 1) {
     if (!labels.some((label) => label.test(lines[index]))) continue;
-    for (let offset = 0; offset <= lookahead; offset += 1) {
-      const values = currencyValues(lines[index + offset] ?? "");
-      if (values.length) return values[values.length - 1].value;
+    for (let distance = 0; distance <= 12; distance += 1) {
+      for (const candidateIndex of distance ? [index + distance, index - distance] : [index]) {
+        const values = currencyValues(lines[candidateIndex] ?? "");
+        const payment = values.map(({ value }) => value).find((value) => value >= 50 && value <= 5000);
+        if (payment !== undefined) return payment;
+      }
     }
   }
   return undefined;
@@ -329,6 +332,18 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
   if (rebate) fields.rebate = rebate;
   if (rebate && askingPrice) fields.sellingPrice = askingPrice;
 
+  const totalSalesAmount = findAmount(lines, [/\btotal sales amount\b/i]);
+  if (totalSalesAmount) {
+    const knownExtras = (fields.tax ?? 0) + (fields.govFees ?? 0) + (fields.docFee ?? 0) +
+      (fields.serviceContract ?? 0) + (fields.gap ?? 0) + (fields.prepaidMaintenance ?? 0) +
+      (fields.protection ?? 0) + (fields.accessories ?? 0);
+    const reconciledSellingPrice = totalSalesAmount - knownExtras + (fields.rebate ?? 0);
+    if (reconciledSellingPrice >= 1000 &&
+      (!fields.sellingPrice || fields.sellingPrice < 1000 || Math.abs(fields.sellingPrice - reconciledSellingPrice) > 1)) {
+      fields.sellingPrice = Math.round(reconciledSellingPrice * 100) / 100;
+    }
+  }
+
   const apr = findPercent(lines, [
     /\bAPR\b/i,
     /\bannual percentage rate\b/i,
@@ -348,7 +363,7 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     /\bpayment per month\b/i,
     /\bestimated payment\b/i,
   ];
-  const quotedPayment = findAmount(lines, paymentLabels) ?? findAmountWithin(lines, paymentLabels, 15);
+  const quotedPayment = findAmount(lines, paymentLabels) ?? findPaymentNearLabel(lines, paymentLabels);
   const joinedPaymentText = lines.join(" ");
   const individuallySpacedPayment = joinedPaymentText.match(/\$\s*((?:\d\s+){3,6}\d)\b/);
   const splitCentsPayment = joinedPaymentText.match(/\$\s*(\d{2,4})\s+(\d)\s+(\d)\b/);
@@ -358,7 +373,24 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     : splitCentsPayment
     ? Number(`${splitCentsPayment[1]}.${splitCentsPayment[2]}${splitCentsPayment[3]}`)
     : quotedPayment;
-  if (resolvedQuotedPayment) fields.quotedPayment = resolvedQuotedPayment;
+  if (resolvedQuotedPayment && resolvedQuotedPayment >= 50 && resolvedQuotedPayment <= 5000) {
+    fields.quotedPayment = resolvedQuotedPayment;
+  }
+
+  if (!fields.quotedPayment && fields.apr && fields.term) {
+    const financeAmount = findAmount(lines, [
+      /\bcash due\s*\/\s*finance amount\b/i,
+      /\bamount financed\b/i,
+      /\bfinance amount\b/i,
+    ]);
+    if (financeAmount && financeAmount >= 1000) {
+      const monthlyRate = fields.apr / 1200;
+      const calculatedPayment = monthlyRate === 0
+        ? financeAmount / fields.term
+        : financeAmount * monthlyRate / (1 - Math.pow(1 + monthlyRate, -fields.term));
+      fields.quotedPayment = Math.round(calculatedPayment * 100) / 100;
+    }
+  }
 
   return fields;
 };
