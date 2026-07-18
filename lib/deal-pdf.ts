@@ -370,6 +370,7 @@ const pageLines = async (page: PdfPageLike) => {
 
 const createDealOcrWorker = async (
   onProgress?: (update: DealImportProgress) => void,
+  layout: "sparse" | "form" = "sparse",
 ) => {
   const { createWorker, PSM } = await import("tesseract.js");
   const firstPathSegment = window.location.pathname.split("/").filter(Boolean)[0];
@@ -383,15 +384,18 @@ const createDealOcrWorker = async (
     langPath: ocrBasePath,
     logger: ({ progress, status }) => onProgress?.({ progress, status }),
   });
-  await worker.setParameters({ tessedit_pageseg_mode: PSM.SPARSE_TEXT });
+  await worker.setParameters({
+    tessedit_pageseg_mode: layout === "form" ? PSM.SINGLE_BLOCK : PSM.SPARSE_TEXT,
+  });
   return worker;
 };
 
 const recognizeImages = async (
   images: Uint8Array[],
   onProgress?: (update: DealImportProgress) => void,
+  layout: "sparse" | "form" = "sparse",
 ) => {
-  const worker = await createDealOcrWorker(onProgress);
+  const worker = await createDealOcrWorker(onProgress, layout);
   const text: string[] = [];
 
   try {
@@ -407,6 +411,109 @@ const recognizeImages = async (
   }
 
   return text.join("\n").trim();
+};
+
+const preprocessDealPhoto = async (file: File) => {
+  const bitmap = await createImageBitmap(file);
+  const detectionScale = Math.min(1, 520 / Math.max(bitmap.width, bitmap.height));
+  const detectionWidth = Math.max(1, Math.round(bitmap.width * detectionScale));
+  const detectionHeight = Math.max(1, Math.round(bitmap.height * detectionScale));
+  const detectionCanvas = document.createElement("canvas");
+  detectionCanvas.width = detectionWidth;
+  detectionCanvas.height = detectionHeight;
+  const detectionContext = detectionCanvas.getContext("2d", { alpha: false });
+  if (!detectionContext) throw new Error("IMAGE_PREPROCESS_ERROR");
+  detectionContext.drawImage(bitmap, 0, 0, detectionWidth, detectionHeight);
+
+  const pixels = detectionContext.getImageData(0, 0, detectionWidth, detectionHeight).data;
+  const bright = new Uint8Array(detectionWidth * detectionHeight);
+  for (let index = 0; index < bright.length; index += 1) {
+    const pixelIndex = index * 4;
+    const red = pixels[pixelIndex];
+    const green = pixels[pixelIndex + 1];
+    const blue = pixels[pixelIndex + 2];
+    const luma = red * 0.299 + green * 0.587 + blue * 0.114;
+    const spread = Math.max(red, green, blue) - Math.min(red, green, blue);
+    bright[index] = luma >= 145 && spread <= 95 ? 1 : 0;
+  }
+
+  const visited = new Uint8Array(bright.length);
+  const queue = new Int32Array(bright.length);
+  let best = { area: 0, minX: 0, minY: 0, maxX: detectionWidth - 1, maxY: detectionHeight - 1 };
+  for (let start = 0; start < bright.length; start += 1) {
+    if (!bright[start] || visited[start]) continue;
+    let head = 0;
+    let tail = 0;
+    let area = 0;
+    let minX = detectionWidth;
+    let minY = detectionHeight;
+    let maxX = 0;
+    let maxY = 0;
+    queue[tail++] = start;
+    visited[start] = 1;
+    while (head < tail) {
+      const current = queue[head++];
+      const x = current % detectionWidth;
+      const y = Math.floor(current / detectionWidth);
+      area += 1;
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+      const neighbors = [current - 1, current + 1, current - detectionWidth, current + detectionWidth];
+      for (const neighbor of neighbors) {
+        if (neighbor < 0 || neighbor >= bright.length || visited[neighbor] || !bright[neighbor]) continue;
+        const neighborX = neighbor % detectionWidth;
+        if (Math.abs(neighborX - x) > 1) continue;
+        visited[neighbor] = 1;
+        queue[tail++] = neighbor;
+      }
+    }
+    if (area > best.area) best = { area, minX, minY, maxX, maxY };
+  }
+
+  const detectedWidth = best.maxX - best.minX + 1;
+  const detectedHeight = best.maxY - best.minY + 1;
+  const detectedBoxArea = detectedWidth * detectedHeight;
+  const frameArea = detectionWidth * detectionHeight;
+  const useCrop = best.area >= frameArea * 0.08 && detectedBoxArea <= frameArea * 0.92 &&
+    detectedWidth >= detectionWidth * 0.28 && detectedHeight >= detectionHeight * 0.28;
+  const padding = useCrop ? Math.round(Math.max(detectedWidth, detectedHeight) * 0.025) : 0;
+  const cropX = useCrop ? Math.max(0, best.minX - padding) : 0;
+  const cropY = useCrop ? Math.max(0, best.minY - padding) : 0;
+  const cropRight = useCrop ? Math.min(detectionWidth, best.maxX + padding + 1) : detectionWidth;
+  const cropBottom = useCrop ? Math.min(detectionHeight, best.maxY + padding + 1) : detectionHeight;
+  const sourceX = Math.round(cropX / detectionScale);
+  const sourceY = Math.round(cropY / detectionScale);
+  const sourceWidth = Math.min(bitmap.width - sourceX, Math.round((cropRight - cropX) / detectionScale));
+  const sourceHeight = Math.min(bitmap.height - sourceY, Math.round((cropBottom - cropY) / detectionScale));
+  const outputScale = Math.min(2.5, Math.max(1, 1400 / Math.max(1, sourceWidth)));
+  const outputCanvas = document.createElement("canvas");
+  outputCanvas.width = Math.max(1, Math.round(sourceWidth * outputScale));
+  outputCanvas.height = Math.max(1, Math.round(sourceHeight * outputScale));
+  const outputContext = outputCanvas.getContext("2d", { alpha: false });
+  if (!outputContext) throw new Error("IMAGE_PREPROCESS_ERROR");
+  outputContext.filter = "grayscale(1) contrast(1.2)";
+  outputContext.drawImage(
+    bitmap,
+    sourceX,
+    sourceY,
+    sourceWidth,
+    sourceHeight,
+    0,
+    0,
+    outputCanvas.width,
+    outputCanvas.height,
+  );
+  bitmap.close();
+  detectionCanvas.width = 1;
+  detectionCanvas.height = 1;
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    outputCanvas.toBlob((value) => value ? resolve(value) : reject(new Error("IMAGE_PREPROCESS_ERROR")), "image/jpeg", 0.92);
+  });
+  outputCanvas.width = 1;
+  outputCanvas.height = 1;
+  return new Uint8Array(await blob.arrayBuffer());
 };
 
 const renderPdfPageForOcr = async (page: PdfRenderablePageLike) => {
@@ -478,11 +585,18 @@ export const extractDealFromImage = async (
   file: File,
   onProgress?: (update: DealImportProgress) => void,
 ): Promise<DealPdfResult> => {
+  onProgress?.({ progress: 0, status: "isolating the dealer worksheet" });
   const imageData = new Uint8Array(await file.arrayBuffer());
-  const text = await recognizeImages([imageData], onProgress);
+  const preparedImage = await preprocessDealPhoto(file);
+  let text = await recognizeImages([preparedImage], onProgress, "form");
   if (text.replace(/\s/g, "").length < 30) throw new Error("UNREADABLE_IMAGE");
 
-  const fields = parseDealerText(text.split(/\r?\n/));
+  let fields = parseDealerText(text.split(/\r?\n/));
+  if (!Object.keys(fields).length) {
+    onProgress?.({ progress: 0, status: "trying an alternate image layout" });
+    text = await recognizeImages([imageData], onProgress, "sparse");
+    fields = parseDealerText(text.split(/\r?\n/));
+  }
   const fieldNames = Object.keys(fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]);
   return { fields, fieldNames, pageCount: 1, sourceType: "image", usedOcr: true, pagesProcessed: 1 };
 };
