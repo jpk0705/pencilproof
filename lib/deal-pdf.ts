@@ -96,6 +96,11 @@ const usableValues = (line: string, allowZero = false) =>
 const currencyValues = (line: string, allowZero = false) =>
   usableValues(line, allowZero).filter(({ raw }) => raw.includes("$") || raw.includes(","));
 
+const priceValues = (line: string, allowZero = false) =>
+  usableValues(line, allowZero).filter(({ raw }) =>
+    raw.includes("$") || raw.includes(",") || /\.\d{2}\s*\)?$/.test(raw.trim()),
+  );
+
 const findAmount = (lines: string[], labels: RegExp[], options?: { allowZero?: boolean }) => {
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
@@ -112,13 +117,13 @@ const findAmount = (lines: string[], labels: RegExp[], options?: { allowZero?: b
       if (/[A-Za-z]{4,}/.test(nextLine) && !/^\s*[$\d(.-]/.test(nextLine)) break;
     }
 
-    const usable = usableValues(line, options?.allowZero);
+    const usable = priceValues(line, options?.allowZero);
     if (usable.length) return usable[usable.length - 1].value;
 
     for (let offset = 1; offset <= 2; offset += 1) {
       const nextLine = lines[index + offset];
       if (!nextLine) break;
-      const nextValues = usableValues(nextLine, options?.allowZero);
+      const nextValues = priceValues(nextLine, options?.allowZero);
       if (nextValues.length) return nextValues[0].value;
       if (/[A-Za-z]{4,}/.test(nextLine) && !/^\s*[$\d(.-]/.test(nextLine)) break;
     }
@@ -161,7 +166,7 @@ const vehicleFromLines = (lines: string[]) => {
 
   for (const line of lines) {
     if (/date|expiration|copyright|printed/i.test(line)) continue;
-    const match = line.match(/\b((?:19|20)\d{2}\s+[A-Za-z][A-Za-z0-9-]{1,20}(?:\s+[A-Za-z0-9][A-Za-z0-9./-]{0,20}){1,5})\b/);
+    const match = line.match(/\b((?:19|20)\d{2}\s+[A-Za-z][A-Za-z0-9-]{1,20}(?:\s+[A-Za-z0-9][A-Za-z0-9./-]{0,20}){1,7})\b/);
     if (match) return match[1].replace(/\s{2,}/g, " ").slice(0, 90);
   }
 
@@ -282,6 +287,7 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
 
   const accessories = findAmount(lines, [
     /\bconnected car(?: \d+ year)? plan\b/i,
+    /\bcarnamic connect(?: \d+ year)? plan\b/i,
     /\bdealer installed (?:options|accessories)\b/i,
     /\baccessories\b/i,
     /\bother add[- ]?ons\b/i,
