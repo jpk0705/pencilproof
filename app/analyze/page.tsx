@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState, type ChangeEvent } from "react";
-import { extractDealFromFile } from "@/lib/deal-pdf";
+import { extractDealFromFile, type DealOfferMatrix, type DealOfferOption } from "@/lib/deal-pdf";
 
 type Deal = {
   vehicle: string;
@@ -131,6 +131,8 @@ export default function AnalyzePage() {
   const [deal, setDeal] = useState<Deal>(blank);
   const [copied, setCopied] = useState(false);
   const [dealImport, setDealImport] = useState<DealImportState>({ status: "idle", message: "", fields: [] });
+  const [offerMatrix, setOfferMatrix] = useState<DealOfferMatrix | null>(null);
+  const [selectedOfferId, setSelectedOfferId] = useState("");
 
   const setNumber = (field: keyof Deal, value: string) =>
     setDeal((current) => ({ ...current, [field]: value === "" ? 0 : Number(value) }));
@@ -166,7 +168,7 @@ export default function AnalyzePage() {
           fields: [],
         });
       });
-      if (!result.fieldNames.length) {
+      if (!result.fieldNames.length && !result.offerMatrix) {
         setDealImport({
           status: "error",
           message: "The file contains readable text, but its labels did not match the supported dealer fields. Enter the figures manually and double-check the worksheet.",
@@ -174,12 +176,24 @@ export default function AnalyzePage() {
         });
         return;
       }
-      setDeal((current) => ({ ...current, ...(result.fields as Partial<Deal>) }));
+      const importedFields = { ...(result.fields as Partial<Deal>) };
+      if (result.offerMatrix) {
+        delete importedFields.cashDown;
+        delete importedFields.term;
+        delete importedFields.quotedPayment;
+        delete importedFields.apr;
+        delete importedFields.rebate;
+      }
+      setDeal((current) => ({ ...current, ...importedFields }));
+      setOfferMatrix(result.offerMatrix ?? null);
+      setSelectedOfferId("");
       setDealImport({
         status: result.warnings?.length ? "warning" : "success",
         message: result.warnings?.length
           ? `Filled ${result.fieldNames.length} fields from ${file.name}. ${result.warnings.join(" ")}`
-          : `Filled ${result.fieldNames.length} field${result.fieldNames.length === 1 ? "" : "s"} from ${file.name}${result.sourceType === "pdf" ? ` (${result.pageCount} page${result.pageCount === 1 ? "" : "s"}${result.usedOcr ? ", scanned-document OCR" : ""})` : ""}. Review every imported value against the original before using the audit.`,
+          : result.offerMatrix
+            ? `Detected ${result.offerMatrix.options.length} payment choices in ${file.name}. Select the finance or lease option you are considering.`
+            : `Filled ${result.fieldNames.length} field${result.fieldNames.length === 1 ? "" : "s"} from ${file.name}${result.sourceType === "pdf" ? ` (${result.pageCount} page${result.pageCount === 1 ? "" : "s"}${result.usedOcr ? ", scanned-document OCR" : ""})` : ""}. Review every imported value against the original before using the audit.`,
         fields: result.fieldNames,
       });
     } catch (error) {
@@ -199,6 +213,24 @@ export default function AnalyzePage() {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (file) await importDealFile(file);
+  };
+
+  const chooseOffer = (option: DealOfferOption) => {
+    setSelectedOfferId(option.id);
+    setDeal((current) => ({
+      ...current,
+      cashDown: option.cashDown,
+      term: option.term,
+      quotedPayment: option.payment,
+      ...(option.apr !== undefined ? { apr: option.apr } : {}),
+    }));
+    setDealImport({
+      status: "warning",
+      message: option.type === "finance"
+        ? `Selected finance option: $${option.cashDown.toLocaleString()} down, ${option.term} months, $${option.payment.toFixed(2)} per month. The worksheet may omit taxes, fees, products, or final lender terms—verify the itemized buyer's order before relying on the audit.`
+        : `Selected lease estimate: $${option.cashDown.toLocaleString()} down, ${option.term} months, $${option.payment.toFixed(2)} per month. A complete lease audit still requires the residual or purchase option, mileage allowance, acquisition and disposition fees, taxes, and exact due-at-signing amount.`,
+      fields: ["Cash down", "Loan term", "Quoted monthly payment"],
+    });
   };
 
   const analysis = useMemo(() => {
@@ -408,8 +440,8 @@ export default function AnalyzePage() {
           <p>Use the written figures from the dealership. The audit updates as you type and separates the vehicle, financing, trade, and products.</p>
         </div>
         <div className="analyzer-actions">
-          <button type="button" onClick={() => { setDeal(sample); setDealImport({ status: "idle", message: "", fields: [] }); }}>Load sample</button>
-          <button type="button" onClick={() => { setDeal(blank); setDealImport({ status: "idle", message: "", fields: [] }); }}>Clear all</button>
+          <button type="button" onClick={() => { setDeal(sample); setOfferMatrix(null); setSelectedOfferId(""); setDealImport({ status: "idle", message: "", fields: [] }); }}>Load sample</button>
+          <button type="button" onClick={() => { setDeal(blank); setOfferMatrix(null); setSelectedOfferId(""); setDealImport({ status: "idle", message: "", fields: [] }); }}>Clear all</button>
         </div>
       </header>
 
@@ -433,6 +465,47 @@ export default function AnalyzePage() {
               <p>{dealImport.message}</p>
               {dealImport.fields.length ? <div className="pdf-field-list">{dealImport.fields.map((field) => <small key={field}>{field}</small>)}</div> : null}
             </div>
+          </div>
+        ) : null}
+        {offerMatrix ? (
+          <div className="offer-matrix" aria-labelledby="offer-matrix-title">
+            <div className="offer-matrix-heading">
+              <div>
+                <p className="eyebrow">MULTIPLE OPTIONS DETECTED</p>
+                <h3 id="offer-matrix-title">Choose the offer you are considering</h3>
+              </div>
+              <span>{offerMatrix.options.length} choices</span>
+            </div>
+            {(["finance", "lease"] as const).map((type) => {
+              const options = offerMatrix.options.filter((option) => option.type === type);
+              if (!options.length) return null;
+              return (
+                <section className="offer-group" key={type} aria-label={`${type} options`}>
+                  <div className="offer-group-title">
+                    <h4>{type === "finance" ? "Finance alternatives" : "Lease estimates"}</h4>
+                    <p>{type === "finance" ? "Select one row to fill the finance audit." : "Lease figures need additional contract details for a complete audit."}</p>
+                  </div>
+                  <div className="offer-options-grid">
+                    {options.map((option) => (
+                      <button
+                        type="button"
+                        key={option.id}
+                        className={`offer-card ${selectedOfferId === option.id ? "offer-card-selected" : ""}`}
+                        onClick={() => chooseOffer(option)}
+                        aria-pressed={selectedOfferId === option.id}
+                      >
+                        <strong>${option.payment.toFixed(2)}<small>/mo</small></strong>
+                        <span>{option.term} months</span>
+                        <span>${option.cashDown.toLocaleString()} down</span>
+                        {option.rebate !== undefined ? <em>${option.rebate.toLocaleString()} rebate shown</em> : null}
+                        <b>{selectedOfferId === option.id ? "Selected" : "Choose"}</b>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
+            <p className="offer-matrix-warning">{offerMatrix.warnings.join(" ")} A displayed rebate is not automatically deducted because many menus already show a net vehicle price.</p>
           </div>
         ) : null}
         <p className="pdf-import-note">Best results: use a dealer-generated PDF or a bright, sharp, straight-on image with the full figures visible. Scanned PDFs use OCR on up to the first five pages. OCR can make mistakes, so compare every imported value with the original.</p>
