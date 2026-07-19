@@ -435,9 +435,9 @@ export default function AnalyzePage() {
 
       <header className="analyzer-header shell">
         <div>
-          <p className="kicker">COMPLETE DEAL AUDIT</p>
-          <h1>Rebuild it before you sign it.</h1>
-          <p>Use the written figures from the dealership. The audit updates as you type and separates the vehicle, financing, trade, and products.</p>
+          <p className="kicker">STRUCTURE YOUR OWN DEAL</p>
+          <h1>Don&apos;t wait for the next quote to understand your options.</h1>
+          <p>Upload the dealer&apos;s quote or enter the figures yourself. Then test the down payment, term, desired APR, trade, and optional products while the dealership works on its official revision.</p>
         </div>
         <div className="analyzer-actions">
           <button type="button" onClick={() => { setDeal(sample); setOfferMatrix(null); setSelectedOfferId(""); setDealImport({ status: "idle", message: "", fields: [] }); }}>Load sample</button>
@@ -449,9 +449,9 @@ export default function AnalyzePage() {
         <div className="pdf-import-main">
           <div className="pdf-badge" aria-hidden="true">SCAN</div>
           <div>
-            <p className="pdf-kicker">OPTIONAL QUICK START</p>
-            <h2 id="pdf-import-title">Upload the dealer worksheet or photo</h2>
-            <p>Choose a digital or scanned PDF, JPG, JPEG, or PNG. PencilProof reads it in this browser and fills recognizable fields; the document is not sent to PencilProof.</p>
+            <p className="pdf-kicker">START WITH THE WRITTEN NUMBERS</p>
+            <h2 id="pdf-import-title">Upload what the dealer gave you</h2>
+            <p>Choose a digital or scanned PDF, JPG, JPEG, or PNG. PencilProof reads it in this browser, fills recognizable fields, and detects many multi-option payment menus; the document is not sent to PencilProof.</p>
           </div>
           <label className={`pdf-upload-button ${dealImport.status === "loading" ? "pdf-upload-loading" : ""}`}>
             <input type="file" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" disabled={dealImport.status === "loading"} onChange={handleDealFileChange} />
@@ -597,7 +597,7 @@ export default function AnalyzePage() {
             </div>
 
             <div className="dealer-message">
-              <div><p>MESSAGE TO THE DEALER</p><button type="button" onClick={copyMessage}>{copied ? "Copied" : "Copy message"}</button></div>
+              <div><p>YOUR REQUEST TO THE DESK</p><button type="button" onClick={copyMessage}>{copied ? "Copied" : "Copy message"}</button></div>
               <pre>{message}</pre>
             </div>
             <button className="print-button" type="button" onClick={() => window.print()}>Print or save this Deal Audit</button>
