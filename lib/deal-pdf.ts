@@ -507,6 +507,16 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
 
   const totalSalesAmount = findAmount(lines, [/\btotal sales amount\b/i]);
   if (totalSalesAmount) {
+    if (!fields.tax && fields.sellingPrice) {
+      const netVehiclePrice = fields.sellingPrice - (fields.rebate ?? 0);
+      const knownPretaxAmount = netVehiclePrice + (fields.govFees ?? 0) + (fields.docFee ?? 0) +
+        (fields.serviceContract ?? 0) + (fields.gap ?? 0) + (fields.prepaidMaintenance ?? 0) +
+        (fields.protection ?? 0) + (fields.accessories ?? 0);
+      const reconstructedTax = totalSalesAmount - knownPretaxAmount;
+      if (reconstructedTax > 0 && reconstructedTax <= netVehiclePrice * 0.2) {
+        fields.tax = Math.round(reconstructedTax * 100) / 100;
+      }
+    }
     const knownExtras = (fields.tax ?? 0) + (fields.govFees ?? 0) + (fields.docFee ?? 0) +
       (fields.serviceContract ?? 0) + (fields.gap ?? 0) + (fields.prepaidMaintenance ?? 0) +
       (fields.protection ?? 0) + (fields.accessories ?? 0);
