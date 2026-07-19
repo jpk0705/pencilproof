@@ -204,6 +204,9 @@ footer { border-top: 1px solid var(--line); padding: 34px 0; }
 .input-field input { padding: 0 13px; }.input-field select { padding: 0 11px; cursor: pointer; }
 .input-field input:focus, .input-field select:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(27, 123, 91, .12); }
 .input-field small { margin-top: -3px; color: #7d898f; font-size: 9px; font-weight: 400; }
+.live-payment { display: grid; grid-template-columns: minmax(190px, .7fr) 1.3fr; gap: 24px; align-items: center; margin-top: 20px; padding: 17px 19px; border: 1px solid #b9c8bf; border-radius: 7px; background: #edf5f0; }
+.live-payment div { display: flex; flex-direction: column; gap: 5px; }.live-payment span { color: var(--green); font-size: 8px; font-weight: 900; letter-spacing: .1em; }.live-payment strong { font-family: Georgia, serif; font-size: 27px; font-weight: 500; }.live-payment strong small { margin-left: 4px; color: var(--muted); font-family: Arial, sans-serif; font-size: 8px; font-weight: 700; }
+.live-payment p { margin: 0; color: #516168; font-size: 9px; line-height: 1.55; }
 .full-field { margin-bottom: 20px; }
 .input-money { display: flex; align-items: center; height: 45px; overflow: hidden; border: 1px solid #c9c4ba; border-radius: 4px; background: white; }
 .input-money:focus-within { border-color: var(--green); box-shadow: 0 0 0 3px rgba(27, 123, 91, .12); }
@@ -273,6 +276,7 @@ footer { border-top: 1px solid var(--line); padding: 34px 0; }
   .privacy-chip { display: none; }.analyzer-header { align-items: flex-start; flex-direction: column; gap: 24px; padding-top: 42px; }.analyzer-actions { width: 100%; }.analyzer-actions button { flex: 1; }.pdf-import { padding: 18px; }.pdf-import-main { grid-template-columns: auto 1fr; }.pdf-upload-button { grid-column: 1 / -1; width: 100%; }.analyzer-layout { width: 100%; padding-bottom: 50px; }.deal-form { padding: 0 15px; }.form-section { padding: 22px 18px; }.field-grid, .field-grid-four { grid-template-columns: 1fr; }.results-sticky { border-radius: 0; padding: 23px 18px; }.result-flags { display: flex; }.analyzer-header.shell { width: min(100% - 30px, 1180px); }
   .offer-matrix-heading, .offer-group-title { flex-direction: column; }.offer-options-grid { grid-template-columns: 1fr; }
   .audience-grid { grid-template-columns: 1fr; }.audience-grid article { min-height: 220px; }.audience-grid h3 { margin-top: 28px; }
+  .live-payment { grid-template-columns: 1fr; gap: 10px; }
 }
 
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; }.button { transition: none; } }
