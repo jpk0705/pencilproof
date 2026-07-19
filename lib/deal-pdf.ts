@@ -48,6 +48,23 @@ export type DealPdfResult = {
   usedOcr?: boolean;
   pagesProcessed?: number;
   warnings?: string[];
+  offerMatrix?: DealOfferMatrix;
+};
+
+export type DealOfferOption = {
+  id: string;
+  type: "finance" | "lease";
+  cashDown: number;
+  term: number;
+  payment: number;
+  rebate?: number;
+  apr?: number;
+  purchaseOption?: number;
+};
+
+export type DealOfferMatrix = {
+  options: DealOfferOption[];
+  warnings: string[];
 };
 
 export type DealImportProgress = {
@@ -124,6 +141,52 @@ const valuesOnLine = (line: string) =>
   [...line.matchAll(moneyPattern)]
     .map((match) => ({ value: parseMoney(match[0]), raw: match[0] }))
     .filter((entry): entry is { value: number; raw: string } => entry.value !== undefined);
+
+export const parseOfferMatrix = (rawLines: string[]): DealOfferMatrix | undefined => {
+  const lines = rawLines.map((line) => line.replace(/\s+/g, " ").trim()).filter(Boolean);
+  const headerIndex = lines.findIndex((line) => /cash down/i.test(line) && (line.match(/\b\d{2}\s*months?\b/gi)?.length ?? 0) >= 2);
+  if (headerIndex < 0) return undefined;
+
+  const terms = [...lines[headerIndex].matchAll(/\b(\d{2})\s*months?\b/gi)].map((match) => Number(match[1]));
+  if (terms.length < 2) return undefined;
+  const termDropIndex = terms.findIndex((term, index) => index > 0 && term < terms[index - 1]);
+  const financeCount = termDropIndex > 0 ? termDropIndex : Math.max(1, terms.length - 2);
+  const rows: { cashDown: number; payments: number[] }[] = [];
+
+  for (let index = headerIndex + 1; index < Math.min(lines.length, headerIndex + 12); index += 1) {
+    if (/\brebate\b|purchase option|estimated apr/i.test(lines[index])) break;
+    const values = valuesOnLine(lines[index]).map(({ value }) => value);
+    if (values.length < terms.length + 1) continue;
+    const cashDown = values[0];
+    const payments = values.slice(1, terms.length + 1);
+    if (cashDown < 500 || cashDown > 50000 || payments.some((payment) => payment < 50 || payment > 5000)) continue;
+    rows.push({ cashDown, payments });
+  }
+  if (!rows.length) return undefined;
+
+  const rebateLine = lines.slice(headerIndex + 1).find((line) => /^rebate\b/i.test(line));
+  const rebates = rebateLine ? valuesOnLine(rebateLine).map(({ value }) => value).slice(0, terms.length) : [];
+  const options: DealOfferOption[] = [];
+  rows.forEach((row, rowIndex) => {
+    terms.forEach((term, columnIndex) => {
+      options.push({
+        id: `${columnIndex < financeCount ? "finance" : "lease"}-${rowIndex}-${term}`,
+        type: columnIndex < financeCount ? "finance" : "lease",
+        cashDown: row.cashDown,
+        term,
+        payment: row.payments[columnIndex],
+        rebate: rebates[columnIndex],
+      });
+    });
+  });
+
+  return {
+    options,
+    warnings: [
+      "This is a payment-options worksheet, not a complete contract. Taxes, fees, products, lender terms, and lease details may be missing.",
+    ],
+  };
+};
 
 const usableValues = (line: string, allowZero = false) =>
   valuesOnLine(line).filter(({ value }) => allowZero || value > 0);
@@ -264,6 +327,7 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
 
   const sellingPrice = findAmount(lines, [
     /\b(?:selling|sales?|vehicle|cash)\s+price\b/i,
+    /\bveh[a-z]{2,8}\s+price\b/i,
     /\bagreed(?: upon)? (?:price|value)\b/i,
     /\bprice of vehicle\b/i,
   ]);
@@ -689,10 +753,11 @@ export const extractDealFromPdf = async (
   }
 
   const digitalFields = parseDealerText(lines);
-  if (Object.keys(digitalFields).length) {
+  const digitalOfferMatrix = parseOfferMatrix(lines);
+  if (Object.keys(digitalFields).length || digitalOfferMatrix) {
     const reconciled = reconcileQuotedPayment(digitalFields);
     const fieldNames = Object.keys(reconciled.fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]);
-    return { fields: reconciled.fields, fieldNames, pageCount: pdfDocument.numPages, sourceType: "pdf", warnings: reconciled.warnings };
+    return { fields: reconciled.fields, fieldNames, pageCount: pdfDocument.numPages, sourceType: "pdf", warnings: reconciled.warnings, offerMatrix: digitalOfferMatrix };
   }
 
   const pagesProcessed = Math.min(pdfDocument.numPages, 5);
@@ -705,7 +770,8 @@ export const extractDealFromPdf = async (
 
   const ocrText = await recognizeImages(images, onProgress);
   if (ocrText.replace(/\s/g, "").length < 30) throw new Error("UNREADABLE_IMAGE");
-  const reconciled = reconcileQuotedPayment(parseDealerText([...lines, ...ocrText.split(/\r?\n/)]));
+  const combinedLines = [...lines, ...ocrText.split(/\r?\n/)];
+  const reconciled = reconcileQuotedPayment(parseDealerText(combinedLines));
   const fieldNames = Object.keys(reconciled.fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]);
   return {
     fields: reconciled.fields,
@@ -715,6 +781,7 @@ export const extractDealFromPdf = async (
     usedOcr: true,
     pagesProcessed,
     warnings: reconciled.warnings,
+    offerMatrix: parseOfferMatrix(combinedLines),
   };
 };
 
@@ -729,10 +796,12 @@ export const extractDealFromImage = async (
   if (text.replace(/\s/g, "").length < 30) throw new Error("UNREADABLE_IMAGE");
 
   let fields = parseDealerText(text.split(/\r?\n/));
-  if (Object.keys(fields).length < 12) {
+  let offerMatrix = parseOfferMatrix(text.split(/\r?\n/));
+  if (Object.keys(fields).length < 12 || !offerMatrix) {
     onProgress?.({ progress: 0, status: "trying an alternate image layout" });
     const alternateText = await recognizeImages([preparedImage], onProgress, "sparse");
     const alternateFields = parseDealerText(alternateText.split(/\r?\n/));
+    offerMatrix = offerMatrix ?? parseOfferMatrix(alternateText.split(/\r?\n/));
     fields = { ...alternateFields, ...fields };
     if (alternateFields.quotedPayment && textContainsPrintedAmount(alternateText, alternateFields.quotedPayment)) {
       fields.quotedPayment = alternateFields.quotedPayment;
@@ -750,7 +819,7 @@ export const extractDealFromImage = async (
   }
   const reconciled = reconcileQuotedPayment(fields);
   const fieldNames = Object.keys(reconciled.fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]);
-  return { fields: reconciled.fields, fieldNames, pageCount: 1, sourceType: "image", usedOcr: true, pagesProcessed: 1, warnings: reconciled.warnings };
+  return { fields: reconciled.fields, fieldNames, pageCount: 1, sourceType: "image", usedOcr: true, pagesProcessed: 1, warnings: reconciled.warnings, offerMatrix };
 };
 
 export const extractDealFromFile = async (
