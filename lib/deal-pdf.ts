@@ -397,7 +397,8 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
   if (sellingPrice) fields.sellingPrice = sellingPrice;
   const askingPrice = findAmount(lines, [/\basking price\b/i]);
 
-  const tax = findAmount(lines, [
+  const linesWithoutTaxRates = lines.map((line) => line.replace(/\b\d{1,2}(?:\.\d{1,4})?\s*%/g, ""));
+  const tax = findAmount(linesWithoutTaxRates, [
     /\b(?:sales|state|local|vehicle)\s+tax\b/i,
     /\btax amount\b/i,
   ]);
@@ -416,6 +417,7 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     /\btitle fees?\b/i,
     /\blicense fees?\b/i,
     /\btire fees?\b/i,
+    /\bsmog(?: certification)? fees?\b/i,
     /\b(?:electronic\s+)?filing fees?\b/i,
   ]);
   if (combinedGovernmentFees || itemizedGovernmentFees) fields.govFees = combinedGovernmentFees ?? itemizedGovernmentFees;
@@ -509,8 +511,7 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
       (fields.serviceContract ?? 0) + (fields.gap ?? 0) + (fields.prepaidMaintenance ?? 0) +
       (fields.protection ?? 0) + (fields.accessories ?? 0);
     const reconciledSellingPrice = totalSalesAmount - knownExtras + (fields.rebate ?? 0);
-    if (reconciledSellingPrice >= 1000 &&
-      (!fields.sellingPrice || fields.sellingPrice < 1000 || Math.abs(fields.sellingPrice - reconciledSellingPrice) > 1)) {
+    if (reconciledSellingPrice >= 1000 && (!fields.sellingPrice || fields.sellingPrice < 1000)) {
       fields.sellingPrice = Math.round(reconciledSellingPrice * 100) / 100;
     }
   }
