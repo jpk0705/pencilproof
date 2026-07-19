@@ -396,6 +396,34 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     fields.quotedPayment = resolvedQuotedPayment;
   }
 
+  if (!fields.quotedPayment) {
+    const unmatchedPaymentCandidates = [...new Set(
+      lines.flatMap((line) => currencyValues(line).map(({ value }) => value))
+        .filter((value) => value >= 50 && value <= 5000)
+        .filter((value) => !knownNonPaymentAmounts.some((known) => Math.abs(known - value) < 0.01)),
+    )];
+    if (unmatchedPaymentCandidates.length === 1) {
+      fields.quotedPayment = unmatchedPaymentCandidates[0];
+    } else if (unmatchedPaymentCandidates.length > 1 && fields.apr && fields.term) {
+      const financeAmount = findAmount(lines, [
+        /\bcash due\s*\/\s*finance amount\b/i,
+        /\bamount financed\b/i,
+        /\bfinance amount\b/i,
+      ]);
+      if (financeAmount && financeAmount >= 1000) {
+        const monthlyRate = fields.apr / 1200;
+        const calculatedPayment = monthlyRate === 0
+          ? financeAmount / fields.term
+          : financeAmount * monthlyRate / (1 - Math.pow(1 + monthlyRate, -fields.term));
+        const closestPrintedAmount = unmatchedPaymentCandidates
+          .sort((first, second) => Math.abs(first - calculatedPayment) - Math.abs(second - calculatedPayment))[0];
+        if (Math.abs(closestPrintedAmount - calculatedPayment) <= Math.max(5, calculatedPayment * 0.02)) {
+          fields.quotedPayment = closestPrintedAmount;
+        }
+      }
+    }
+  }
+
   if (!fields.quotedPayment && fields.apr && fields.term) {
     const financeAmount = findAmount(lines, [
       /\bcash due\s*\/\s*finance amount\b/i,
