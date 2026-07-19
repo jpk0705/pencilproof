@@ -101,6 +101,13 @@ const priceValues = (line: string, allowZero = false) =>
     raw.includes("$") || raw.includes(",") || /\.\d{2}\s*\)?$/.test(raw.trim()),
   );
 
+const textContainsPrintedAmount = (text: string, amount: number) => {
+  const fixed = amount.toFixed(2);
+  const [whole, cents] = fixed.split(".");
+  const withCommas = Number(whole).toLocaleString("en-US");
+  return new RegExp(`\\$\\s*(?:${whole}|${withCommas.replace(/,/g, "\\,")})\\s*\\.\\s*${cents}\\b`).test(text);
+};
+
 const findAmount = (lines: string[], labels: RegExp[], options?: { allowZero?: boolean }) => {
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
@@ -690,6 +697,9 @@ export const extractDealFromImage = async (
     const alternateText = await recognizeImages([preparedImage], onProgress, "sparse");
     const alternateFields = parseDealerText(alternateText.split(/\r?\n/));
     fields = { ...alternateFields, ...fields };
+    if (alternateFields.quotedPayment && textContainsPrintedAmount(alternateText, alternateFields.quotedPayment)) {
+      fields.quotedPayment = alternateFields.quotedPayment;
+    }
     if (alternateFields.rebate && alternateFields.sellingPrice &&
       (!fields.sellingPrice || alternateFields.sellingPrice > fields.sellingPrice)) {
       fields.sellingPrice = alternateFields.sellingPrice;
