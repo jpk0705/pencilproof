@@ -47,6 +47,7 @@ export type DealPdfResult = {
   sourceType: "pdf" | "image";
   usedOcr?: boolean;
   pagesProcessed?: number;
+  warnings?: string[];
 };
 
 export type DealImportProgress = {
@@ -75,6 +76,40 @@ type PdfRenderablePageLike = PdfPageLike & {
     canvasContext: CanvasRenderingContext2D;
     viewport: PdfViewportLike;
   }) => { promise: Promise<unknown> };
+};
+
+const PAYMENT_IMPORT_TOLERANCE = 5;
+
+const reconcileQuotedPayment = (sourceFields: ImportedDealFields) => {
+  const fields = { ...sourceFields };
+  if (!fields.sellingPrice || !fields.apr || !fields.term || !fields.quotedPayment) {
+    return { fields, warnings: [] as string[] };
+  }
+
+  const products = (fields.serviceContract ?? 0) + (fields.gap ?? 0) +
+    (fields.prepaidMaintenance ?? 0) + (fields.protection ?? 0) + (fields.accessories ?? 0);
+  const amountFinanced = Math.max(0,
+    fields.sellingPrice + (fields.tax ?? 0) + (fields.govFees ?? 0) + (fields.docFee ?? 0) + products +
+    (fields.tradePayoff ?? 0) - (fields.tradeValue ?? 0) - (fields.cashDown ?? 0) - (fields.rebate ?? 0),
+  );
+  if (!amountFinanced) return { fields, warnings: [] as string[] };
+
+  const monthlyRate = fields.apr / 1200;
+  const calculatedPayment = monthlyRate === 0
+    ? amountFinanced / fields.term
+    : amountFinanced * monthlyRate / (1 - Math.pow(1 + monthlyRate, -fields.term));
+  const roundedCalculatedPayment = Math.round(calculatedPayment * 100) / 100;
+  const difference = Math.abs(fields.quotedPayment - roundedCalculatedPayment);
+  if (difference <= PAYMENT_IMPORT_TOLERANCE) return { fields, warnings: [] as string[] };
+
+  const importedPayment = fields.quotedPayment;
+  fields.quotedPayment = roundedCalculatedPayment;
+  return {
+    fields,
+    warnings: [
+      `Payment warning: the document shows $${importedPayment.toFixed(2)}, but the imported figures calculate to $${roundedCalculatedPayment.toFixed(2)} per month—a $${difference.toFixed(2)} difference. PencilProof used the calculated payment. Check the worksheet for a missing fee, product, trade balance, or different financed amount.`,
+    ],
+  };
 };
 
 const moneyPattern = /(?:\(\s*)?-?\$?\s*\d[\d,]*(?:\.\d{1,2})?(?:\s*\))?/g;
@@ -655,8 +690,9 @@ export const extractDealFromPdf = async (
 
   const digitalFields = parseDealerText(lines);
   if (Object.keys(digitalFields).length) {
-    const fieldNames = Object.keys(digitalFields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]);
-    return { fields: digitalFields, fieldNames, pageCount: pdfDocument.numPages, sourceType: "pdf" };
+    const reconciled = reconcileQuotedPayment(digitalFields);
+    const fieldNames = Object.keys(reconciled.fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]);
+    return { fields: reconciled.fields, fieldNames, pageCount: pdfDocument.numPages, sourceType: "pdf", warnings: reconciled.warnings };
   }
 
   const pagesProcessed = Math.min(pdfDocument.numPages, 5);
@@ -669,15 +705,16 @@ export const extractDealFromPdf = async (
 
   const ocrText = await recognizeImages(images, onProgress);
   if (ocrText.replace(/\s/g, "").length < 30) throw new Error("UNREADABLE_IMAGE");
-  const fields = parseDealerText([...lines, ...ocrText.split(/\r?\n/)]);
-  const fieldNames = Object.keys(fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]);
+  const reconciled = reconcileQuotedPayment(parseDealerText([...lines, ...ocrText.split(/\r?\n/)]));
+  const fieldNames = Object.keys(reconciled.fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]);
   return {
-    fields,
+    fields: reconciled.fields,
     fieldNames,
     pageCount: pdfDocument.numPages,
     sourceType: "pdf",
     usedOcr: true,
     pagesProcessed,
+    warnings: reconciled.warnings,
   };
 };
 
@@ -711,8 +748,9 @@ export const extractDealFromImage = async (
     const fullFrameText = await recognizeImages([imageData], onProgress, "sparse");
     fields = parseDealerText(fullFrameText.split(/\r?\n/));
   }
-  const fieldNames = Object.keys(fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]);
-  return { fields, fieldNames, pageCount: 1, sourceType: "image", usedOcr: true, pagesProcessed: 1 };
+  const reconciled = reconcileQuotedPayment(fields);
+  const fieldNames = Object.keys(reconciled.fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]);
+  return { fields: reconciled.fields, fieldNames, pageCount: 1, sourceType: "image", usedOcr: true, pagesProcessed: 1, warnings: reconciled.warnings };
 };
 
 export const extractDealFromFile = async (
