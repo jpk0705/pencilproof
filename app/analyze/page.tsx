@@ -87,6 +87,14 @@ const dollars = (value: number) =>
     maximumFractionDigits: 0,
   }).format(Number.isFinite(value) ? value : 0);
 
+const dollarsAndCents = (value: number) =>
+  new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number.isFinite(value) ? value : 0);
+
 const paymentFor = (principal: number, apr: number, months: number) => {
   if (principal <= 0 || months <= 0) return 0;
   const rate = apr / 1200;
@@ -117,7 +125,7 @@ function MoneyField({
           inputMode="decimal"
           type="number"
           min="0"
-          step="1"
+          step="0.01"
           value={value || ""}
           onChange={(event) => onChange(field, event.target.value)}
         />
@@ -547,7 +555,11 @@ export default function AnalyzePage() {
               <label className="input-field"><span>Dealer APR</span><div className="input-money input-percent"><input aria-label="Dealer APR" inputMode="decimal" type="number" min="0" step="0.01" value={deal.apr || ""} onChange={(event) => setNumber("apr", event.target.value)} /><i>%</i></div></label>
               <label className="input-field"><span>Your desired APR</span><div className="input-money input-percent"><input aria-label="Your desired APR" inputMode="decimal" type="number" min="0" step="0.01" value={deal.outsideApr || ""} onChange={(event) => setNumber("outsideApr", event.target.value)} /><i>%</i></div><small>See the estimated payment at your target rate</small></label>
               <label className="input-field"><span>Loan term</span><select aria-label="Loan term" value={deal.term} onChange={(event) => setNumber("term", event.target.value)}><option value="36">36 months</option><option value="48">48 months</option><option value="60">60 months</option><option value="72">72 months</option><option value="75">75 months</option><option value="84">84 months</option><option value="96">96 months</option></select></label>
-              <MoneyField label="Quoted monthly payment" field="quotedPayment" value={deal.quotedPayment} onChange={setNumber} />
+              <MoneyField label="Dealer's quoted monthly payment" field="quotedPayment" value={deal.quotedPayment} onChange={setNumber} hint="Keeps the amount printed on the quote for comparison" />
+            </div>
+            <div className="live-payment" aria-live="polite">
+              <div><span>LIVE CALCULATED PAYMENT</span><strong>{dollarsAndCents(analysis.calculatedPayment)}<small>/month</small></strong></div>
+              <p>This amount updates immediately when you change the price, tax, fees, products, trade, cash down, APR, or term. The dealer&apos;s quoted payment above stays unchanged so PencilProof can compare the two.</p>
             </div>
           </section>
         </form>
