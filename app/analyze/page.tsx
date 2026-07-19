@@ -33,7 +33,7 @@ type ProductInsight = {
 };
 
 type DealImportState = {
-  status: "idle" | "loading" | "success" | "error";
+  status: "idle" | "loading" | "success" | "warning" | "error";
   message: string;
   fields: string[];
 };
@@ -176,8 +176,10 @@ export default function AnalyzePage() {
       }
       setDeal((current) => ({ ...current, ...(result.fields as Partial<Deal>) }));
       setDealImport({
-        status: "success",
-        message: `Filled ${result.fieldNames.length} field${result.fieldNames.length === 1 ? "" : "s"} from ${file.name}${result.sourceType === "pdf" ? ` (${result.pageCount} page${result.pageCount === 1 ? "" : "s"}${result.usedOcr ? ", scanned-document OCR" : ""})` : ""}. Review every imported value against the original before using the audit.`,
+        status: result.warnings?.length ? "warning" : "success",
+        message: result.warnings?.length
+          ? `Filled ${result.fieldNames.length} fields from ${file.name}. ${result.warnings.join(" ")}`
+          : `Filled ${result.fieldNames.length} field${result.fieldNames.length === 1 ? "" : "s"} from ${file.name}${result.sourceType === "pdf" ? ` (${result.pageCount} page${result.pageCount === 1 ? "" : "s"}${result.usedOcr ? ", scanned-document OCR" : ""})` : ""}. Review every imported value against the original before using the audit.`,
         fields: result.fieldNames,
       });
     } catch (error) {
@@ -426,7 +428,7 @@ export default function AnalyzePage() {
         </div>
         {dealImport.status !== "idle" ? (
           <div className={`pdf-import-status pdf-status-${dealImport.status}`} role="status" aria-live="polite">
-            <span aria-hidden="true">{dealImport.status === "success" ? "✓" : dealImport.status === "error" ? "!" : "…"}</span>
+            <span aria-hidden="true">{dealImport.status === "success" ? "✓" : dealImport.status === "warning" || dealImport.status === "error" ? "!" : "…"}</span>
             <div>
               <p>{dealImport.message}</p>
               {dealImport.fields.length ? <div className="pdf-field-list">{dealImport.fields.map((field) => <small key={field}>{field}</small>)}</div> : null}
