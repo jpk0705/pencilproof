@@ -17,8 +17,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "PencilProof | Audit Your Car Deal Before You Sign",
-  description: "Rebuild the dealer payment, understand VSC, GAP, PPM and add-ons, compare APR and trade equity, and get the questions to ask before you sign.",
+  title: "PencilProof | Structure Your Car Deal Before You Sign",
+  description: "Stop waiting for the next dealership pencil. Rebuild the payment, compare options, test your desired APR, separate products, and prepare a specific revised-deal request.",
   other: isGitHubPages ? undefined : { "codex-preview": "development" },
   icons: {
     icon: iconPath,
