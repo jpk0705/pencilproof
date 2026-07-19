@@ -144,25 +144,65 @@ const valuesOnLine = (line: string) =>
 
 export const parseOfferMatrix = (rawLines: string[]): DealOfferMatrix | undefined => {
   const lines = rawLines.map((line) => line.replace(/\s+/g, " ").trim()).filter(Boolean);
-  const headerIndex = lines.findIndex((line) => /cash down/i.test(line) && (line.match(/\b\d{2}\s*months?\b/gi)?.length ?? 0) >= 2);
+  const headerIndex = lines.findIndex((line, index) => /cash down/i.test(line) &&
+    ((lines.slice(index, index + 8).join(" ").match(/\b\d{2}\s*months?\b/gi)?.length ?? 0) >= 2));
   if (headerIndex < 0) return undefined;
 
-  const terms = [...lines[headerIndex].matchAll(/\b(\d{2})\s*months?\b/gi)].map((match) => Number(match[1]));
+  const headerText = lines.slice(headerIndex, headerIndex + 8).join(" ");
+  const terms = [...headerText.matchAll(/\b(\d{2})\s*months?\b/gi)].map((match) => Number(match[1]));
   if (terms.length < 2) return undefined;
   const termDropIndex = terms.findIndex((term, index) => index > 0 && term < terms[index - 1]);
   const financeCount = termDropIndex > 0 ? termDropIndex : Math.max(1, terms.length - 2);
-  const rows: { cashDown: number; payments: number[] }[] = [];
+  const directRows: { cashDown: number; payments: number[] }[] = [];
+  const tableEndIndex = lines.findIndex((line, index) => index > headerIndex && /\brebate\b|purchase option|estimated apr/i.test(line));
+  const tableLines = lines.slice(headerIndex + 1, tableEndIndex > headerIndex ? tableEndIndex : headerIndex + 12);
 
-  for (let index = headerIndex + 1; index < Math.min(lines.length, headerIndex + 12); index += 1) {
-    if (/\brebate\b|purchase option|estimated apr/i.test(lines[index])) break;
-    const values = valuesOnLine(lines[index]).map(({ value }) => value);
+  for (const line of tableLines) {
+    const values = valuesOnLine(line).map(({ value }) => value);
     if (values.length < terms.length + 1) continue;
     const cashDown = values[0];
     const payments = values.slice(1, terms.length + 1);
     if (cashDown < 500 || cashDown > 50000 || payments.some((payment) => payment < 50 || payment > 5000)) continue;
-    rows.push({ cashDown, payments });
+    directRows.push({ cashDown, payments });
   }
-  if (!rows.length) return undefined;
+
+  const flattenedValues = tableLines.flatMap((line) => valuesOnLine(line).map(({ value }) => value));
+  const verticalRows: { cashDown: number; payments: number[] }[] = [];
+  for (let index = 0; index + terms.length < flattenedValues.length;) {
+    const cashDown = flattenedValues[index];
+    const payments = flattenedValues.slice(index + 1, index + terms.length + 1);
+    if (cashDown >= 500 && cashDown <= 50000 && payments.length === terms.length &&
+      payments.every((payment) => payment >= 50 && payment <= 5000)) {
+      verticalRows.push({ cashDown, payments });
+      index += terms.length + 1;
+    } else {
+      index += 1;
+    }
+  }
+
+  const scoreRows = (candidateRows: { cashDown: number; payments: number[] }[]) => {
+    if (!candidateRows.length) return -Infinity;
+    let score = candidateRows.length * 10;
+    const sorted = [...candidateRows].sort((first, second) => first.cashDown - second.cashDown);
+    if (new Set(sorted.map((row) => row.cashDown)).size !== sorted.length) score -= 30;
+    for (let column = 0; column < terms.length; column += 1) {
+      for (let row = 1; row < sorted.length; row += 1) {
+        score += sorted[row].payments[column] < sorted[row - 1].payments[column] ? 3 : -20;
+      }
+    }
+    for (const row of sorted) {
+      for (let column = 1; column < financeCount; column += 1) {
+        score += row.payments[column] < row.payments[column - 1] ? 2 : -15;
+      }
+    }
+    const allPayments = sorted.flatMap((row) => row.payments).sort((first, second) => first - second);
+    const median = allPayments[Math.floor(allPayments.length / 2)];
+    score -= allPayments.filter((payment) => payment > median * 3 || payment < median * 0.25).length * 25;
+    return score;
+  };
+
+  const rows = scoreRows(verticalRows) > scoreRows(directRows) ? verticalRows : directRows;
+  if (!rows.length || scoreRows(rows) < 0) return undefined;
 
   const rebateLine = lines.slice(headerIndex + 1).find((line) => /^rebate\b/i.test(line));
   const rebates = rebateLine ? valuesOnLine(rebateLine).map(({ value }) => value).slice(0, terms.length) : [];
@@ -187,6 +227,29 @@ export const parseOfferMatrix = (rawLines: string[]): DealOfferMatrix | undefine
     ],
   };
 };
+
+const offerMatrixQuality = (matrix?: DealOfferMatrix) => {
+  if (!matrix?.options.length) return -Infinity;
+  const payments = matrix.options.map((option) => option.payment).sort((first, second) => first - second);
+  const median = payments[Math.floor(payments.length / 2)];
+  let score = matrix.options.length * 2;
+  const groups = new Map<string, DealOfferOption[]>();
+  matrix.options.forEach((option) => {
+    const key = `${option.type}-${option.term}`;
+    groups.set(key, [...(groups.get(key) ?? []), option]);
+  });
+  groups.forEach((options) => {
+    const sorted = options.sort((first, second) => first.cashDown - second.cashDown);
+    for (let index = 1; index < sorted.length; index += 1) {
+      score += sorted[index].payment < sorted[index - 1].payment ? 4 : -30;
+    }
+  });
+  score -= payments.filter((payment) => payment > median * 3 || payment < median * 0.25).length * 40;
+  return score;
+};
+
+const chooseBetterOfferMatrix = (first?: DealOfferMatrix, second?: DealOfferMatrix) =>
+  offerMatrixQuality(second) > offerMatrixQuality(first) ? second : first;
 
 const usableValues = (line: string, allowZero = false) =>
   valuesOnLine(line).filter(({ value }) => allowZero || value > 0);
@@ -801,7 +864,7 @@ export const extractDealFromImage = async (
     onProgress?.({ progress: 0, status: "trying an alternate image layout" });
     const alternateText = await recognizeImages([preparedImage], onProgress, "sparse");
     const alternateFields = parseDealerText(alternateText.split(/\r?\n/));
-    offerMatrix = offerMatrix ?? parseOfferMatrix(alternateText.split(/\r?\n/));
+    offerMatrix = chooseBetterOfferMatrix(offerMatrix, parseOfferMatrix(alternateText.split(/\r?\n/)));
     fields = { ...alternateFields, ...fields };
     if (alternateFields.quotedPayment && textContainsPrintedAmount(alternateText, alternateFields.quotedPayment)) {
       fields.quotedPayment = alternateFields.quotedPayment;
