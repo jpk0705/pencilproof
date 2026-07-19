@@ -201,8 +201,10 @@ const findPaymentNearLabel = (lines: string[], labels: RegExp[]) => {
     for (let distance = 0; distance <= 12; distance += 1) {
       for (const candidateIndex of distance ? [index + distance, index - distance] : [index]) {
         const values = currencyValues(lines[candidateIndex] ?? "");
-        const payment = values.map(({ value }) => value).find((value) => value >= 50 && value <= 5000);
-        if (payment !== undefined) return payment;
+        const joinedCents = values.find(({ value, raw }) =>
+          value >= 50000 && value <= 500000 && raw.includes("$") && !raw.includes(",") && !raw.includes("."),
+        );
+        if (joinedCents) return joinedCents.value / 100;
       }
     }
   }
@@ -373,7 +375,24 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     : splitCentsPayment
     ? Number(`${splitCentsPayment[1]}.${splitCentsPayment[2]}${splitCentsPayment[3]}`)
     : quotedPayment;
-  if (resolvedQuotedPayment && resolvedQuotedPayment >= 50 && resolvedQuotedPayment <= 5000) {
+  const knownNonPaymentAmounts = [
+    fields.sellingPrice,
+    fields.tax,
+    fields.govFees,
+    fields.docFee,
+    fields.serviceContract,
+    fields.gap,
+    fields.prepaidMaintenance,
+    fields.protection,
+    fields.accessories,
+    fields.tradeValue,
+    fields.tradePayoff,
+    fields.cashDown,
+    fields.rebate,
+  ].filter((value): value is number => value !== undefined);
+  const duplicatesKnownAmount = resolvedQuotedPayment !== undefined &&
+    knownNonPaymentAmounts.some((value) => Math.abs(value - resolvedQuotedPayment) < 0.01);
+  if (resolvedQuotedPayment && resolvedQuotedPayment >= 50 && resolvedQuotedPayment <= 5000 && !duplicatesKnownAmount) {
     fields.quotedPayment = resolvedQuotedPayment;
   }
 
