@@ -35,33 +35,32 @@ export default function Home() {
           <span>PencilProof</span>
         </Link>
         <div className="nav-links">
-          <a href="#sample-audit">Sample audit</a>
+          <a href="#structure-yourself">Who it helps</a>
           <a href="#how-it-works">How it works</a>
-          <a className="nav-cta" href={CHECKOUT_URL}>Get my audit · $39</a>
+          <a className="nav-cta" href={CHECKOUT_URL}>Structure my deal · $39</a>
         </div>
       </nav>
 
       <section className="hero shell">
         <div className="hero-copy">
-          <div className="eyebrow"><span /> AT THE DEALERSHIP—OR SHOPPING SOON?</div>
-          <h1>Know what the deal is really costing you before you sign.</h1>
+          <div className="eyebrow"><span /> ASKED FOR A DISCOUNT, RATE, OR PRODUCT CHANGE?</div>
+          <h1>Stop waiting 30 minutes. Structure the deal yourself.</h1>
           <p className="hero-lede">
-            Upload a digital or scanned dealer PDF, or a clear JPG/JPEG/PNG image—or enter the figures yourself.
-            PencilProof rebuilds the payment, separates optional products from
-            the vehicle, explains the finance-office language, and gives you
-            the exact questions to ask while you still have leverage.
+            You asked for a discount, a better rate, or the payment without a product—and the salesperson disappeared for 30 minutes.
+            Upload the quote or enter the figures yourself. PencilProof rebuilds the deal, compares payment options, separates products,
+            and helps you decide what revised structure to request before anyone returns from the manager&apos;s office.
           </p>
           <div className="hero-actions">
             <a className="button button-primary" href={CHECKOUT_URL}>
-              Audit my deal · $39 <Arrow />
+              Structure my deal · $39 <Arrow />
             </a>
             <a className="button button-quiet" href="#sample-audit">See a sample audit</a>
           </div>
           <p className="hero-caution">One-time purchase. Educational estimate. Savings are not guaranteed.</p>
           <div className="proof-row" aria-label="Product highlights">
-            <span><b>Dealership-insider</b> logic</span>
-            <span><b>Immediate</b> browser access</span>
-            <span><b>Private</b> deal inputs</span>
+            <span><b>For shoppers</b> at the dealership</span>
+            <span><b>For salespeople</b> checking scenarios</span>
+            <span><b>Private</b> browser-based inputs</span>
           </div>
         </div>
 
@@ -99,6 +98,29 @@ export default function Home() {
         </div>
       </section>
 
+      <section className="section desk-section" id="structure-yourself">
+        <div className="shell desk-layout">
+          <div className="desk-copy">
+            <p className="kicker">STOP WAITING FOR THE MANAGER</p>
+            <h2>See what the revised deal could look like before the salesperson comes back.</h2>
+            <p>Change the down payment, term, desired APR, trade figures, or optional products yourself. PencilProof immediately shows how those entered changes affect the estimated payment and full-term cost.</p>
+            <p className="desk-limit">PencilProof does not approve discounts, set lender rates, or replace the dealer&apos;s official worksheet. It helps you structure and understand the request you want the dealership to price.</p>
+          </div>
+          <div className="audience-grid">
+            <article>
+              <span>SHOPPERS</span>
+              <h3>Ask for a specific revised deal.</h3>
+              <p>Instead of waiting without knowing what changed, compare the payment without products, test a desired APR, and request an itemized buyer&apos;s order with exact numbers.</p>
+            </article>
+            <article>
+              <span>SALESPEOPLE</span>
+              <h3>Preview a cleaner structure for your customer.</h3>
+              <p>If only management can desk and approve the deal, use the customer&apos;s written figures to explore scenarios and prepare a clearer request for the desk. Final figures still require dealership and lender approval.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
       <section className="signal-strip" aria-label="What PencilProof checks">
         <div className="shell signal-grid">
           <div><span>01</span><b>Payment rebuild</b><small>Check the dealer math</small></div>
@@ -116,6 +138,7 @@ export default function Home() {
             Free calculators can estimate a loan. PencilProof is designed for
             the moment you have an actual dealer worksheet and need to separate
             the vehicle, financing, trade, fees, and optional products.
+            It can also detect many multi-option payment menus so you can choose and compare the row you are actually considering.
           </p>
           <a className="text-link" href={CHECKOUT_URL}>Get my complete audit for $39 <Arrow /></a>
         </div>
@@ -153,7 +176,7 @@ export default function Home() {
       <section className="section shell" id="how-it-works">
         <div className="section-intro">
           <p className="kicker">THE FIVE-MINUTE SECOND OPINION</p>
-          <h2>Use it before you agree to the payment.</h2>
+          <h2>Build your counter-request before the revised quote comes back.</h2>
         </div>
         <div className="steps">
           <article>
@@ -168,8 +191,8 @@ export default function Home() {
           </article>
           <article>
             <span>3</span>
-            <h3>Use the action plan</h3>
-            <p>Compare the rebuilt deal, understand each product, and copy the exact request for a revised buyer&apos;s order.</p>
+            <h3>Structure the next version</h3>
+            <p>Compare the rebuilt deal, change the rate, term, down payment, or products, and copy a specific request for a revised buyer&apos;s order.</p>
           </article>
         </div>
       </section>
@@ -189,6 +212,7 @@ export default function Home() {
             <div className="price-line"><span>Complete Deal Audit</span><strong>$39</strong></div>
             <ul>
               <li>Private PDF and photo autofill</li>
+              <li>Multi-option finance and lease menu detection</li>
               <li>Payment with and without products</li>
               <li>VSC, GAP, PPM, and add-on guidance</li>
               <li>APR and full-term cost comparison</li>
@@ -196,7 +220,7 @@ export default function Home() {
               <li>Copy-ready dealer questions</li>
               <li>Print or save the finished review</li>
             </ul>
-            <a className="button button-light" href={CHECKOUT_URL}>Audit my deal now <Arrow /></a>
+            <a className="button button-light" href={CHECKOUT_URL}>Structure my deal now <Arrow /></a>
             <small>One-time payment. Educational estimate. No guaranteed savings.</small>
           </div>
         </div>
@@ -212,6 +236,8 @@ export default function Home() {
           <article><h3>Does PencilProof guarantee savings?</h3><p>No. It may identify costs worth questioning, but actual savings depend on the deal, lender, products, dealer, and choices you make.</p></article>
           <article><h3>Can I update the deal after the dealer responds?</h3><p>Yes. Change the inputs to compare a revised worksheet, then print or save the updated review before signing.</p></article>
           <article><h3>Can PencilProof read every document?</h3><p>No. It can autofill recognizable text from many digital or scanned PDFs and clear JPG/JPEG/PNG images. Blurry, cropped, handwritten, password-protected, or unusually formatted documents may require manual entry.</p></article>
+          <article><h3>Can it compare a quote with several payment choices?</h3><p>Yes. When PencilProof recognizes an option matrix, it shows the detected finance and lease rows so you can select the one you are considering. Always compare imported values with the original document.</p></article>
+          <article><h3>Is this a dealership desking or lender-approval system?</h3><p>No. PencilProof models the figures you enter or import. It cannot authorize a discount, access lender programs, approve credit, or replace the dealership&apos;s official buyer&apos;s order or lease worksheet.</p></article>
           <article><h3>Does PencilProof negotiate or provide advice?</h3><p>No. It is an independent educational estimate. It does not contact dealers, arrange financing, or provide legal or financial advice.</p></article>
           <article><h3>Do you store my deal?</h3><p>No. Deal inputs stay in your browser. Stripe and Link process checkout information, but PencilProof does not receive your full card number.</p></article>
           <article><h3>What should I have ready?</h3><p>Use the dealer&apos;s buyer&apos;s order, worksheet, or written quote showing price, taxes, fees, products, trade, APR, term, and payment.</p></article>
