@@ -158,6 +158,7 @@ footer { border-top: 1px solid var(--line); padding: 34px 0; }
 .pdf-import-status p { margin: 3px 0 0; line-height: 1.5; }
 .pdf-status-loading { color: #38556c; background: #e5eef5; }.pdf-status-loading > span { color: #285f88; background: #cddfec; }
 .pdf-status-success { color: #15543f; background: #e3f1eb; }.pdf-status-success > span { color: white; background: var(--green); }
+.pdf-status-warning { color: #743a12; background: #fff0d8; }.pdf-status-warning > span { color: white; background: #ae591a; }
 .pdf-status-error { color: #743a12; background: #f9e9da; }.pdf-status-error > span { color: white; background: #ae591a; }
 .pdf-field-list { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
 .pdf-field-list small { padding: 5px 7px; border: 1px solid rgba(21, 84, 63, .22); border-radius: 999px; background: rgba(255,255,255,.5); font-size: 8px; font-weight: 800; }
