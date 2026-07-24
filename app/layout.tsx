@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "PencilProof | Structure Your Car Deal Before You Sign",
-  description: "Stop waiting for the next dealership pencil. Rebuild the payment, compare options, test your desired APR, separate products, and prepare a specific revised-deal request.",
+  description: "Stop waiting for the next dealership quote. Rebuild the payment, compare options, test a desired APR, separate products, and prepare a specific revised-deal request.",
   other: isGitHubPages ? undefined : { "codex-preview": "development" },
   icons: {
     icon: iconPath,

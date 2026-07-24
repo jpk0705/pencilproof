@@ -37,6 +37,7 @@ export default function Home() {
         <div className="nav-links">
           <a href="#structure-yourself">Who it helps</a>
           <a href="#how-it-works">How it works</a>
+          <a href="#pricing">Pricing</a>
           <a className="nav-cta" href={CHECKOUT_URL}>Structure my deal · $39</a>
         </div>
       </nav>
@@ -58,9 +59,12 @@ export default function Home() {
           </div>
           <p className="hero-caution">One-time purchase. Educational estimate. Savings are not guaranteed.</p>
           <div className="proof-row" aria-label="Product highlights">
+            <span><b>Instant access</b> after secure checkout</span>
+            <span><b>No commissions</b> from dealers</span>
             <span><b>For shoppers</b> at the dealership</span>
             <span><b>For salespeople</b> checking scenarios</span>
-            <span><b>Private</b> browser-based inputs</span>
+            <span><b>Founded by</b> a dealership professional</span>
+            <span><b>Private</b> numbers stay in your browser</span>
           </div>
         </div>
 
@@ -70,7 +74,7 @@ export default function Home() {
               <p>SAMPLE DEAL AUDIT</p>
               <h2>2026 compact SUV</h2>
             </div>
-            <div className="score-ring"><strong>60</strong><span>/100</span></div>
+            <div className="sample-status"><strong>4</strong><span>plain-language checks</span></div>
           </div>
           <div className="deal-metrics">
             <div><span>With products</span><strong>$742/mo</strong></div>
@@ -94,6 +98,31 @@ export default function Home() {
           <div className="deal-card-foot">
             <span>Example based on entered figures.</span>
             <a href="#sample-audit">See what&apos;s inside <Arrow /></a>
+          </div>
+        </div>
+      </section>
+
+      <section className="section founder-section">
+        <div className="shell founder-layout">
+          <div>
+            <p className="kicker">BUILT FROM INSIDE THE BUSINESS</p>
+            <h2>Created by someone who has worked the deal from three different seats.</h2>
+          </div>
+          <div className="founder-copy">
+            <p className="founder-lede">
+              PencilProof was founded by an automotive professional who has worked as a salesperson, sales manager, and finance manager.
+            </p>
+            <p>
+              That experience exposed the same bottleneck from every side: customers wait while a change moves back and forth to the manager,
+              and salespeople often cannot test a cleaner structure on their own. PencilProof turns the written figures into an understandable
+              draft so both sides can discuss a specific deal structure sooner.
+            </p>
+            <div className="role-row" aria-label="Founder dealership experience">
+              <span>Salesperson</span>
+              <span>Sales manager</span>
+              <span>Finance manager</span>
+            </div>
+            <small>Independent educational software. PencilProof is not a dealership, lender, broker, or approval system.</small>
           </div>
         </div>
       </section>
@@ -187,7 +216,7 @@ export default function Home() {
           <article>
             <span>2</span>
             <h3>Upload or enter the worksheet</h3>
-            <p>Import a digital or scanned dealer PDF or clear JPG/JPEG/PNG image, or copy the selling price, taxes, products, trade, APR, term, and payment yourself.</p>
+            <p>Import a digital or scanned dealer PDF or clear JPG/JPEG/PNG image, then confirm every detected value before the audit uses it. Manual entry is always available.</p>
           </article>
           <article>
             <span>3</span>
@@ -212,6 +241,7 @@ export default function Home() {
             <div className="price-line"><span>Complete Deal Audit</span><strong>$39</strong></div>
             <ul>
               <li>Private PDF and photo autofill</li>
+              <li>Required import confirmation before analysis</li>
               <li>Multi-option finance and lease menu detection</li>
               <li>Payment with and without products</li>
               <li>VSC, GAP, PPM, and add-on guidance</li>
@@ -221,7 +251,7 @@ export default function Home() {
               <li>Print or save the finished review</li>
             </ul>
             <a className="button button-light" href={CHECKOUT_URL}>Structure my deal now <Arrow /></a>
-            <small>One-time payment. Educational estimate. No guaranteed savings.</small>
+            <small>One-time payment. Educational estimate. No guaranteed savings. If your quote cannot be processed, use the support options on your receipt for help or a refund review.</small>
           </div>
         </div>
       </section>
@@ -236,7 +266,10 @@ export default function Home() {
           <article><h3>Does PencilProof guarantee savings?</h3><p>No. It may identify costs worth questioning, but actual savings depend on the deal, lender, products, dealer, and choices you make.</p></article>
           <article><h3>Can I update the deal after the dealer responds?</h3><p>Yes. Change the inputs to compare a revised worksheet, then print or save the updated review before signing.</p></article>
           <article><h3>Can PencilProof read every document?</h3><p>No. It can autofill recognizable text from many digital or scanned PDFs and clear JPG/JPEG/PNG images. Blurry, cropped, handwritten, password-protected, or unusually formatted documents may require manual entry.</p></article>
+          <article><h3>What if an imported number is wrong?</h3><p>Imports are treated as drafts. PencilProof labels values as high confidence, needs review, or not found, and requires you to confirm or correct them before analysis. If the quote still cannot be processed, use the support options on your purchase receipt.</p></article>
           <article><h3>Can it compare a quote with several payment choices?</h3><p>Yes. When PencilProof recognizes an option matrix, it shows the detected finance and lease rows so you can select the one you are considering. Always compare imported values with the original document.</p></article>
+          <article><h3>Does a desired APR mean I am approved?</h3><p>No. It is a what-if scenario showing the payment at a rate you choose. Only a lender can approve an APR and final loan terms.</p></article>
+          <article><h3>Who created PencilProof?</h3><p>It was founded by an automotive professional with experience as a salesperson, sales manager, and finance manager. PencilProof remains independent and is not affiliated with a dealership or lender.</p></article>
           <article><h3>Is this a dealership desking or lender-approval system?</h3><p>No. PencilProof models the figures you enter or import. It cannot authorize a discount, access lender programs, approve credit, or replace the dealership&apos;s official buyer&apos;s order or lease worksheet.</p></article>
           <article><h3>Does PencilProof negotiate or provide advice?</h3><p>No. It is an independent educational estimate. It does not contact dealers, arrange financing, or provide legal or financial advice.</p></article>
           <article><h3>Do you store my deal?</h3><p>No. Deal inputs stay in your browser. Stripe and Link process checkout information, but PencilProof does not receive your full card number.</p></article>

@@ -42,6 +42,7 @@ export const DEAL_FIELD_LABELS: Record<keyof ImportedDealFields, string> = {
 
 export type DealPdfResult = {
   fields: ImportedDealFields;
+  fieldConfidence: Partial<Record<keyof ImportedDealFields, "high" | "review">>;
   fieldNames: string[];
   pageCount: number;
   sourceType: "pdf" | "image";
@@ -97,7 +98,7 @@ type PdfRenderablePageLike = PdfPageLike & {
 
 const PAYMENT_IMPORT_TOLERANCE = 5;
 
-const reconcileQuotedPayment = (sourceFields: ImportedDealFields) => {
+export const reconcileQuotedPayment = (sourceFields: ImportedDealFields) => {
   const fields = { ...sourceFields };
   if (!fields.sellingPrice || !fields.apr || !fields.term || !fields.quotedPayment) {
     return { fields, warnings: [] as string[] };
@@ -119,15 +120,21 @@ const reconcileQuotedPayment = (sourceFields: ImportedDealFields) => {
   const difference = Math.abs(fields.quotedPayment - roundedCalculatedPayment);
   if (difference <= PAYMENT_IMPORT_TOLERANCE) return { fields, warnings: [] as string[] };
 
-  const importedPayment = fields.quotedPayment;
-  fields.quotedPayment = roundedCalculatedPayment;
   return {
     fields,
     warnings: [
-      `Payment warning: the document shows $${importedPayment.toFixed(2)}, but the imported figures calculate to $${roundedCalculatedPayment.toFixed(2)} per month—a $${difference.toFixed(2)} difference. PencilProof used the calculated payment. Check the worksheet for a missing fee, product, trade balance, or different financed amount.`,
+      `Payment warning: the document shows $${fields.quotedPayment.toFixed(2)}, while the imported figures calculate to $${roundedCalculatedPayment.toFixed(2)} per month—a $${difference.toFixed(2)} difference. PencilProof preserved both values. Check the worksheet for a missing fee, product, trade balance, or different financed amount.`,
     ],
   };
 };
+
+const confidenceFor = (
+  fields: ImportedDealFields,
+  confidence: "high" | "review",
+): DealPdfResult["fieldConfidence"] =>
+  Object.fromEntries(
+    Object.keys(fields).map((field) => [field, confidence]),
+  ) as DealPdfResult["fieldConfidence"];
 
 const moneyPattern = /(?:\(\s*)?-?\$?\s*\d[\d,]*(?:\.\d{1,2})?(?:\s*\))?/g;
 
@@ -830,8 +837,20 @@ export const extractDealFromPdf = async (
   const digitalOfferMatrix = parseOfferMatrix(lines);
   if (Object.keys(digitalFields).length || digitalOfferMatrix) {
     const reconciled = reconcileQuotedPayment(digitalFields);
+    const fieldConfidence = confidenceFor(reconciled.fields, "high");
+    if (reconciled.warnings.length && reconciled.fields.quotedPayment) {
+      fieldConfidence.quotedPayment = "review";
+    }
     const fieldNames = Object.keys(reconciled.fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]);
-    return { fields: reconciled.fields, fieldNames, pageCount: pdfDocument.numPages, sourceType: "pdf", warnings: reconciled.warnings, offerMatrix: digitalOfferMatrix };
+    return {
+      fields: reconciled.fields,
+      fieldConfidence,
+      fieldNames,
+      pageCount: pdfDocument.numPages,
+      sourceType: "pdf",
+      warnings: reconciled.warnings,
+      offerMatrix: digitalOfferMatrix,
+    };
   }
 
   const pagesProcessed = Math.min(pdfDocument.numPages, 5);
@@ -849,6 +868,7 @@ export const extractDealFromPdf = async (
   const fieldNames = Object.keys(reconciled.fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]);
   return {
     fields: reconciled.fields,
+    fieldConfidence: confidenceFor(reconciled.fields, "review"),
     fieldNames,
     pageCount: pdfDocument.numPages,
     sourceType: "pdf",
@@ -893,7 +913,17 @@ export const extractDealFromImage = async (
   }
   const reconciled = reconcileQuotedPayment(fields);
   const fieldNames = Object.keys(reconciled.fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]);
-  return { fields: reconciled.fields, fieldNames, pageCount: 1, sourceType: "image", usedOcr: true, pagesProcessed: 1, warnings: reconciled.warnings, offerMatrix };
+  return {
+    fields: reconciled.fields,
+    fieldConfidence: confidenceFor(reconciled.fields, "review"),
+    fieldNames,
+    pageCount: 1,
+    sourceType: "image",
+    usedOcr: true,
+    pagesProcessed: 1,
+    warnings: reconciled.warnings,
+    offerMatrix,
+  };
 };
 
 export const extractDealFromFile = async (

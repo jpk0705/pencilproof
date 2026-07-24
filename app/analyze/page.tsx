@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { useMemo, useState, type ChangeEvent } from "react";
-import { extractDealFromFile, type DealOfferMatrix, type DealOfferOption } from "@/lib/deal-pdf";
+import {
+  DEAL_FIELD_LABELS,
+  extractDealFromFile,
+  type DealOfferMatrix,
+  type DealOfferOption,
+  type ImportedDealFields,
+} from "@/lib/deal-pdf";
+import { paymentFor } from "@/lib/deal-calculations";
 
 type Deal = {
   vehicle: string;
@@ -37,6 +44,34 @@ type DealImportState = {
   message: string;
   fields: string[];
 };
+
+type PendingImport = {
+  fields: Partial<Deal>;
+  confidence: Partial<Record<keyof ImportedDealFields, "high" | "review">>;
+  fileName: string;
+};
+
+const verificationFields: (keyof ImportedDealFields)[] = [
+  "vehicle",
+  "sellingPrice",
+  "rebate",
+  "tax",
+  "govFees",
+  "docFee",
+  "serviceContract",
+  "gap",
+  "prepaidMaintenance",
+  "protection",
+  "accessories",
+  "tradeValue",
+  "tradePayoff",
+  "cashDown",
+  "apr",
+  "term",
+  "quotedPayment",
+];
+
+const Arrow = () => <span aria-hidden="true">→</span>;
 
 const sample: Deal = {
   vehicle: "2026 compact SUV",
@@ -95,12 +130,7 @@ const dollarsAndCents = (value: number) =>
     maximumFractionDigits: 2,
   }).format(Number.isFinite(value) ? value : 0);
 
-const paymentFor = (principal: number, apr: number, months: number) => {
-  if (principal <= 0 || months <= 0) return 0;
-  const rate = apr / 1200;
-  if (rate === 0) return principal / months;
-  return (principal * rate * Math.pow(1 + rate, months)) / (Math.pow(1 + rate, months) - 1);
-};
+const PAYMENT_MATCH_TOLERANCE = 5;
 
 function MoneyField({
   label,
@@ -141,6 +171,8 @@ export default function AnalyzePage() {
   const [dealImport, setDealImport] = useState<DealImportState>({ status: "idle", message: "", fields: [] });
   const [offerMatrix, setOfferMatrix] = useState<DealOfferMatrix | null>(null);
   const [selectedOfferId, setSelectedOfferId] = useState("");
+  const [selectedOfferType, setSelectedOfferType] = useState<DealOfferOption["type"] | null>(null);
+  const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
 
   const setNumber = (field: keyof Deal, value: string) =>
     setDeal((current) => ({ ...current, [field]: value === "" ? 0 : Number(value) }));
@@ -192,16 +224,21 @@ export default function AnalyzePage() {
         delete importedFields.apr;
         delete importedFields.rebate;
       }
-      setDeal((current) => ({ ...current, ...importedFields }));
+      setPendingImport({
+        fields: importedFields,
+        confidence: result.fieldConfidence,
+        fileName: file.name,
+      });
       setOfferMatrix(result.offerMatrix ?? null);
       setSelectedOfferId("");
+      setSelectedOfferType(null);
       setDealImport({
         status: result.warnings?.length ? "warning" : "success",
         message: result.warnings?.length
           ? `Filled ${result.fieldNames.length} fields from ${file.name}. ${result.warnings.join(" ")}`
           : result.offerMatrix
             ? `Detected ${result.offerMatrix.options.length} payment choices in ${file.name}. Select the finance or lease option you are considering.`
-            : `Filled ${result.fieldNames.length} field${result.fieldNames.length === 1 ? "" : "s"} from ${file.name}${result.sourceType === "pdf" ? ` (${result.pageCount} page${result.pageCount === 1 ? "" : "s"}${result.usedOcr ? ", scanned-document OCR" : ""})` : ""}. Review every imported value against the original before using the audit.`,
+            : `Found ${result.fieldNames.length} field${result.fieldNames.length === 1 ? "" : "s"} in ${file.name}${result.sourceType === "pdf" ? ` (${result.pageCount} page${result.pageCount === 1 ? "" : "s"}${result.usedOcr ? ", scanned-document OCR" : ""})` : ""}. Confirm the draft before PencilProof analyzes it.`,
         fields: result.fieldNames,
       });
     } catch (error) {
@@ -225,20 +262,64 @@ export default function AnalyzePage() {
 
   const chooseOffer = (option: DealOfferOption) => {
     setSelectedOfferId(option.id);
-    setDeal((current) => ({
-      ...current,
-      cashDown: option.cashDown,
-      term: option.term,
-      quotedPayment: option.payment,
-      ...(option.apr !== undefined ? { apr: option.apr } : {}),
-    }));
+    setSelectedOfferType(option.type);
+    if (option.type === "finance") {
+      setPendingImport((current) => ({
+        fields: {
+          ...(current?.fields ?? {}),
+          cashDown: option.cashDown,
+          term: option.term,
+          quotedPayment: option.payment,
+          ...(option.apr !== undefined ? { apr: option.apr } : {}),
+        },
+        confidence: {
+          ...(current?.confidence ?? {}),
+          cashDown: "review",
+          term: "review",
+          quotedPayment: "review",
+          ...(option.apr !== undefined ? { apr: "review" as const } : {}),
+        },
+        fileName: current?.fileName ?? "payment menu",
+      }));
+    }
     setDealImport({
       status: "warning",
       message: option.type === "finance"
         ? `Selected finance option: $${option.cashDown.toLocaleString()} down, ${option.term} months, $${option.payment.toFixed(2)} per month. The worksheet may omit taxes, fees, products, or final lender terms—verify the itemized buyer's order before relying on the audit.`
         : `Selected lease estimate: $${option.cashDown.toLocaleString()} down, ${option.term} months, $${option.payment.toFixed(2)} per month. A complete lease audit still requires the residual or purchase option, mileage allowance, acquisition and disposition fees, taxes, and exact due-at-signing amount.`,
-      fields: ["Cash down", "Loan term", "Quoted monthly payment"],
+      fields: option.type === "finance" ? ["Cash down", "Loan term", "Quoted monthly payment"] : [],
     });
+  };
+
+  const updatePendingField = (field: keyof ImportedDealFields, rawValue: string) => {
+    setPendingImport((current) => {
+      if (!current) return current;
+      const value = field === "vehicle" ? rawValue : rawValue === "" ? undefined : Number(rawValue);
+      return {
+        ...current,
+        fields: { ...current.fields, [field]: value },
+        confidence: { ...current.confidence, [field]: "review" },
+      };
+    });
+  };
+
+  const confirmPendingImport = () => {
+    if (!pendingImport) return;
+    setDeal((current) => ({ ...current, ...pendingImport.fields }));
+    setPendingImport(null);
+    setDealImport((current) => ({
+      ...current,
+      status: current.status === "error" ? "error" : "success",
+      message: `Confirmed the imported values from ${pendingImport.fileName}. The audit now uses the figures you reviewed.`,
+    }));
+  };
+
+  const clearImport = () => {
+    setPendingImport(null);
+    setOfferMatrix(null);
+    setSelectedOfferId("");
+    setSelectedOfferType(null);
+    setDealImport({ status: "idle", message: "", fields: [] });
   };
 
   const analysis = useMemo(() => {
@@ -274,19 +355,32 @@ export default function AnalyzePage() {
     const aprCost = desiredPayment > 0 ? Math.max(0, (calculatedPayment - desiredPayment) * deal.term) : 0;
     const aprGap = deal.outsideApr > 0 ? deal.apr - deal.outsideApr : 0;
 
-    let score = 100;
-    if (addons > 0) score -= Math.min(22, Math.max(5, Math.round(addons / 250)));
-    if (aprGap >= 2) score -= 16;
-    else if (aprGap >= 1) score -= 11;
-    else if (aprGap >= 0.25) score -= 6;
-    if (deal.term >= 84) score -= 14;
-    else if (deal.term > 72) score -= 9;
-    else if (deal.term > 60) score -= 4;
-    if (Math.abs(paymentGap) > 10) score -= 18;
-    else if (Math.abs(paymentGap) > 4) score -= 9;
-    if (tradeEquity < 0) score -= Math.min(14, Math.max(5, Math.round(Math.abs(tradeEquity) / 500)));
-    if (deal.docFee > 1000) score -= 8;
-    score = Math.max(20, Math.round(score));
+    const missingInformation = [
+      !deal.sellingPrice ? "selling price" : "",
+      !deal.tax ? "sales-tax amount" : "",
+      !deal.apr ? "dealer APR" : "",
+      !deal.term ? "loan term" : "",
+      !deal.quotedPayment ? "dealer's printed payment" : "",
+    ].filter(Boolean);
+    const hasMinimumData = Boolean(deal.sellingPrice && deal.apr && deal.term);
+    const paymentStatus = !deal.quotedPayment
+      ? { label: "Not checked", tone: "note" as const, detail: "Enter the payment printed on the quote." }
+      : Math.abs(paymentGap) <= PAYMENT_MATCH_TOLERANCE
+        ? { label: "Matches", tone: "good" as const, detail: `Within ${dollars(PAYMENT_MATCH_TOLERANCE)} per month.` }
+        : { label: "Needs review", tone: "warn" as const, detail: `${dollars(Math.abs(paymentGap))} monthly difference.` };
+    const productStatus = addons > 0
+      ? { label: "Itemized here", tone: "note" as const, detail: `${dollars(addons)} entered.` }
+      : { label: "None entered", tone: "note" as const, detail: "Verify the quote does not bundle products." };
+    const aprStatus = !deal.outsideApr
+      ? { label: "Not compared", tone: "note" as const, detail: "Enter a desired APR scenario." }
+      : aprGap >= 0.25
+        ? { label: "Higher", tone: "warn" as const, detail: `${aprGap.toFixed(2)} points above desired.` }
+        : { label: "Similar or lower", tone: "good" as const, detail: "At or near the desired APR." };
+    const tradeStatus = !deal.tradeValue && !deal.tradePayoff
+      ? { label: "Unknown", tone: "note" as const, detail: "No trade figures entered." }
+      : tradeEquity < 0
+        ? { label: "Negative equity", tone: "warn" as const, detail: `${dollars(Math.abs(tradeEquity))} rolled into the loan.` }
+        : { label: "Positive equity", tone: "good" as const, detail: `${dollars(tradeEquity)} reduces the deal balance.` };
 
     const flags: { tone: "warn" | "good" | "note"; title: string; detail: string }[] = [];
     if (addons > 0) {
@@ -317,7 +411,7 @@ export default function AnalyzePage() {
         detail: "The entered dealer rate is close to or below your desired APR.",
       });
     }
-    if (deal.quotedPayment > 0 && Math.abs(paymentGap) > 4) {
+    if (deal.quotedPayment > 0 && Math.abs(paymentGap) > PAYMENT_MATCH_TOLERANCE) {
       flags.push({
         tone: "warn",
         title: `Payment differs by ${dollars(Math.abs(paymentGap))}/month`,
@@ -414,7 +508,15 @@ export default function AnalyzePage() {
       desiredPayment,
       aprCost,
       aprGap,
-      score,
+      hasMinimumData,
+      missingInformation,
+      checks: [
+        { name: "Payment math", ...paymentStatus },
+        { name: "Products", ...productStatus },
+        { name: "APR comparison", ...aprStatus },
+        { name: "Trade equity", ...tradeStatus },
+      ],
+      paymentGap,
       flags,
       productInsights,
     };
@@ -446,10 +548,11 @@ export default function AnalyzePage() {
           <p className="kicker">STRUCTURE YOUR OWN DEAL</p>
           <h1>Don&apos;t wait for the next quote to understand your options.</h1>
           <p>Upload the dealer&apos;s quote or enter the figures yourself. Then test the down payment, term, desired APR, trade, and optional products while the dealership works on its official revision.</p>
+          <p className="analyzer-founder">Built by an automotive professional with experience as a salesperson, sales manager, and finance manager.</p>
         </div>
         <div className="analyzer-actions">
-          <button type="button" onClick={() => { setDeal(sample); setOfferMatrix(null); setSelectedOfferId(""); setDealImport({ status: "idle", message: "", fields: [] }); }}>Load sample</button>
-          <button type="button" onClick={() => { setDeal(blank); setOfferMatrix(null); setSelectedOfferId(""); setDealImport({ status: "idle", message: "", fields: [] }); }}>Clear all</button>
+          <button type="button" onClick={() => { setDeal(sample); setPendingImport(null); setOfferMatrix(null); setSelectedOfferId(""); setSelectedOfferType(null); setDealImport({ status: "idle", message: "", fields: [] }); }}>Load sample</button>
+          <button type="button" onClick={() => { setDeal(blank); setPendingImport(null); setOfferMatrix(null); setSelectedOfferId(""); setSelectedOfferType(null); setDealImport({ status: "idle", message: "", fields: [] }); }}>Clear all</button>
         </div>
       </header>
 
@@ -516,10 +619,60 @@ export default function AnalyzePage() {
             <p className="offer-matrix-warning">{offerMatrix.warnings.join(" ")} A displayed rebate is not automatically deducted because many menus already show a net vehicle price.</p>
           </div>
         ) : null}
+        {pendingImport && selectedOfferType !== "lease" ? (
+          <section className="import-verification" aria-labelledby="import-verification-title">
+            <div className="verification-heading">
+              <div>
+                <p className="eyebrow">REQUIRED CHECK</p>
+                <h3 id="import-verification-title">Confirm the imported values</h3>
+                <p>PencilProof found a draft, not a guaranteed transcription. Compare each value with the document and correct anything marked “Needs review.”</p>
+              </div>
+              <div className="verification-legend" aria-label="Confidence legend">
+                <span className="confidence-high">High confidence</span>
+                <span className="confidence-review">Needs review</span>
+                <span className="confidence-missing">Not found</span>
+              </div>
+            </div>
+            <div className="verification-grid">
+              {verificationFields.map((field) => {
+                const value = pendingImport.fields[field];
+                const found = value !== undefined;
+                const confidence = found ? pendingImport.confidence[field] ?? "review" : "missing";
+                return (
+                  <label className={`verification-field confidence-${confidence}`} key={field}>
+                    <span>{DEAL_FIELD_LABELS[field]}</span>
+                    <input
+                      aria-label={`Verify ${DEAL_FIELD_LABELS[field]}`}
+                      type={field === "vehicle" ? "text" : "number"}
+                      inputMode={field === "vehicle" ? undefined : "decimal"}
+                      step={field === "term" ? "1" : "0.01"}
+                      value={value ?? ""}
+                      placeholder="Not found"
+                      onChange={(event) => updatePendingField(field, event.target.value)}
+                    />
+                    <small>{confidence === "high" ? "High confidence" : confidence === "review" ? "Needs review" : "Not found"}</small>
+                  </label>
+                );
+              })}
+            </div>
+            <div className="verification-actions">
+              <button className="button button-primary" type="button" onClick={confirmPendingImport}>Confirm values and analyze <Arrow /></button>
+              <button type="button" onClick={clearImport}>Enter manually instead</button>
+            </div>
+          </section>
+        ) : null}
+        {selectedOfferType === "lease" ? (
+          <section className="lease-only-panel" role="status">
+            <p className="kicker">LEASE PAYMENT MENU ONLY</p>
+            <h3>This lease row will not be sent into the finance calculator.</h3>
+            <p>The printed payment can be compared with the other menu rows, but a real lease audit requires the residual value or purchase option, money factor, mileage allowance, acquisition and disposition fees, taxes, capitalized-cost reduction, and exact amount due at signing.</p>
+            <button type="button" onClick={() => { setSelectedOfferId(""); setSelectedOfferType(null); }}>Choose a finance option instead</button>
+          </section>
+        ) : null}
         <p className="pdf-import-note">Best results: use a dealer-generated PDF or a bright, sharp, straight-on image with the full figures visible. Scanned PDFs use OCR on up to the first five pages. OCR can make mistakes, so compare every imported value with the original.</p>
       </section>
 
-      <div className="analyzer-layout shell">
+      {!pendingImport && selectedOfferType !== "lease" ? <div className="analyzer-layout shell">
         <form className="deal-form" onSubmit={(event) => event.preventDefault()}>
           <section className="form-section">
             <div className="form-section-title"><span>01</span><div><h2>Vehicle & price</h2><p>Start with the top of the buyer&apos;s order or dealer worksheet.</p></div></div>
@@ -567,56 +720,106 @@ export default function AnalyzePage() {
         <aside className="results-panel" aria-live="polite">
           <div className="results-sticky">
             <div className="result-top">
-              <div><p>DEAL CLARITY SCORE</p><h2>{deal.vehicle || "Your finance deal"}</h2></div>
-              <div className={`big-score score-${analysis.score >= 80 ? "good" : analysis.score >= 60 ? "mid" : "low"}`}><strong>{analysis.score}</strong><span>/100</span></div>
+              <div><p>DEAL CHECKS</p><h2>{deal.vehicle || "Your finance deal"}</h2></div>
+              <div className={`audit-status ${analysis.hasMinimumData ? "audit-ready" : "audit-incomplete"}`}>
+                {analysis.hasMinimumData ? "Ready to review" : "Incomplete"}
+              </div>
             </div>
-            <p className="score-note">This scores the transparency and structure of the entered figures—not the vehicle&apos;s market value, condition, or reliability.</p>
+            <p className="score-note">
+              {analysis.hasMinimumData
+                ? `${analysis.missingInformation.length} important item${analysis.missingInformation.length === 1 ? "" : "s"} still missing: ${analysis.missingInformation.join(", ") || "none"}.`
+                : "Not enough information to evaluate this deal. Enter the selling price, dealer APR, and term or confirm an imported quote."}
+            </p>
 
-            <div className="payment-compare">
-              <div><span>WITH PRODUCTS</span><strong>{dollars(analysis.calculatedPayment)}<small>/mo</small></strong><small>dealer APR and entered term</small></div>
-              <div><span>WITHOUT PRODUCTS</span><strong>{dollars(analysis.paymentWithoutProducts)}<small>/mo</small></strong><small>same dealer APR and term</small></div>
-              <div><span>AT YOUR DESIRED APR</span><strong>{deal.outsideApr > 0 ? dollars(analysis.desiredPayment) : "—"}{deal.outsideApr > 0 ? <small>/mo</small> : null}</strong><small>{deal.outsideApr > 0 ? `${deal.outsideApr.toFixed(2)}% · with products` : "Enter a desired APR"}</small></div>
-            </div>
+            {analysis.hasMinimumData ? <>
+              <div className="deal-check-grid">
+                {analysis.checks.map((check) => (
+                  <div className={`deal-check check-${check.tone}`} key={check.name}>
+                    <span>{check.name}</span>
+                    <strong>{check.label}</strong>
+                    <small>{check.detail}</small>
+                  </div>
+                ))}
+              </div>
 
-            <div className="result-numbers">
-              <div><span>Estimated amount financed</span><strong>{dollars(analysis.amountFinanced)}</strong></div>
-              <div><span>Entered optional products</span><strong>{dollars(analysis.addons)}</strong></div>
-              <div><span>Total of payments</span><strong>{dollars(analysis.totalPayments)}</strong></div>
-              <div><span>Total finance charge</span><strong>{dollars(analysis.financeCharge)}</strong></div>
-            </div>
+              <div className="payment-compare">
+                <div><span>WITH PRODUCTS</span><strong>{dollars(analysis.calculatedPayment)}<small>/mo</small></strong><small>dealer APR and entered term</small></div>
+                <div><span>WITHOUT PRODUCTS</span><strong>{dollars(analysis.paymentWithoutProducts)}<small>/mo</small></strong><small>same dealer APR and term</small></div>
+                <div><span>AT YOUR DESIRED APR</span><strong>{deal.outsideApr > 0 ? dollars(analysis.desiredPayment) : "—"}{deal.outsideApr > 0 ? <small>/mo</small> : null}</strong><small>{deal.outsideApr > 0 ? `${deal.outsideApr.toFixed(2)}% · with products` : "Enter a desired APR"}</small></div>
+              </div>
 
-            <div className="result-section-title"><span>PRIORITY FINDINGS</span></div>
-            <div className="result-flags">
-              {analysis.flags.map((flag, index) => (
-                <div className={`result-flag result-${flag.tone}`} key={`${flag.title}-${index}`}>
-                  <span>{flag.tone === "good" ? "✓" : flag.tone === "warn" ? "!" : "i"}</span>
-                  <p><b>{flag.title}</b><small>{flag.detail}</small></p>
-                </div>
-              ))}
-            </div>
+              <div className={`payment-truth ${deal.quotedPayment > 0 && Math.abs(analysis.paymentGap) > PAYMENT_MATCH_TOLERANCE ? "payment-truth-warning" : ""}`}>
+                <div><span>DEALER&apos;S PRINTED PAYMENT</span><strong>{deal.quotedPayment > 0 ? dollarsAndCents(deal.quotedPayment) : "Not entered"}</strong></div>
+                <div><span>PENCILPROOF CALCULATION</span><strong>{dollarsAndCents(analysis.calculatedPayment)}</strong></div>
+                <div><span>DIFFERENCE</span><strong>{deal.quotedPayment > 0 ? dollarsAndCents(Math.abs(analysis.paymentGap)) : "—"}</strong></div>
+              </div>
 
-            <div className="product-breakdown">
-              <div className="result-section-title"><span>WHAT THE PRODUCTS DO</span></div>
-              {analysis.productInsights.length ? analysis.productInsights.map((product) => (
-                <article className="product-insight" key={product.name}>
-                  <div><h3>{product.name}</h3><strong>{dollars(product.amount)}</strong></div>
-                  <p>{product.explanation}</p>
-                  <small><b>Ask:</b> {product.question}</small>
-                </article>
-              )) : (
-                <p className="empty-products">Enter any VSC, GAP, maintenance, protection, or accessory prices shown on the quote to receive product-specific guidance.</p>
-              )}
-            </div>
+              <div className="result-numbers">
+                <div><span>Estimated amount financed</span><strong>{dollars(analysis.amountFinanced)}</strong></div>
+                <div><span>Entered optional products</span><strong>{dollars(analysis.addons)}</strong></div>
+                <div><span>Total of payments</span><strong>{dollars(analysis.totalPayments)}</strong></div>
+                <div><span>Total finance charge</span><strong>{dollars(analysis.financeCharge)}</strong></div>
+              </div>
 
-            <div className="dealer-message">
-              <div><p>YOUR REQUEST TO THE DESK</p><button type="button" onClick={copyMessage}>{copied ? "Copied" : "Copy message"}</button></div>
-              <pre>{message}</pre>
-            </div>
-            <button className="print-button" type="button" onClick={() => window.print()}>Print or save this Deal Audit</button>
+              <div className="deal-equation">
+                <div className="result-section-title"><span>HOW THE DEAL ADDS UP</span></div>
+                {[
+                  ["Vehicle selling price", deal.sellingPrice, "+"],
+                  ["Sales tax", deal.tax, "+"],
+                  ["Government / registration", deal.govFees, "+"],
+                  ["Documentation fee", deal.docFee, "+"],
+                  ["Optional products", analysis.addons, "+"],
+                  ["Trade loan payoff", deal.tradePayoff, "+"],
+                  ["Trade allowance", deal.tradeValue, "−"],
+                  ["Cash down", deal.cashDown, "−"],
+                  ["Rebate / discount", deal.rebate, "−"],
+                ].map(([label, amount, sign]) => (
+                  <div key={String(label)}>
+                    <span>{sign} {label}</span>
+                    <strong>{dollarsAndCents(Number(amount))}</strong>
+                  </div>
+                ))}
+                <div className="deal-equation-total"><span>= Estimated amount financed</span><strong>{dollarsAndCents(analysis.amountFinanced)}</strong></div>
+              </div>
+
+              <div className="result-section-title"><span>PRIORITY FINDINGS</span></div>
+              <div className="result-flags">
+                {analysis.flags.map((flag, index) => (
+                  <div className={`result-flag result-${flag.tone}`} key={`${flag.title}-${index}`}>
+                    <span>{flag.tone === "good" ? "✓" : flag.tone === "warn" ? "!" : "i"}</span>
+                    <p><b>{flag.title}</b><small>{flag.detail}</small></p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="product-breakdown">
+                <div className="result-section-title"><span>WHAT THE PRODUCTS DO</span></div>
+                {analysis.productInsights.length ? analysis.productInsights.map((product) => (
+                  <article className="product-insight" key={product.name}>
+                    <div><h3>{product.name}</h3><strong>{dollars(product.amount)}</strong></div>
+                    <p>{product.explanation}</p>
+                    <small><b>Ask:</b> {product.question}</small>
+                  </article>
+                )) : (
+                  <p className="empty-products">Enter any VSC, GAP, maintenance, protection, or accessory prices shown on the quote to receive product-specific guidance.</p>
+                )}
+              </div>
+
+              <div className="dealer-message">
+                <div><p>YOUR REQUEST TO THE DESK</p><button type="button" onClick={copyMessage}>{copied ? "Copied" : "Copy message"}</button></div>
+                <pre>{message}</pre>
+              </div>
+              <button className="print-button" type="button" onClick={() => window.print()}>Print or save this Deal Audit</button>
+            </> : (
+              <div className="empty-audit">
+                <strong>Your audit will appear here.</strong>
+                <p>Upload a quote, enter the figures manually, or load the sample. PencilProof will not grade an empty deal.</p>
+              </div>
+            )}
             <p className="result-disclaimer">Educational estimate only. Coverage, taxes, fees, trade credits, lender rules, and product terms vary. Verify every figure and contract before signing. No savings are guaranteed.</p>
           </div>
         </aside>
-      </div>
+      </div> : null}
     </main>
   );
 }

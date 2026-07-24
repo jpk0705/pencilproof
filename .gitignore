@@ -13,3 +13,5 @@ next-env.d.ts
 
 # Generated from installed OCR packages before each build
 /public/ocr/
+/tmp/
+/eng.traineddata
