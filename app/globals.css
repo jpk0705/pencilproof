@@ -222,7 +222,10 @@ h1 { max-width: 690px; margin: 0; font-family: Georgia, 'Times New Roman', serif
 
 .faq-section { display: grid; grid-template-columns: .8fr 1.2fr; gap: 90px; }
 .faq-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 38px 30px; }
-.faq-grid article { border-top: 1px solid var(--line); padding-top: 18px; }.faq-grid h3 { margin: 0 0 11px; font-size: 15px; }.faq-grid p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.65; }
+.faq-grid article { border-top: 1px solid var(--line); padding-top: 18px; }.faq-grid h2, .faq-grid h3 { margin: 0 0 11px; font-family: Arial, sans-serif; font-size: 15px; font-weight: 700; letter-spacing: 0; }.faq-grid p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.65; }
+.questions-page .faq-section { min-height: calc(100vh - 188px); padding-top: 96px; }
+.questions-page .section-intro h1 { font-size: clamp(40px, 4.4vw, 61px); line-height: 1.08; letter-spacing: -.035em; }
+.questions-page .section-intro > p:last-child { max-width: 360px; color: var(--muted); font-size: 14px; line-height: 1.7; }
 
 footer { border-top: 1px solid var(--line); padding: 34px 0; }
 .footer-grid { display: grid; grid-template-columns: 1fr 1.4fr 1fr; align-items: center; }.footer-grid p { color: var(--muted); font-size: 10px; text-align: center; }.footer-grid div { display: flex; justify-content: flex-end; gap: 18px; font-size: 11px; font-weight: 700; }

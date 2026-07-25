@@ -38,7 +38,7 @@ export default function Home() {
         <div className="nav-links">
           <a href="#structure-yourself">Who it helps</a>
           <a href="#how-it-works">How it works</a>
-          <a href="#deal-questions">Q&amp;A</a>
+          <Link href="/questions">Q&amp;A</Link>
           <a href="#pricing">Pricing</a>
           <a className="nav-cta" href="#free-scan">Scan my quote free</a>
         </div>
@@ -259,32 +259,11 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="section shell faq-section" id="faq">
-        <div className="section-intro compact">
-          <p className="kicker">STRAIGHT ANSWERS</p>
-          <h2>Know what you&apos;re buying.</h2>
-        </div>
-        <div className="faq-grid">
-          <article><h3>Is this just a payment calculator?</h3><p>No. It rebuilds the payment, separates entered products, explains common finance-office products, measures APR and trade impact, and creates an action plan.</p></article>
-          <article><h3>Does PencilProof guarantee savings?</h3><p>No. It may identify costs worth questioning, but actual savings depend on the deal, lender, products, dealer, and choices you make.</p></article>
-          <article><h3>Can I update the deal after the dealer responds?</h3><p>Yes. Change the inputs to compare a revised worksheet, then print or save the updated review before signing.</p></article>
-          <article><h3>Can PencilProof read every document?</h3><p>No. It can autofill recognizable text from many digital or scanned PDFs and clear JPG/JPEG/PNG images. Blurry, cropped, handwritten, password-protected, or unusually formatted documents may require manual entry.</p></article>
-          <article><h3>What if an imported number is wrong?</h3><p>Do not pay from the free preview. Try a clearer copy or plan to enter the missing figure manually. PencilProof rejects weak scans, labels every detected value, locks preview checkout until you confirm that you reviewed the import, and requires confirmation again before analysis.</p></article>
-          <article><h3>Can it compare a quote with several payment choices?</h3><p>Yes. When PencilProof recognizes an option matrix, it shows the detected finance and lease rows so you can select the one you are considering. Always compare imported values with the original document.</p></article>
-          <article><h3>Does a desired APR mean I am approved?</h3><p>No. It is a what-if scenario showing the payment at a rate you choose. Only a lender can approve an APR and final loan terms.</p></article>
-          <article><h3>Who created PencilProof?</h3><p>It was founded by an automotive professional with experience as a salesperson, sales manager, and finance manager. PencilProof remains independent and is not affiliated with a dealership or lender.</p></article>
-          <article><h3>Is this a dealership desking or lender-approval system?</h3><p>No. PencilProof models the figures you enter or import. It cannot authorize a discount, access lender programs, approve credit, or replace the dealership&apos;s official buyer&apos;s order or lease worksheet.</p></article>
-          <article><h3>Does PencilProof negotiate or provide advice?</h3><p>No. It is an independent educational estimate. It does not contact dealers, arrange financing, or provide legal or financial advice.</p></article>
-          <article><h3>Do you store my deal?</h3><p>No. Deal inputs stay in your browser. Stripe and Link process checkout information, but PencilProof does not receive your full card number.</p></article>
-          <article><h3>What should I have ready?</h3><p>Use the dealer&apos;s buyer&apos;s order, worksheet, or written quote showing price, taxes, fees, products, trade, APR, term, and payment.</p></article>
-        </div>
-      </section>
-
       <footer>
         <div className="shell footer-grid">
           <Link className="brand brand-footer" href="/"><span className="brand-mark">P</span><span>PencilProof</span></Link>
           <p>Independent educational deal analysis. Not affiliated with any dealership or lender.</p>
-          <div><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link></div>
+          <div><Link href="/questions">Q&amp;A</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link></div>
         </div>
       </footer>
     </main>
