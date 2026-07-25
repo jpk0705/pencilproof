@@ -61,6 +61,40 @@ closeTo(printedPayment.rebate, 1500);
 closeTo(printedPayment.quotedPayment, 642.94);
 closeTo(printedPayment.accessories, 2499);
 
+const separatedPackedPayment = parseDealerText([
+  "Estimated Payment",
+  "V8, EcoTec3, 6.2 Liter | 4WD | Automatic",
+  "ABS (4-Wheel), Adaptive Cruise Control",
+  "Bluetooth Wireless, Bose Surround Sound",
+  "Fog Lights, Head-Up Display",
+  "Leather, LED Headlamps",
+  "StabiliTrak, Surround View Camera",
+  "$1,676.05",
+  "Buyer Information",
+  "72 Months @ 13.9400%",
+  "Sales Price $70,000.00",
+  "Appearance $699.00",
+  "Connected Car 5 Year Plan $999.00",
+  "GAP Insurance $1,200.00",
+  "Government Fees $1,029.25",
+  "Doc Fee $85.00",
+  "Sales Tax: 9.75% $7,003.72",
+  "Deposit / Cash Down $16,000.00",
+  "Trade Allowance $38,000.00",
+  "Trade Payoff $51,946.63",
+  "Cash Due / Finance Amount $78,962.60",
+]);
+closeTo(separatedPackedPayment.quotedPayment, 1676.05);
+const packedPaymentReview = reconcileQuotedPayment(separatedPackedPayment);
+closeTo(packedPaymentReview.fields.quotedPayment, 1676.05);
+assert.match(packedPaymentReview.warnings.join(" "), /packed payment/i);
+
+const missingPrintedPayment = parseDealerText([
+  "72 Months @ 13.9400%",
+  "Cash Due / Finance Amount $78,962.60",
+]);
+assert.equal(missingPrintedPayment.quotedPayment, undefined);
+
 const realGap = parseDealerText([
   "Selling Price $38,995.00",
   "GAP Protection $1,200.00",

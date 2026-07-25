@@ -293,7 +293,7 @@ export default function FreeQuotePreview() {
                       {!preview.calculatedPayment || !preview.fields.quotedPayment
                         ? "Enter the printed payment to compare"
                         : preview.hasPaymentMismatch
-                          ? "Quoted payment differs from the live calculation"
+                          ? "Possible packed payment or undisclosed amount"
                           : "Quoted payment is within $5"}
                     </span>
                   </p>

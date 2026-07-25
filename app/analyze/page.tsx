@@ -456,8 +456,8 @@ export default function AnalyzePage() {
     if (deal.quotedPayment > 0 && Math.abs(paymentGap) > PAYMENT_MATCH_TOLERANCE) {
       flags.push({
         tone: "warn",
-        title: `Payment differs by ${dollars(Math.abs(paymentGap))}/month`,
-        detail: `The entered figures calculate to about ${dollars(calculatedPayment)}/month. Ask the dealer to reconcile the amount financed, APR, term, and first-payment due date. An unshown fee, product, balance, or timing difference may explain the gap.`,
+        title: `Quoted payment is ${dollars(Math.abs(paymentGap))}/month ${paymentGap > 0 ? "higher" : "lower"} than the live calculation`,
+        detail: `The entered figures calculate to about ${dollars(calculatedPayment)}/month. Ask the dealer to reconcile the amount financed, APR, term, and first-payment due date. An unshown amount, deferred first payment, or packed payment may explain the gap.`,
       });
     } else if (deal.quotedPayment > 0) {
       flags.push({

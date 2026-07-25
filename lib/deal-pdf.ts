@@ -123,7 +123,7 @@ export const reconcileQuotedPayment = (sourceFields: ImportedDealFields) => {
   return {
     fields,
     warnings: [
-      `Payment warning: the document shows $${fields.quotedPayment.toFixed(2)}, while the imported figures calculate to $${roundedCalculatedPayment.toFixed(2)} per month—a $${difference.toFixed(2)} difference. PencilProof preserved both values. Check the worksheet for a missing fee, product, trade balance, or different financed amount.`,
+      `Payment warning: the document shows $${fields.quotedPayment.toFixed(2)}, while the imported figures calculate to $${roundedCalculatedPayment.toFixed(2)} per month—a $${difference.toFixed(2)} difference. PencilProof preserved both values. Ask the dealer to reconcile the amount financed, APR, term, and first-payment due date; an undisclosed amount, deferred first payment, or packed payment may explain the gap.`,
     ],
   };
 };
@@ -375,7 +375,15 @@ const findPaymentNearLabel = (lines: string[], labels: RegExp[]) => {
     if (!labels.some((label) => label.test(lines[index]))) continue;
     for (let distance = 0; distance <= 12; distance += 1) {
       for (const candidateIndex of distance ? [index + distance, index - distance] : [index]) {
-        const values = currencyValues(lines[candidateIndex] ?? "");
+        const candidateLine = lines[candidateIndex] ?? "";
+        const values = currencyValues(candidateLine);
+        const printedPayment = values.find(({ value, raw }) => {
+          if (value < 50 || value > 5000) return false;
+          const remainingText = candidateLine.replace(raw, "").replace(/[\s:|()[\].,-]/g, "");
+          return remainingText.length === 0 || labels.some((label) => label.test(remainingText));
+        });
+        if (printedPayment) return printedPayment.value;
+
         const joinedCents = values.find(({ value, raw }) =>
           value >= 50000 && value <= 500000 && raw.includes("$") && !raw.includes(",") && !raw.includes("."),
         );
@@ -552,16 +560,7 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     /\bpayment per month\b/i,
     /\bestimated payment\b/i,
   ];
-  const quotedPayment = findAmount(lines, paymentLabels) ?? findPaymentNearLabel(lines, paymentLabels);
-  const joinedPaymentText = lines.join(" ");
-  const individuallySpacedPayment = joinedPaymentText.match(/\$\s*((?:\d\s+){3,6}\d)\b/);
-  const splitCentsPayment = joinedPaymentText.match(/\$\s*(\d{2,4})\s+(\d)\s+(\d)\b/);
-  const spacedPaymentDigits = individuallySpacedPayment?.[1].replace(/\s/g, "");
-  const resolvedQuotedPayment = spacedPaymentDigits && spacedPaymentDigits.length >= 3
-    ? Number(`${spacedPaymentDigits.slice(0, -2)}.${spacedPaymentDigits.slice(-2)}`)
-    : splitCentsPayment
-    ? Number(`${splitCentsPayment[1]}.${splitCentsPayment[2]}${splitCentsPayment[3]}`)
-    : quotedPayment;
+  const labeledQuotedPayment = findPaymentNearLabel(lines, paymentLabels);
   const knownNonPaymentAmounts = [
     fields.sellingPrice,
     fields.tax,
@@ -577,10 +576,26 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     fields.cashDown,
     fields.rebate,
   ].filter((value): value is number => value !== undefined);
-  const duplicatesKnownAmount = resolvedQuotedPayment !== undefined &&
-    knownNonPaymentAmounts.some((value) => Math.abs(value - resolvedQuotedPayment) < 0.01);
-  if (resolvedQuotedPayment && resolvedQuotedPayment >= 50 && resolvedQuotedPayment <= 5000 && !duplicatesKnownAmount) {
-    fields.quotedPayment = resolvedQuotedPayment;
+
+  if (labeledQuotedPayment && labeledQuotedPayment >= 50 && labeledQuotedPayment <= 5000) {
+    fields.quotedPayment = labeledQuotedPayment;
+  }
+
+  if (!fields.quotedPayment) {
+    const joinedPaymentText = lines.join(" ");
+    const individuallySpacedPayment = joinedPaymentText.match(/\$\s*((?:\d\s+){3,6}\d)\b/);
+    const splitCentsPayment = joinedPaymentText.match(/\$\s*(\d{2,4})\s+(\d)\s+(\d)\b/);
+    const spacedPaymentDigits = individuallySpacedPayment?.[1].replace(/\s/g, "");
+    const spacedQuotedPayment = spacedPaymentDigits && spacedPaymentDigits.length >= 3
+      ? Number(`${spacedPaymentDigits.slice(0, -2)}.${spacedPaymentDigits.slice(-2)}`)
+      : splitCentsPayment
+        ? Number(`${splitCentsPayment[1]}.${splitCentsPayment[2]}${splitCentsPayment[3]}`)
+        : undefined;
+    const duplicatesKnownAmount = spacedQuotedPayment !== undefined &&
+      knownNonPaymentAmounts.some((value) => Math.abs(value - spacedQuotedPayment) < 0.01);
+    if (spacedQuotedPayment && spacedQuotedPayment >= 50 && spacedQuotedPayment <= 5000 && !duplicatesKnownAmount) {
+      fields.quotedPayment = spacedQuotedPayment;
+    }
   }
 
   if (!fields.quotedPayment) {
@@ -608,21 +623,6 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
           fields.quotedPayment = closestPrintedAmount;
         }
       }
-    }
-  }
-
-  if (!fields.quotedPayment && fields.apr && fields.term) {
-    const financeAmount = findAmount(lines, [
-      /\bcash due\s*\/\s*finance amount\b/i,
-      /\bamount financed\b/i,
-      /\bfinance amount\b/i,
-    ]);
-    if (financeAmount && financeAmount >= 1000) {
-      const monthlyRate = fields.apr / 1200;
-      const calculatedPayment = monthlyRate === 0
-        ? financeAmount / fields.term
-        : financeAmount * monthlyRate / (1 - Math.pow(1 + monthlyRate, -fields.term));
-      fields.quotedPayment = Math.round(calculatedPayment * 100) / 100;
     }
   }
 
