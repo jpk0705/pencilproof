@@ -155,7 +155,14 @@ h1 { max-width: 690px; margin: 0; font-family: Georgia, 'Times New Roman', serif
 .free-unlock > div > strong { display: block; margin-top: 7px; font-family: Georgia, serif; font-size: 23px; font-weight: 500; }
 .free-unlock > div > p { margin: 8px 0 18px; color: var(--muted); font-size: 10px; line-height: 1.55; }
 .free-unlock .button { width: 100%; }
+.free-unlock .button[disabled] { opacity: .5; box-shadow: none; transform: none; cursor: not-allowed; }
+.free-import-confirm { display: flex; gap: 11px; align-items: flex-start; margin: 17px 0 13px; padding: 13px; border: 1px solid #c5d1ba; border-radius: 6px; color: var(--ink); background: rgba(255,255,255,.62); cursor: pointer; }
+.free-import-confirm input { width: 17px; height: 17px; flex: 0 0 17px; margin: 1px 0 0; accent-color: var(--green); }
+.free-import-confirm span { display: flex; flex-direction: column; gap: 4px; }
+.free-import-confirm b { font-size: 10px; }
+.free-import-confirm small { color: var(--muted); font-size: 8px; line-height: 1.45; }
 .free-unlock > button { display: block; margin: 12px auto 0; padding: 0; border: 0; color: var(--muted); background: transparent; font-size: 9px; font-weight: 800; text-decoration: underline; cursor: pointer; }
+.free-unlock > button.button { min-height: 52px; margin: 0; padding: 0 18px; border: 1px solid var(--ink); color: var(--ink); background: var(--accent); font-size: 12px; text-decoration: none; }
 .free-scan-note { margin: 0; padding: 13px 23px; color: #78868b; background: #f4f1ea; border-top: 1px solid var(--line); font-size: 8px; line-height: 1.5; text-align: center; }
 
 .section { padding-top: 112px; padding-bottom: 112px; }

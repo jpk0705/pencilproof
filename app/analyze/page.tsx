@@ -10,6 +10,7 @@ import {
   type ImportedDealFields,
 } from "@/lib/deal-pdf";
 import { paymentFor } from "@/lib/deal-calculations";
+import { isPreviewImportUsable } from "@/lib/deal-review";
 import { QUOTE_HANDOFF_KEY } from "@/lib/checkout";
 
 type Deal = {
@@ -75,24 +76,24 @@ const verificationFields: (keyof ImportedDealFields)[] = [
 const Arrow = () => <span aria-hidden="true">→</span>;
 
 const sample: Deal = {
-  vehicle: "2026 compact SUV",
-  sellingPrice: 38450,
-  tax: 3474,
-  govFees: 612,
+  vehicle: "2024 GMC Yukon Denali",
+  sellingPrice: 70000,
+  tax: 7003.72,
+  govFees: 1029.25,
   docFee: 85,
-  serviceContract: 1295,
-  gap: 0,
-  prepaidMaintenance: 895,
-  protection: 600,
-  accessories: 0,
-  tradeValue: 0,
-  tradePayoff: 0,
-  cashDown: 2500,
+  serviceContract: 0,
+  gap: 1200,
+  prepaidMaintenance: 0,
+  protection: 699,
+  accessories: 999,
+  tradeValue: 38000,
+  tradePayoff: 51946.63,
+  cashDown: 16000,
   rebate: 0,
-  apr: 7.49,
-  outsideApr: 5.39,
+  apr: 13.94,
+  outsideApr: 0,
   term: 72,
-  quotedPayment: 736,
+  quotedPayment: 1676.05,
 };
 
 const blank: Deal = {
@@ -250,10 +251,10 @@ export default function AnalyzePage() {
           fields: [],
         });
       });
-      if (!result.fieldNames.length && !result.offerMatrix) {
+      if (!isPreviewImportUsable(result)) {
         setDealImport({
           status: "error",
-          message: "The file contains readable text, but its labels did not match the supported dealer fields. Enter the figures manually and double-check the worksheet.",
+          message: "The file contains readable text, but PencilProof did not find enough recognizable deal information for a reliable import. Try a clearer or more complete copy, or enter the figures manually and double-check the worksheet.",
           fields: [],
         });
         return;

@@ -8,6 +8,7 @@ import { paymentFor } from "../lib/deal-calculations.ts";
 import {
   countPreviewReviewAreas,
   countPricedProducts,
+  isPreviewImportUsable,
 } from "../lib/deal-review.ts";
 
 const closeTo = (actual, expected, tolerance = 0.01) => {
@@ -143,6 +144,13 @@ const paymentWithMistakenTaxRate = paymentFor(quoteBaseWithoutTax + 9.375, 12.99
 const paymentWithTaxAmount = paymentFor(quoteBaseWithoutTax + 4137.47, 12.99, 75);
 closeTo(paymentWithTaxAmount - paymentWithMistakenTaxRate, 80.66, 0.01);
 
+const sampleCalculatedPayment = paymentFor(78962.60, 13.94, 72);
+const samplePaymentWithoutProducts = paymentFor(78962.60 - 2898, 13.94, 72);
+closeTo(sampleCalculatedPayment, 1624.55);
+closeTo(1676.05 - sampleCalculatedPayment, 51.50);
+closeTo(sampleCalculatedPayment - samplePaymentWithoutProducts, 59.62);
+closeTo((sampleCalculatedPayment - samplePaymentWithoutProducts) * 72, 4292.81);
+
 const allPricedProducts = {
   serviceContract: 3453,
   gap: 1200,
@@ -168,6 +176,30 @@ assert.equal(
     hasOfferMatrix: false,
   }),
   6,
+);
+assert.equal(
+  isPreviewImportUsable({
+    fields: { sellingPrice: 38000 },
+    fieldNames: ["Selling price"],
+    offerMatrix: undefined,
+  }),
+  false,
+);
+assert.equal(
+  isPreviewImportUsable({
+    fields: { sellingPrice: 38000, apr: 7.49, term: 72 },
+    fieldNames: ["Selling price", "Dealer APR", "Loan term"],
+    offerMatrix: undefined,
+  }),
+  true,
+);
+assert.equal(
+  isPreviewImportUsable({
+    fields: {},
+    fieldNames: [],
+    offerMatrix: matrix,
+  }),
+  true,
 );
 
 console.log("PencilProof regression checks passed.");

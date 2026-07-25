@@ -38,6 +38,7 @@ export default function Home() {
         <div className="nav-links">
           <a href="#structure-yourself">Who it helps</a>
           <a href="#how-it-works">How it works</a>
+          <a href="#deal-questions">Q&amp;A</a>
           <a href="#pricing">Pricing</a>
           <a className="nav-cta" href="#free-scan">Scan my quote free</a>
         </div>
@@ -48,14 +49,14 @@ export default function Home() {
           <div className="eyebrow"><span /> THE DEAL MAY BE FAIR. VERIFY IT BEFORE YOU SIGN.</div>
           <h1>Stop negotiating blind. See what you&apos;re really paying for.</h1>
           <p className="hero-lede">
-            Tired of hearing “Let me check with my manager,” then waiting 30 minutes after asking for a discount, better rate, or payment without a product?
+            Tired of hearing “Let me check with my manager,” then waiting 30 minutes?
             PencilProof turns the written quote into clear numbers so you can see the price, rate, fees, products, trade, and payment math before agreeing to anything.
           </p>
           <div className="hero-actions">
             <a className="button button-primary" href="#free-scan">
               Upload my quote free <Arrow />
             </a>
-            <a className="button button-quiet" href="#sample-audit">See a sample audit</a>
+            <a className="button button-quiet" href="#deal-questions">See a sample audit</a>
           </div>
           <p className="hero-caution">No payment required to test your quote. Unlock the complete analysis only after PencilProof shows what it found.</p>
           <div className="proof-row" aria-label="Product highlights">
@@ -72,32 +73,32 @@ export default function Home() {
           <div className="deal-card-head">
             <div>
               <p>SAMPLE DEAL AUDIT</p>
-              <h2>2026 compact SUV</h2>
+              <h2>2024 GMC Yukon Denali</h2>
             </div>
-            <div className="sample-status"><strong>4</strong><span>essential deal checks</span></div>
+            <div className="sample-status"><strong>4</strong><span>areas worth reviewing</span></div>
           </div>
           <div className="deal-metrics">
-            <div><span>With products</span><strong>$742/mo</strong></div>
-            <div><span>Without products</span><strong>$694/mo</strong></div>
-            <div><span>Products financed</span><strong>$2,790</strong></div>
+            <div><span>Dealer quote</span><strong>$1,676/mo</strong></div>
+            <div><span>Calculated payment</span><strong>$1,625/mo</strong></div>
+            <div><span>Products financed</span><strong>$2,898</strong></div>
           </div>
           <div className="flag-list">
             <div className="flag flag-warn">
               <span className="flag-icon">!</span>
-              <p><b>Products add about $48/month</b><small>VSC, maintenance, and protection are included in the loan.</small></p>
+              <p><b>3 products add about $60/month</b><small>Appearance, GAP, and a connected-car plan are included in the loan.</small></p>
             </div>
             <div className="flag flag-warn">
               <span className="flag-icon">!</span>
-              <p><b>Dealer APR is 2.10 points above the desired APR</b><small>At 5.39%, the estimated payment is $699/month—about $3,086 less over 72 months.</small></p>
+              <p><b>Quoted payment is $51.50/month higher</b><small>Quote: $1,676.05. Entered figures: $1,624.55. Ask the dealer to explain the variance.</small></p>
             </div>
             <div className="flag flag-good">
               <span className="flag-icon">✓</span>
-              <p><b>Dealer-ready response included</b><small>Ask for the exact no-products payment and an itemized buyer&apos;s order.</small></p>
+              <p><b>Dealer-ready response included</b><small>Ask for the exact amount financed, first-payment date, and an itemized buyer&apos;s order.</small></p>
             </div>
           </div>
           <div className="deal-card-foot">
             <span>Example based on entered figures.</span>
-            <a href="#sample-audit">See what&apos;s inside <Arrow /></a>
+            <a href="#deal-questions">See what&apos;s inside <Arrow /></a>
           </div>
         </div>
       </section>
@@ -161,10 +162,10 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="section shell sample-section" id="sample-audit">
+      <section className="section shell sample-section" id="deal-questions">
         <div className="sample-copy">
           <p className="kicker">TRANSPARENCY IS THE SOLUTION</p>
-          <h2>You should not need dealership experience to understand your own deal.</h2>
+          <h2>You shouldn&apos;t need years inside a dealership to know whether your own deal adds up.</h2>
           <p>
             PencilProof is designed for the moment you have an actual dealer
             worksheet and do not want to be confused, pressured, or taken
@@ -175,9 +176,9 @@ export default function Home() {
         </div>
         <div className="audit-preview" aria-label="Example audit findings">
           <div className="audit-preview-head"><span>EXAMPLE FINDINGS</span><strong>What the paid audit reveals</strong></div>
-          <div className="audit-finding"><span>01</span><div><b>Payment without optional products</b><p>Compare the rebuilt $742 payment with an estimated $694 payment after removing entered products.</p></div><strong>−$48/mo</strong></div>
-          <div className="audit-finding"><span>02</span><div><b>Products plus estimated financing</b><p>See that $2,790 in entered products may cost roughly $3,472 when financed for the full term.</p></div><strong>$3,472</strong></div>
-          <div className="audit-finding"><span>03</span><div><b>Dealer APR versus your desired APR</b><p>Compare the $742 rebuilt payment with an estimated $699 payment at the desired 5.39% APR.</p></div><strong>−$43/mo</strong></div>
+          <div className="audit-finding"><span>01</span><div><b>Quoted payment versus calculated payment</b><p>Compare the dealer&apos;s $1,676.05 quote with the $1,624.55 payment calculated from the entered figures.</p></div><strong>+$51.50/mo</strong></div>
+          <div className="audit-finding"><span>02</span><div><b>Products plus estimated financing</b><p>See that $2,898 in entered products may cost roughly $4,293 when financed for the full term.</p></div><strong>$4,293</strong></div>
+          <div className="audit-finding"><span>03</span><div><b>Negative trade equity</b><p>See when the trade payoff exceeds the allowance and the difference is added to the new loan.</p></div><strong>$13,947</strong></div>
           <div className="audit-unlock">
             <span>THE COMPLETE AUDIT ALSO INCLUDES</span>
             <ul><li>Plain-language product explanations</li><li>Prioritized questions for the finance office</li><li>A copy-ready request for a revised quote</li><li>Printable action plan</li></ul>
@@ -217,8 +218,8 @@ export default function Home() {
           </article>
           <article>
             <span>2</span>
-            <h3>Verify the preview</h3>
-            <p>Compare detected values with the quote and see confidence labels, missing information, and limited deal-math signals.</p>
+            <h3>Check every imported number</h3>
+            <p>Compare the detected values with the original quote. Checkout stays locked until you confirm that you reviewed the import.</p>
           </article>
           <article>
             <span>3</span>
@@ -258,7 +259,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="section shell faq-section">
+      <section className="section shell faq-section" id="faq">
         <div className="section-intro compact">
           <p className="kicker">STRAIGHT ANSWERS</p>
           <h2>Know what you&apos;re buying.</h2>
@@ -268,7 +269,7 @@ export default function Home() {
           <article><h3>Does PencilProof guarantee savings?</h3><p>No. It may identify costs worth questioning, but actual savings depend on the deal, lender, products, dealer, and choices you make.</p></article>
           <article><h3>Can I update the deal after the dealer responds?</h3><p>Yes. Change the inputs to compare a revised worksheet, then print or save the updated review before signing.</p></article>
           <article><h3>Can PencilProof read every document?</h3><p>No. It can autofill recognizable text from many digital or scanned PDFs and clear JPG/JPEG/PNG images. Blurry, cropped, handwritten, password-protected, or unusually formatted documents may require manual entry.</p></article>
-          <article><h3>What if an imported number is wrong?</h3><p>Imports are treated as drafts. PencilProof labels values as high confidence, needs review, or not found, and requires you to confirm or correct them before analysis. If the quote still cannot be processed, use the support options on your purchase receipt.</p></article>
+          <article><h3>What if an imported number is wrong?</h3><p>Do not pay from the free preview. Try a clearer copy or plan to enter the missing figure manually. PencilProof rejects weak scans, labels every detected value, locks preview checkout until you confirm that you reviewed the import, and requires confirmation again before analysis.</p></article>
           <article><h3>Can it compare a quote with several payment choices?</h3><p>Yes. When PencilProof recognizes an option matrix, it shows the detected finance and lease rows so you can select the one you are considering. Always compare imported values with the original document.</p></article>
           <article><h3>Does a desired APR mean I am approved?</h3><p>No. It is a what-if scenario showing the payment at a rate you choose. Only a lender can approve an APR and final loan terms.</p></article>
           <article><h3>Who created PencilProof?</h3><p>It was founded by an automotive professional with experience as a salesperson, sales manager, and finance manager. PencilProof remains independent and is not affiliated with a dealership or lender.</p></article>

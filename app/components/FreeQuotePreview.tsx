@@ -12,6 +12,7 @@ import { paymentFor } from "@/lib/deal-calculations";
 import {
   countPreviewReviewAreas,
   countPricedProducts,
+  isPreviewImportUsable,
 } from "@/lib/deal-review";
 
 type ScanState =
@@ -57,11 +58,13 @@ const formatValue = (field: keyof ImportedDealFields, value: string | number) =>
 
 export default function FreeQuotePreview() {
   const [scan, setScan] = useState<ScanState>({ status: "idle" });
+  const [importReviewed, setImportReviewed] = useState(false);
 
   const handleFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
+    setImportReviewed(false);
 
     const lowerName = file.name.toLowerCase();
     const supported =
@@ -88,10 +91,10 @@ export default function FreeQuotePreview() {
           message: `${readable.charAt(0).toUpperCase()}${readable.slice(1)}${progress > 0 ? ` · ${percent}%` : ""}`,
         });
       });
-      if (!result.fieldNames.length && !result.offerMatrix) {
+      if (!isPreviewImportUsable(result)) {
         setScan({
           status: "error",
-          message: "PencilProof found text, but not enough recognizable deal fields. Try a clearer copy before paying.",
+          message: "PencilProof found some text, but not enough deal information for a useful preview. Try a clearer or more complete copy before paying.",
         });
         return;
       }
@@ -185,17 +188,17 @@ export default function FreeQuotePreview() {
       <div className="shell free-scan-layout">
         <div className="free-scan-copy">
           <p className="kicker">PROVE IT WORKS BEFORE YOU PAY</p>
-          <h2>Upload your quote free. Pay only after PencilProof can read the deal.</h2>
+          <h2>Upload free. Check every imported number. Pay only if it looks right.</h2>
           <p>
-            Your file stays in this browser. The free scan shows what PencilProof
-            found, which values need review, and whether the quote contains areas
-            worth a closer look.
+            Your file stays in this browser. The free scan shows exactly what
+            imported, what is missing, and which values need review before
+            checkout becomes available.
           </p>
           <ul>
             <li>See the detected numbers before checkout</li>
-            <li>Catch missing or low-confidence fields</li>
+            <li>Compare every value with the original quote</li>
             <li>Get a limited math and issue preview</li>
-            <li>Unlock exact differences and scenarios only if useful</li>
+            <li>Do not pay if the import is not useful</li>
           </ul>
         </div>
 
@@ -322,30 +325,48 @@ export default function FreeQuotePreview() {
                   </strong>
                   <p>Unlock exact payment differences, product cost, APR scenarios, full-term totals, and a dealer-ready request.</p>
                 </div>
-                <a
-                  className="button button-primary"
-                  href={CHECKOUT_URL}
-                  onClick={() => {
-                    sessionStorage.setItem(
-                      QUOTE_HANDOFF_KEY,
-                      JSON.stringify({
-                        fields: scan.result.fields,
-                        confidence: scan.result.fieldConfidence,
-                        fileName: scan.fileName,
-                        offerMatrix: scan.result.offerMatrix ?? null,
-                      }),
-                    );
-                  }}
-                >
-                  Unlock full analysis · $39 <span aria-hidden="true">→</span>
-                </a>
-                <button type="button" onClick={() => setScan({ status: "idle" })}>Scan another quote</button>
+                <label className="free-import-confirm">
+                  <input
+                    type="checkbox"
+                    checked={importReviewed}
+                    onChange={(event) => setImportReviewed(event.target.checked)}
+                  />
+                  <span>
+                    <b>I compared the imported values with my quote.</b>
+                    <small>I understand that missing fields must be entered manually and every value must be confirmed again before analysis.</small>
+                  </span>
+                </label>
+                {importReviewed ? (
+                  <a
+                    className="button button-primary"
+                    href={CHECKOUT_URL}
+                    onClick={() => {
+                      sessionStorage.setItem(
+                        QUOTE_HANDOFF_KEY,
+                        JSON.stringify({
+                          fields: scan.result.fields,
+                          confidence: scan.result.fieldConfidence,
+                          fileName: scan.fileName,
+                          offerMatrix: scan.result.offerMatrix ?? null,
+                        }),
+                      );
+                    }}
+                  >
+                    Unlock full analysis · $39 <span aria-hidden="true">→</span>
+                  </a>
+                ) : (
+                  <button className="button button-primary" type="button" disabled>
+                    Review the imported values to continue
+                  </button>
+                )}
+                <button type="button" onClick={() => { setScan({ status: "idle" }); setImportReviewed(false); }}>Scan another quote</button>
               </div>
             </div>
           ) : null}
 
           <p className="free-scan-note">
-            OCR can make mistakes. Compare every detected value with the original.
+            OCR can make mistakes. Do not pay unless the detected values match
+            your quote or you are comfortable entering missing figures manually.
             PencilProof is an educational estimate, not a lender approval or dealer offer.
           </p>
         </div>
