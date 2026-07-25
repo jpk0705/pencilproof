@@ -5,6 +5,10 @@ import {
   reconcileQuotedPayment,
 } from "../lib/deal-pdf.ts";
 import { paymentFor } from "../lib/deal-calculations.ts";
+import {
+  countPreviewReviewAreas,
+  countPricedProducts,
+} from "../lib/deal-review.ts";
 
 const closeTo = (actual, expected, tolerance = 0.01) => {
   assert.ok(
@@ -104,5 +108,32 @@ const quoteBaseWithoutTax = 44635 + 1033.75 + 3453 + 699 + 299 - 10000;
 const paymentWithMistakenTaxRate = paymentFor(quoteBaseWithoutTax + 9.375, 12.99, 75);
 const paymentWithTaxAmount = paymentFor(quoteBaseWithoutTax + 4137.47, 12.99, 75);
 closeTo(paymentWithTaxAmount - paymentWithMistakenTaxRate, 80.66, 0.01);
+
+const allPricedProducts = {
+  serviceContract: 3453,
+  gap: 1200,
+  prepaidMaintenance: 899,
+  protection: 699,
+  accessories: 299,
+};
+assert.equal(countPricedProducts(allPricedProducts), 5);
+assert.equal(
+  countPreviewReviewAreas({
+    fields: allPricedProducts,
+    hasPaymentMismatch: false,
+    hasMissingCriticalInformation: false,
+    hasOfferMatrix: false,
+  }),
+  5,
+);
+assert.equal(
+  countPreviewReviewAreas({
+    fields: allPricedProducts,
+    hasPaymentMismatch: true,
+    hasMissingCriticalInformation: false,
+    hasOfferMatrix: false,
+  }),
+  6,
+);
 
 console.log("PencilProof regression checks passed.");

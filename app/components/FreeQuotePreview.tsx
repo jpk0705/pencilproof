@@ -9,6 +9,10 @@ import {
   type ImportedDealFields,
 } from "@/lib/deal-pdf";
 import { paymentFor } from "@/lib/deal-calculations";
+import {
+  countPreviewReviewAreas,
+  countPricedProducts,
+} from "@/lib/deal-review";
 
 type ScanState =
   | { status: "idle" }
@@ -144,11 +148,14 @@ export default function FreeQuotePreview() {
       (field) => scan.result.fieldConfidence[field] === "high",
     ).length;
     const reviewCount = found.length - highConfidence;
-    const reviewAreas =
-      (products > 0 ? 1 : 0) +
-      (paymentDifference > 5 ? 1 : 0) +
-      (missingCritical.length ? 1 : 0) +
-      (scan.result.offerMatrix ? 1 : 0);
+    const pricedProductCount = countPricedProducts(fields);
+    const hasPaymentMismatch = paymentDifference > 5;
+    const reviewAreas = countPreviewReviewAreas({
+      fields,
+      hasPaymentMismatch,
+      hasMissingCriticalInformation: missingCritical.length > 0,
+      hasOfferMatrix: Boolean(scan.result.offerMatrix),
+    });
     const paymentTone =
       !calculatedPayment || !fields.quotedPayment
         ? "preview-note"
@@ -162,9 +169,11 @@ export default function FreeQuotePreview() {
       highConfidence,
       reviewCount,
       products,
+      pricedProductCount,
       amountFinanced,
       calculatedPayment,
       paymentDifference,
+      hasPaymentMismatch,
       paymentTone,
       missingCritical,
       reviewAreas,
@@ -196,7 +205,15 @@ export default function FreeQuotePreview() {
               <span>FREE QUOTE CHECK</span>
               <h3>{scan.status === "ready" ? scan.fileName : "Does PencilProof read my quote?"}</h3>
             </div>
-            <span className="free-badge">NO PAYMENT</span>
+            <span className="free-badge">
+              {scan.status === "ready" && preview
+                ? preview.reviewAreas
+                  ? `${preview.reviewAreas} TO REVIEW`
+                  : "SCAN COMPLETE"
+                : scan.status === "loading"
+                  ? "READING QUOTE"
+                  : "FREE PREVIEW"}
+            </span>
           </div>
 
           {scan.status === "idle" ? (
@@ -274,15 +291,19 @@ export default function FreeQuotePreview() {
                     <b>Payment math</b>
                     <span>
                       {!preview.calculatedPayment || !preview.fields.quotedPayment
-                        ? "Not enough information to compare"
-                        : preview.paymentDifference > 5
-                          ? "Possible difference detected"
-                          : "Appears consistent"}
+                        ? "Enter the printed payment to compare"
+                        : preview.hasPaymentMismatch
+                          ? "Quoted payment differs from the live calculation"
+                          : "Quoted payment is within $5"}
                     </span>
                   </p>
                   <p className={preview.products > 0 ? "preview-warn" : "preview-note"}>
                     <b>Products and add-ons</b>
-                    <span>{preview.products > 0 ? "Detected in this quote" : "None detected"}</span>
+                    <span>
+                      {preview.pricedProductCount > 0
+                        ? `${preview.pricedProductCount} priced item${preview.pricedProductCount === 1 ? "" : "s"} detected`
+                        : "No priced items detected"}
+                    </span>
                   </p>
                   <p className={preview.missingCritical.length ? "preview-warn" : "preview-good"}>
                     <b>Required information</b>
