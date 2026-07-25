@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CHECKOUT_URL } from "@/lib/checkout";
+import FreeQuotePreview from "@/app/components/FreeQuotePreview";
 
 const Arrow = () => <span aria-hidden="true">→</span>;
 
@@ -38,28 +39,27 @@ export default function Home() {
           <a href="#structure-yourself">Who it helps</a>
           <a href="#how-it-works">How it works</a>
           <a href="#pricing">Pricing</a>
-          <a className="nav-cta" href={CHECKOUT_URL}>Structure my deal · $39</a>
+          <a className="nav-cta" href="#free-scan">Scan my quote free</a>
         </div>
       </nav>
 
       <section className="hero shell">
         <div className="hero-copy">
-          <div className="eyebrow"><span /> ASKED FOR A DISCOUNT, RATE, OR PRODUCT CHANGE?</div>
-          <h1>Stop waiting 30 minutes. Structure the deal yourself.</h1>
+          <div className="eyebrow"><span /> THE DEAL MAY BE FAIR. VERIFY IT BEFORE YOU SIGN.</div>
+          <h1>Stop negotiating blind. See what you&apos;re really paying for.</h1>
           <p className="hero-lede">
-            You asked for a discount, a better rate, or the payment without a product—and the salesperson disappeared for 30 minutes.
-            Upload the quote or enter the figures yourself. PencilProof rebuilds the deal, compares payment options, separates products,
-            and helps you decide what revised structure to request before anyone returns from the manager&apos;s office.
+            Tired of hearing “Let me check with my manager,” then waiting 30 minutes after asking for a discount, better rate, or payment without a product?
+            PencilProof turns the written quote into clear numbers so you can see the price, rate, fees, products, trade, and payment math before agreeing to anything.
           </p>
           <div className="hero-actions">
-            <a className="button button-primary" href={CHECKOUT_URL}>
-              Structure my deal · $39 <Arrow />
+            <a className="button button-primary" href="#free-scan">
+              Upload my quote free <Arrow />
             </a>
             <a className="button button-quiet" href="#sample-audit">See a sample audit</a>
           </div>
-          <p className="hero-caution">One-time purchase. Educational estimate. Savings are not guaranteed.</p>
+          <p className="hero-caution">No payment required to test your quote. Unlock the complete analysis only after PencilProof shows what it found.</p>
           <div className="proof-row" aria-label="Product highlights">
-            <span><b>Instant access</b> after secure checkout</span>
+            <span><b>Free quote scan</b> before checkout</span>
             <span><b>No commissions</b> from dealers</span>
             <span><b>For shoppers</b> at the dealership</span>
             <span><b>For salespeople</b> checking scenarios</span>
@@ -74,7 +74,7 @@ export default function Home() {
               <p>SAMPLE DEAL AUDIT</p>
               <h2>2026 compact SUV</h2>
             </div>
-            <div className="sample-status"><strong>4</strong><span>plain-language checks</span></div>
+            <div className="sample-status"><strong>4</strong><span>essential deal checks</span></div>
           </div>
           <div className="deal-metrics">
             <div><span>With products</span><strong>$742/mo</strong></div>
@@ -101,6 +101,8 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      <FreeQuotePreview />
 
       <section className="section founder-section">
         <div className="shell founder-layout">
@@ -161,13 +163,13 @@ export default function Home() {
 
       <section className="section shell sample-section" id="sample-audit">
         <div className="sample-copy">
-          <p className="kicker">MORE THAN A PAYMENT CALCULATOR</p>
-          <h2>A calculator gives you a payment. An audit tells you what to question.</h2>
+          <p className="kicker">TRANSPARENCY IS THE SOLUTION</p>
+          <h2>You should not need dealership experience to understand your own deal.</h2>
           <p>
-            Free calculators can estimate a loan. PencilProof is designed for
-            the moment you have an actual dealer worksheet and need to separate
-            the vehicle, financing, trade, fees, and optional products.
-            It can also detect many multi-option payment menus so you can choose and compare the row you are actually considering.
+            PencilProof is designed for the moment you have an actual dealer
+            worksheet and do not want to be confused, pressured, or taken
+            advantage of. It separates the vehicle, financing, trade, fees, and
+            optional products, then shows what changed and what to ask next.
           </p>
           <a className="text-link" href={CHECKOUT_URL}>Get my complete audit for $39 <Arrow /></a>
         </div>
@@ -204,24 +206,24 @@ export default function Home() {
 
       <section className="section shell" id="how-it-works">
         <div className="section-intro">
-          <p className="kicker">THE FIVE-MINUTE SECOND OPINION</p>
-          <h2>Build your counter-request before the revised quote comes back.</h2>
+          <p className="kicker">SEE PROOF BEFORE CHECKOUT</p>
+          <h2>Know PencilProof can read your deal before you pay.</h2>
         </div>
         <div className="steps">
           <article>
             <span>1</span>
-            <h3>Unlock the audit</h3>
-            <p>Pay $39 once through secure Stripe checkout. There is no subscription or recurring charge.</p>
+            <h3>Upload the quote free</h3>
+            <p>Scan a dealer PDF or photo in your browser. No payment is required to see what PencilProof can detect.</p>
           </article>
           <article>
             <span>2</span>
-            <h3>Upload or enter the worksheet</h3>
-            <p>Import a digital or scanned dealer PDF or clear JPG/JPEG/PNG image, then confirm every detected value before the audit uses it. Manual entry is always available.</p>
+            <h3>Verify the preview</h3>
+            <p>Compare detected values with the quote and see confidence labels, missing information, and limited deal-math signals.</p>
           </article>
           <article>
             <span>3</span>
-            <h3>Structure the next version</h3>
-            <p>Compare the rebuilt deal, change the rate, term, down payment, or products, and copy a specific request for a revised buyer&apos;s order.</p>
+            <h3>Unlock the complete solution</h3>
+            <p>Pay once to see exact differences, compare scenarios, change products or terms, and create a specific request for a revised buyer&apos;s order.</p>
           </article>
         </div>
       </section>
@@ -230,7 +232,7 @@ export default function Home() {
         <div className="shell offer-grid">
           <div>
             <p className="kicker kicker-light">ONE-TIME DEAL AUDIT</p>
-            <h2>$39 before a decision worth tens of thousands.</h2>
+            <h2>See that it works first. Then decide if the full $39 analysis is worth it.</h2>
             <p className="offer-copy">
               The goal is not to scare you out of a product or a deal. It is to
               make the cost visible, explain the terms, and help you ask better
@@ -250,7 +252,7 @@ export default function Home() {
               <li>Copy-ready dealer questions</li>
               <li>Print or save the finished review</li>
             </ul>
-            <a className="button button-light" href={CHECKOUT_URL}>Structure my deal now <Arrow /></a>
+            <a className="button button-light" href="#free-scan">Scan my quote free <Arrow /></a>
             <small>One-time payment. Educational estimate. No guaranteed savings. If your quote cannot be processed, use the support options on your receipt for help or a refund review.</small>
           </div>
         </div>

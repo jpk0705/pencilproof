@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import {
   DEAL_FIELD_LABELS,
   extractDealFromFile,
@@ -10,6 +10,7 @@ import {
   type ImportedDealFields,
 } from "@/lib/deal-pdf";
 import { paymentFor } from "@/lib/deal-calculations";
+import { QUOTE_HANDOFF_KEY } from "@/lib/checkout";
 
 type Deal = {
   vehicle: string;
@@ -173,6 +174,47 @@ export default function AnalyzePage() {
   const [selectedOfferId, setSelectedOfferId] = useState("");
   const [selectedOfferType, setSelectedOfferType] = useState<DealOfferOption["type"] | null>(null);
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
+
+  useEffect(() => {
+    const saved = sessionStorage.getItem(QUOTE_HANDOFF_KEY);
+    if (!saved) return;
+    try {
+      const handoff = JSON.parse(saved) as {
+        fields?: Partial<Deal>;
+        confidence?: PendingImport["confidence"];
+        fileName?: string;
+        offerMatrix?: DealOfferMatrix | null;
+      };
+      if (!handoff.fields || !Object.keys(handoff.fields).length) return;
+      const importedFields = { ...handoff.fields };
+      if (handoff.offerMatrix) {
+        delete importedFields.cashDown;
+        delete importedFields.term;
+        delete importedFields.quotedPayment;
+        delete importedFields.apr;
+        delete importedFields.rebate;
+      }
+      setPendingImport({
+        fields: importedFields,
+        confidence: handoff.confidence ?? {},
+        fileName: handoff.fileName ?? "your free quote scan",
+      });
+      setOfferMatrix(handoff.offerMatrix ?? null);
+      setDealImport({
+        status: handoff.offerMatrix ? "warning" : "success",
+        message: handoff.offerMatrix
+          ? `Your free scan found ${handoff.offerMatrix.options.length} payment choices. Select the option you are considering, then confirm the imported values.`
+          : "Your free quote scan is ready. Confirm the detected values before the complete analysis uses them.",
+        fields: Object.keys(importedFields).map(
+          (field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields],
+        ),
+      });
+    } catch {
+      sessionStorage.removeItem(QUOTE_HANDOFF_KEY);
+      return;
+    }
+    sessionStorage.removeItem(QUOTE_HANDOFF_KEY);
+  }, []);
 
   const setNumber = (field: keyof Deal, value: string) =>
     setDeal((current) => ({ ...current, [field]: value === "" ? 0 : Number(value) }));
