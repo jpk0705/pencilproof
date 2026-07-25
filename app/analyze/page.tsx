@@ -15,6 +15,7 @@ import {
   shouldOfferManualEntry,
 } from "@/lib/deal-review";
 import { QUOTE_HANDOFF_KEY } from "@/lib/checkout";
+import VehiclePhoto from "@/app/components/VehiclePhoto";
 
 type Deal = {
   vehicle: string;
@@ -698,6 +699,10 @@ export default function AnalyzePage() {
                 <span className="confidence-missing">Not found</span>
               </div>
             </div>
+            <VehiclePhoto
+              vehicle={String(pendingImport.fields.vehicle ?? "")}
+              compact
+            />
             <div className="verification-grid">
               {verificationFields.map((field) => {
                 const value = pendingImport.fields[field];
@@ -797,6 +802,8 @@ export default function AnalyzePage() {
             </p>
 
             {analysis.hasMinimumData ? <>
+              <VehiclePhoto vehicle={deal.vehicle} tone="dark" compact />
+
               <div className="deal-check-grid">
                 {analysis.checks.map((check) => (
                   <div className={`deal-check check-${check.tone}`} key={check.name}>

@@ -15,6 +15,7 @@ import {
   isPreviewImportUsable,
   shouldOfferManualEntry,
 } from "@/lib/deal-review";
+import VehiclePhoto from "@/app/components/VehiclePhoto";
 
 type ScanState =
   | { status: "idle" }
@@ -394,6 +395,11 @@ export default function FreeQuotePreview() {
                 <div><strong>{preview.reviewCount}</strong><span>need review</span></div>
                 <div><strong>{scan.result.offerMatrix?.options.length ?? 0}</strong><span>payment choices</span></div>
               </div>
+
+              <VehiclePhoto
+                vehicle={String(preview.fields.vehicle ?? "")}
+                compact
+              />
 
               <div className="free-detected-values">
                 {preview.found.map((field) => {
