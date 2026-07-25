@@ -13,6 +13,7 @@ import {
   countPreviewReviewAreas,
   countPricedProducts,
   isPreviewImportUsable,
+  shouldOfferManualEntry,
 } from "@/lib/deal-review";
 
 type ScanState =
@@ -59,6 +60,68 @@ const formatValue = (field: keyof ImportedDealFields, value: string | number) =>
 export default function FreeQuotePreview() {
   const [scan, setScan] = useState<ScanState>({ status: "idle" });
   const [importReviewed, setImportReviewed] = useState(false);
+  const [failedImportAttempts, setFailedImportAttempts] = useState(0);
+  const [manualMode, setManualMode] = useState(false);
+  const [manualFields, setManualFields] = useState<ImportedDealFields>({ term: 72 });
+  const [manualError, setManualError] = useState("");
+
+  const showManualFallback = shouldOfferManualEntry(failedImportAttempts);
+
+  const failImport = (message: string) => {
+    setFailedImportAttempts((attempts) => attempts + 1);
+    setScan({ status: "error", message });
+  };
+
+  const updateManualField = (
+    field: keyof ImportedDealFields,
+    rawValue: string,
+  ) => {
+    const value =
+      field === "vehicle"
+        ? rawValue
+        : rawValue === ""
+          ? undefined
+          : Number(rawValue);
+    setManualFields((fields) => ({ ...fields, [field]: value }));
+    setManualError("");
+  };
+
+  const previewManualEntry = () => {
+    const fields = Object.fromEntries(
+      Object.entries(manualFields).filter(
+        ([, value]) => value !== undefined && value !== "",
+      ),
+    ) as ImportedDealFields;
+    const fieldNames = previewFields
+      .filter((field) => fields[field] !== undefined)
+      .map((field) => DEAL_FIELD_LABELS[field]);
+    if (!isPreviewImportUsable({ fields, fieldNames, offerMatrix: undefined })) {
+      setManualError(
+        "Enter at least the selling price plus two other deal figures. APR, term, and the dealer’s quoted payment produce the most useful preview.",
+      );
+      return;
+    }
+    const fieldConfidence = previewFields.reduce<
+      DealPdfResult["fieldConfidence"]
+    >((confidence, field) => {
+      if (fields[field] !== undefined) confidence[field] = "review";
+      return confidence;
+    }, {});
+    setImportReviewed(false);
+    setFailedImportAttempts(0);
+    setManualMode(false);
+    setScan({
+      status: "ready",
+      fileName: "Manual quote entry",
+      result: {
+        fields,
+        fieldConfidence,
+        fieldNames,
+        pageCount: 0,
+        sourceType: "pdf",
+      },
+    });
+  };
 
   const handleFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -92,18 +155,17 @@ export default function FreeQuotePreview() {
         });
       });
       if (!isPreviewImportUsable(result)) {
-        setScan({
-          status: "error",
-          message: "PencilProof found some text, but not enough deal information for a useful preview. Try a clearer or more complete copy before paying.",
-        });
+        failImport(
+          "PencilProof found some text, but not enough deal information for a useful preview. Try a clearer or more complete copy before paying.",
+        );
         return;
       }
+      setFailedImportAttempts(0);
       setScan({ status: "ready", result, fileName: file.name });
     } catch {
-      setScan({
-        status: "error",
-        message: "PencilProof could not read this file. Try a brighter, sharper copy before paying.",
-      });
+      failImport(
+        "PencilProof could not read this file. Try a brighter, sharper copy before paying.",
+      );
     }
   };
 
@@ -244,16 +306,83 @@ export default function FreeQuotePreview() {
 
           {scan.status === "error" ? (
             <div className="free-scan-error" role="alert">
-              <strong>This copy needs another try.</strong>
+              <strong>
+                {showManualFallback
+                  ? "Two scans could not read enough of the quote."
+                  : "This copy needs another try."}
+              </strong>
               <p>{scan.message}</p>
-              <label className="button button-quiet">
-                Choose another file
-                <input
-                  type="file"
-                  accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png"
-                  onChange={handleFile}
-                />
-              </label>
+              {showManualFallback ? (
+                <p>
+                  You can still test the deal before paying. Enter the written
+                  figures yourself for the same limited preview, or try one
+                  more file.
+                </p>
+              ) : null}
+              <div className="free-scan-error-actions">
+                <label className="button button-quiet">
+                  {showManualFallback ? "Try another file" : "Choose another file"}
+                  <input
+                    type="file"
+                    accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png"
+                    onChange={handleFile}
+                  />
+                </label>
+                {showManualFallback ? (
+                  <button
+                    className="button button-primary"
+                    type="button"
+                    onClick={() => setManualMode((open) => !open)}
+                    aria-expanded={manualMode}
+                  >
+                    Enter numbers manually
+                  </button>
+                ) : null}
+              </div>
+              {showManualFallback && manualMode ? (
+                <div className="free-manual-entry">
+                  <div>
+                    <strong>Enter the figures shown on the quote</strong>
+                    <p>Leave anything blank if the dealer did not provide it.</p>
+                  </div>
+                  <div className="free-manual-grid">
+                    {previewFields.map((field) => (
+                      <label
+                        className={field === "vehicle" ? "manual-field-wide" : ""}
+                        key={field}
+                      >
+                        <span>{DEAL_FIELD_LABELS[field]}</span>
+                        <input
+                          aria-label={`Manual ${DEAL_FIELD_LABELS[field]}`}
+                          type={field === "vehicle" ? "text" : "number"}
+                          inputMode={field === "vehicle" ? undefined : "decimal"}
+                          min={field === "vehicle" ? undefined : "0"}
+                          step={field === "term" ? "1" : "0.01"}
+                          value={manualFields[field] ?? ""}
+                          placeholder={
+                            field === "vehicle"
+                              ? "2026 Toyota RAV4 XLE Premium"
+                              : field === "term"
+                                ? "72"
+                                : "0.00"
+                          }
+                          onChange={(event) =>
+                            updateManualField(field, event.target.value)
+                          }
+                        />
+                      </label>
+                    ))}
+                  </div>
+                  {manualError ? <p className="free-manual-error">{manualError}</p> : null}
+                  <button
+                    className="button button-primary"
+                    type="button"
+                    onClick={previewManualEntry}
+                  >
+                    Preview my numbers <span aria-hidden="true">→</span>
+                  </button>
+                </div>
+              ) : null}
             </div>
           ) : null}
 

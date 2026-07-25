@@ -9,6 +9,7 @@ import {
   countPreviewReviewAreas,
   countPricedProducts,
   isPreviewImportUsable,
+  shouldOfferManualEntry,
 } from "../lib/deal-review.ts";
 
 const closeTo = (actual, expected, tolerance = 0.01) => {
@@ -144,12 +145,19 @@ const paymentWithMistakenTaxRate = paymentFor(quoteBaseWithoutTax + 9.375, 12.99
 const paymentWithTaxAmount = paymentFor(quoteBaseWithoutTax + 4137.47, 12.99, 75);
 closeTo(paymentWithTaxAmount - paymentWithMistakenTaxRate, 80.66, 0.01);
 
-const sampleCalculatedPayment = paymentFor(78962.60, 13.94, 72);
-const samplePaymentWithoutProducts = paymentFor(78962.60 - 2898, 13.94, 72);
-closeTo(sampleCalculatedPayment, 1624.55);
-closeTo(1676.05 - sampleCalculatedPayment, 51.50);
-closeTo(sampleCalculatedPayment - samplePaymentWithoutProducts, 59.62);
-closeTo((sampleCalculatedPayment - samplePaymentWithoutProducts) * 72, 4292.81);
+const rav4AmountFinanced =
+  36100 + 3474.63 + 725 + 85 + 2495 + 995 + 699 - 5000;
+const sampleCalculatedPayment = paymentFor(rav4AmountFinanced, 8.49, 72);
+const samplePaymentWithoutProducts = paymentFor(
+  rav4AmountFinanced - 4189,
+  8.49,
+  72,
+);
+closeTo(rav4AmountFinanced, 39573.63);
+closeTo(sampleCalculatedPayment, 703.36);
+closeTo(739.95 - sampleCalculatedPayment, 36.59);
+closeTo(sampleCalculatedPayment - samplePaymentWithoutProducts, 74.45);
+closeTo((sampleCalculatedPayment - samplePaymentWithoutProducts) * 72, 5360.62);
 
 const allPricedProducts = {
   serviceContract: 3453,
@@ -201,5 +209,8 @@ assert.equal(
   }),
   true,
 );
+assert.equal(shouldOfferManualEntry(1), false);
+assert.equal(shouldOfferManualEntry(2), true);
+assert.equal(shouldOfferManualEntry(3), true);
 
 console.log("PencilProof regression checks passed.");

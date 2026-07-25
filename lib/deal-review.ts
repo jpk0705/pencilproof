@@ -11,6 +11,9 @@ export const REVIEW_PRODUCT_FIELDS = [
 export const countPricedProducts = (fields: ImportedDealFields) =>
   REVIEW_PRODUCT_FIELDS.filter((field) => Number(fields[field] ?? 0) > 0).length;
 
+export const shouldOfferManualEntry = (failedImportAttempts: number) =>
+  failedImportAttempts >= 2;
+
 export const isPreviewImportUsable = (
   result: Pick<DealPdfResult, "fields" | "fieldNames" | "offerMatrix">,
 ) => {

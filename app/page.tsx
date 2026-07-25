@@ -73,23 +73,23 @@ export default function Home() {
           <div className="deal-card-head">
             <div>
               <p>SAMPLE DEAL AUDIT</p>
-              <h2>2024 GMC Yukon Denali</h2>
+              <h2>2026 Toyota RAV4 XLE Premium</h2>
             </div>
             <div className="sample-status"><strong>4</strong><span>areas worth reviewing</span></div>
           </div>
           <div className="deal-metrics">
-            <div><span>Dealer quote</span><strong>$1,676/mo</strong></div>
-            <div><span>Calculated payment</span><strong>$1,625/mo</strong></div>
-            <div><span>Products financed</span><strong>$2,898</strong></div>
+            <div><span>Dealer quote</span><strong>$740/mo</strong></div>
+            <div><span>Calculated payment</span><strong>$703/mo</strong></div>
+            <div><span>Products financed</span><strong>$4,189</strong></div>
           </div>
           <div className="flag-list">
             <div className="flag flag-warn">
               <span className="flag-icon">!</span>
-              <p><b>3 products add about $60/month</b><small>Appearance, GAP, and a connected-car plan are included in the loan.</small></p>
+              <p><b>3 products add about $74/month</b><small>A service contract, GAP, and appearance protection are included in the loan.</small></p>
             </div>
             <div className="flag flag-warn">
               <span className="flag-icon">!</span>
-              <p><b>Quoted payment is $51.50/month higher</b><small>Quote: $1,676.05. Entered figures: $1,624.55. Ask the dealer to explain the variance.</small></p>
+              <p><b>Quoted payment is $36.59/month higher</b><small>Quote: $739.95. Entered figures: $703.36. Ask the dealer to explain the variance.</small></p>
             </div>
             <div className="flag flag-good">
               <span className="flag-icon">✓</span>
@@ -176,9 +176,9 @@ export default function Home() {
         </div>
         <div className="audit-preview" aria-label="Example audit findings">
           <div className="audit-preview-head"><span>EXAMPLE FINDINGS</span><strong>What the paid audit reveals</strong></div>
-          <div className="audit-finding"><span>01</span><div><b>Quoted payment versus calculated payment</b><p>Compare the dealer&apos;s $1,676.05 quote with the $1,624.55 payment calculated from the entered figures.</p></div><strong>+$51.50/mo</strong></div>
-          <div className="audit-finding"><span>02</span><div><b>Products plus estimated financing</b><p>See that $2,898 in entered products may cost roughly $4,293 when financed for the full term.</p></div><strong>$4,293</strong></div>
-          <div className="audit-finding"><span>03</span><div><b>Negative trade equity</b><p>See when the trade payoff exceeds the allowance and the difference is added to the new loan.</p></div><strong>$13,947</strong></div>
+          <div className="audit-finding"><span>01</span><div><b>Quoted payment versus calculated payment</b><p>Compare the dealer&apos;s $739.95 quote with the $703.36 payment calculated from the entered figures.</p></div><strong>+$36.59/mo</strong></div>
+          <div className="audit-finding"><span>02</span><div><b>Products plus estimated financing</b><p>See that $4,189 in entered products may cost roughly $5,361 when financed for the full term.</p></div><strong>$5,361</strong></div>
+          <div className="audit-finding"><span>03</span><div><b>Amount financed rebuilt</b><p>See how the vehicle, tax, fees, products, and cash down produce the estimated loan balance.</p></div><strong>$39,574</strong></div>
           <div className="audit-unlock">
             <span>THE COMPLETE AUDIT ALSO INCLUDES</span>
             <ul><li>Plain-language product explanations</li><li>Prioritized questions for the finance office</li><li>A copy-ready request for a revised quote</li><li>Printable action plan</li></ul>

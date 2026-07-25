@@ -10,7 +10,10 @@ import {
   type ImportedDealFields,
 } from "@/lib/deal-pdf";
 import { paymentFor } from "@/lib/deal-calculations";
-import { isPreviewImportUsable } from "@/lib/deal-review";
+import {
+  isPreviewImportUsable,
+  shouldOfferManualEntry,
+} from "@/lib/deal-review";
 import { QUOTE_HANDOFF_KEY } from "@/lib/checkout";
 
 type Deal = {
@@ -76,24 +79,24 @@ const verificationFields: (keyof ImportedDealFields)[] = [
 const Arrow = () => <span aria-hidden="true">→</span>;
 
 const sample: Deal = {
-  vehicle: "2024 GMC Yukon Denali",
-  sellingPrice: 70000,
-  tax: 7003.72,
-  govFees: 1029.25,
+  vehicle: "2026 Toyota RAV4 XLE Premium",
+  sellingPrice: 36100,
+  tax: 3474.63,
+  govFees: 725,
   docFee: 85,
-  serviceContract: 0,
-  gap: 1200,
+  serviceContract: 2495,
+  gap: 995,
   prepaidMaintenance: 0,
   protection: 699,
-  accessories: 999,
-  tradeValue: 38000,
-  tradePayoff: 51946.63,
-  cashDown: 16000,
+  accessories: 0,
+  tradeValue: 0,
+  tradePayoff: 0,
+  cashDown: 5000,
   rebate: 0,
-  apr: 13.94,
+  apr: 8.49,
   outsideApr: 0,
   term: 72,
-  quotedPayment: 1676.05,
+  quotedPayment: 739.95,
 };
 
 const blank: Deal = {
@@ -175,6 +178,7 @@ export default function AnalyzePage() {
   const [selectedOfferId, setSelectedOfferId] = useState("");
   const [selectedOfferType, setSelectedOfferType] = useState<DealOfferOption["type"] | null>(null);
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
+  const [failedImportAttempts, setFailedImportAttempts] = useState(0);
 
   useEffect(() => {
     const saved = sessionStorage.getItem(QUOTE_HANDOFF_KEY);
@@ -252,6 +256,7 @@ export default function AnalyzePage() {
         });
       });
       if (!isPreviewImportUsable(result)) {
+        setFailedImportAttempts((attempts) => attempts + 1);
         setDealImport({
           status: "error",
           message: "The file contains readable text, but PencilProof did not find enough recognizable deal information for a reliable import. Try a clearer or more complete copy, or enter the figures manually and double-check the worksheet.",
@@ -275,6 +280,7 @@ export default function AnalyzePage() {
       setOfferMatrix(result.offerMatrix ?? null);
       setSelectedOfferId("");
       setSelectedOfferType(null);
+      setFailedImportAttempts(0);
       setDealImport({
         status: result.warnings?.length ? "warning" : "success",
         message: result.warnings?.length
@@ -287,6 +293,7 @@ export default function AnalyzePage() {
     } catch (error) {
       console.error("PencilProof document import failed", error);
       const unreadableImage = error instanceof Error && error.message === "UNREADABLE_IMAGE";
+      setFailedImportAttempts((attempts) => attempts + 1);
       setDealImport({
         status: "error",
         message: unreadableImage
@@ -363,6 +370,16 @@ export default function AnalyzePage() {
     setSelectedOfferId("");
     setSelectedOfferType(null);
     setDealImport({ status: "idle", message: "", fields: [] });
+  };
+
+  const startManualEntry = () => {
+    clearImport();
+    requestAnimationFrame(() => {
+      document.getElementById("manual-entry")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
   };
 
   const analysis = useMemo(() => {
@@ -618,6 +635,11 @@ export default function AnalyzePage() {
             <div>
               <p>{dealImport.message}</p>
               {dealImport.fields.length ? <div className="pdf-field-list">{dealImport.fields.map((field) => <small key={field}>{field}</small>)}</div> : null}
+              {dealImport.status === "error" && shouldOfferManualEntry(failedImportAttempts) ? (
+                <button className="manual-entry-button" type="button" onClick={startManualEntry}>
+                  Enter the numbers manually instead
+                </button>
+              ) : null}
             </div>
           </div>
         ) : null}
@@ -715,7 +737,7 @@ export default function AnalyzePage() {
         <p className="pdf-import-note">Best results: use a dealer-generated PDF or a bright, sharp, straight-on image with the full figures visible. Scanned PDFs use OCR on up to the first five pages. OCR can make mistakes, so compare every imported value with the original.</p>
       </section>
 
-      {!pendingImport && selectedOfferType !== "lease" ? <div className="analyzer-layout shell">
+      {!pendingImport && selectedOfferType !== "lease" ? <div className="analyzer-layout shell" id="manual-entry">
         <form className="deal-form" onSubmit={(event) => event.preventDefault()}>
           <section className="form-section">
             <div className="form-section-title"><span>01</span><div><h2>Vehicle & price</h2><p>Start with the top of the buyer&apos;s order or dealer worksheet.</p></div></div>
