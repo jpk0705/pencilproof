@@ -13,7 +13,7 @@ export interface Env {
   PUBLIC_SITE_ORIGIN: string;
   SESSION_SECRET: string;
   SITE_ORIGIN: string;
-  STRIPE_PRICE_ID: string;
+  STRIPE_PRICE_ID?: string;
   STRIPE_SECRET_KEY: string;
 }
 
@@ -269,15 +269,6 @@ const stripeRequest = async (
 
 const createCheckoutSession = async (env: Env) => {
   if (
-    typeof env.STRIPE_PRICE_ID !== "string"
-    || !/^price_[A-Za-z0-9]+$/.test(env.STRIPE_PRICE_ID)
-  ) {
-    throw new CheckoutError(
-      "stripe_price_id_invalid",
-      "Stripe price is not configured",
-    );
-  }
-  if (
     typeof env.STRIPE_SECRET_KEY !== "string"
     || !/^rk_(test|live)_[A-Za-z0-9]+$/.test(env.STRIPE_SECRET_KEY)
   ) {
@@ -287,12 +278,14 @@ const createCheckoutSession = async (env: Env) => {
     );
   }
 
+  const stripePriceId = typeof env.STRIPE_PRICE_ID === "string"
+    ? env.STRIPE_PRICE_ID.trim()
+    : "";
   const parameters = new URLSearchParams({
     "allow_promotion_codes": "false",
     "billing_address_collection": "auto",
     "cancel_url": `${env.PUBLIC_SITE_ORIGIN}/#pricing`,
     "customer_creation": "always",
-    "line_items[0][price]": env.STRIPE_PRICE_ID,
     "line_items[0][quantity]": "1",
     "metadata[pencilproof_product]": PRODUCT_CODE,
     mode: "payment",
@@ -300,6 +293,19 @@ const createCheckoutSession = async (env: Env) => {
     "payment_intent_data[metadata][pencilproof_product]": PRODUCT_CODE,
     "success_url": `${env.SITE_ORIGIN}/success?session_id={CHECKOUT_SESSION_ID}`,
   });
+  if (/^price_[A-Za-z0-9]+$/.test(stripePriceId)) {
+    parameters.set("line_items[0][price]", stripePriceId);
+  } else {
+    parameters.set("line_items[0][price_data][currency]", "usd");
+    parameters.set(
+      "line_items[0][price_data][product_data][name]",
+      "PencilProof Full Quote Audit",
+    );
+    parameters.set(
+      "line_items[0][price_data][unit_amount]",
+      String(PRODUCT_PRICE_CENTS),
+    );
+  }
 
   const response = await stripeRequest("/checkout/sessions", env, {
     body: parameters,

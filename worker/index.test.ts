@@ -108,6 +108,43 @@ test("checkout uses the configured Stripe price", async () => {
   assert.equal(result.url, "https://checkout.stripe.com/c/pay/cs_test_created");
 });
 
+test("checkout falls back to fixed product data when the price binding is absent", async () => {
+  let requestBody = "";
+  globalThis.fetch = async (_input, init) => {
+    requestBody = String(init?.body ?? "");
+    return Response.json({
+      id: "cs_test_created",
+      url: "https://checkout.stripe.com/c/pay/cs_test_created",
+    });
+  };
+
+  const env = makeEnv();
+  delete env.STRIPE_PRICE_ID;
+  const response = await handleRequest(
+    new Request("https://audit.pencilproof.com/api/checkout", {
+      method: "POST",
+      headers: { Origin: "https://audit.pencilproof.com" },
+    }),
+    env,
+  );
+  const parameters = new URLSearchParams(requestBody);
+
+  assert.equal(response.status, 200);
+  assert.equal(parameters.get("line_items[0][price]"), null);
+  assert.equal(
+    parameters.get("line_items[0][price_data][product_data][name]"),
+    "PencilProof Full Quote Audit",
+  );
+  assert.equal(
+    parameters.get("line_items[0][price_data][unit_amount]"),
+    "3900",
+  );
+  assert.equal(
+    parameters.get("metadata[pencilproof_product]"),
+    "full_quote_audit_v1",
+  );
+});
+
 test("checkout safely identifies an invalid Stripe secret binding", async () => {
   const env = makeEnv();
   env.STRIPE_SECRET_KEY = "price_not_a_secret_key";

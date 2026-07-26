@@ -4,6 +4,7 @@
   "name": "pencilproof-audit",
   "main": "./worker/index.ts",
   "compatibility_date": "2026-07-26",
+  "keep_vars": true,
   "assets": {
     "directory": "./out",
     "binding": "ASSETS",
