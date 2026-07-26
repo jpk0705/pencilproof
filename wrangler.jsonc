@@ -1,3 +1,4 @@
+// PencilProof secure audit deployment configuration
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "pencilproof-audit",
