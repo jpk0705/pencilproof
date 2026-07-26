@@ -232,16 +232,24 @@ const handoffPage = () =>
           headers: { "Content-Type": "application/json" },
           credentials: "same-origin"
         })
-          .then((response) => {
-            if (!response.ok) throw new Error("checkout");
-            return response.json();
+          .then(async (response) => {
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              throw new Error(
+                typeof payload.code === "string" ? payload.code : "checkout",
+              );
+            }
+            return payload;
           })
           .then(({ url }) => {
             if (!url || !url.startsWith("https://checkout.stripe.com/")) throw new Error("url");
             window.location.replace(url);
           })
-          .catch(() => {
-            status.innerHTML = 'Checkout could not start. Please <a href="/handoff">try again</a> or email support@pencilproof.com.';
+          .catch((error) => {
+            const safeCode = /^[a-z_]+$/.test(error?.message ?? "")
+              ? " Reference: " + error.message + "."
+              : "";
+            status.innerHTML = 'Checkout could not start.' + safeCode + ' Please <a href="/handoff">try again</a> or email support@pencilproof.com.';
           });
       })();
     </script>

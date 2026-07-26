@@ -65,6 +65,8 @@ test("the handoff page keeps quote data in browser storage", async () => {
   assert.match(body, /const handoff = window\.name/);
   assert.match(body, /window\.name = ""/);
   assert.doesNotMatch(body, /window\.location\.hash/);
+  assert.match(body, /Reference:/);
+  assert.match(body, /payload\.code/);
   assert.match(body, /\/api\/checkout/);
   assert.doesNotMatch(body, /sk_test_not_a_real_key/);
 });
