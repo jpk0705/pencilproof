@@ -32,6 +32,22 @@ type StripeCheckoutSession = {
   url?: string | null;
 };
 
+type CheckoutErrorCode =
+  | "stripe_price_id_invalid"
+  | "stripe_secret_key_invalid"
+  | "stripe_api_rejected"
+  | "checkout_internal_error";
+
+class CheckoutError extends Error {
+  readonly code: CheckoutErrorCode;
+
+  constructor(code: CheckoutErrorCode, message: string) {
+    super(message);
+    this.name = "CheckoutError";
+    this.code = code;
+  }
+}
+
 const encoder = new TextEncoder();
 
 const base64UrlEncode = (bytes: Uint8Array) => {
@@ -229,8 +245,23 @@ const stripeRequest = async (
 };
 
 const createCheckoutSession = async (env: Env) => {
-  if (!/^price_[A-Za-z0-9]+$/.test(env.STRIPE_PRICE_ID)) {
-    throw new Error("Stripe price is not configured");
+  if (
+    typeof env.STRIPE_PRICE_ID !== "string"
+    || !/^price_[A-Za-z0-9]+$/.test(env.STRIPE_PRICE_ID)
+  ) {
+    throw new CheckoutError(
+      "stripe_price_id_invalid",
+      "Stripe price is not configured",
+    );
+  }
+  if (
+    typeof env.STRIPE_SECRET_KEY !== "string"
+    || !/^rk_(test|live)_[A-Za-z0-9]+$/.test(env.STRIPE_SECRET_KEY)
+  ) {
+    throw new CheckoutError(
+      "stripe_secret_key_invalid",
+      "Stripe restricted key is not configured",
+    );
   }
 
   const parameters = new URLSearchParams({
@@ -259,7 +290,10 @@ const createCheckoutSession = async (env: Env) => {
     || !session.url
     || !session.url.startsWith("https://checkout.stripe.com/")
   ) {
-    throw new Error(session.error?.message ?? "Stripe checkout session failed");
+    throw new CheckoutError(
+      "stripe_api_rejected",
+      session.error?.message ?? "Stripe checkout session failed",
+    );
   }
   return session;
 };
@@ -304,9 +338,16 @@ const handleCheckout = async (request: Request, env: Env) => {
       { url: session.url },
       { headers: { "Cache-Control": "no-store" } },
     );
-  } catch {
+  } catch (error) {
+    const code = error instanceof CheckoutError
+      ? error.code
+      : "checkout_internal_error";
+    console.error("Checkout creation failed", {
+      code,
+      message: error instanceof Error ? error.message : "Unknown error",
+    });
     return Response.json(
-      { error: "Checkout is temporarily unavailable." },
+      { code, error: "Checkout is temporarily unavailable." },
       { status: 502, headers: { "Cache-Control": "no-store" } },
     );
   }
