@@ -58,7 +58,7 @@ export default function Home() {
             </a>
             <a className="button button-quiet" href="#deal-questions">See a sample audit</a>
           </div>
-          <p className="hero-caution">No payment required to test your quote. Unlock the complete analysis only after PencilProof shows what it found.</p>
+          <p className="hero-caution">No payment required to test your quote. Unlock the Full Quote Audit only after PencilProof shows what it found.</p>
           <div className="proof-row" aria-label="Product highlights">
             <span><b>Free quote scan</b> before checkout</span>
             <span><b>No commissions</b> from dealers</span>
@@ -69,10 +69,10 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="deal-card hero-deal-card" aria-label="Sample Deal Audit preview">
+        <div className="deal-card hero-deal-card" aria-label="Sample Full Quote Audit preview">
           <div className="deal-card-head">
             <div>
-              <p>SAMPLE DEAL AUDIT</p>
+              <p>SAMPLE FULL QUOTE AUDIT</p>
               <h2>2026 Toyota RAV4 XLE Premium</h2>
             </div>
             <div className="sample-status"><strong>4</strong><span>areas worth reviewing</span></div>
@@ -172,15 +172,15 @@ export default function Home() {
             advantage of. It separates the vehicle, financing, trade, fees, and
             optional products, then shows what changed and what to ask next.
           </p>
-          <a className="text-link" href={CHECKOUT_URL}>Get my complete audit for $39 <Arrow /></a>
+          <a className="text-link" href={CHECKOUT_URL}>Unlock My Full Quote Audit · $39 <Arrow /></a>
         </div>
         <div className="audit-preview" aria-label="Example audit findings">
-          <div className="audit-preview-head"><span>EXAMPLE FINDINGS</span><strong>What the paid audit reveals</strong></div>
+          <div className="audit-preview-head"><span>EXAMPLE FINDINGS</span><strong>What the Full Quote Audit reveals</strong></div>
           <div className="audit-finding"><span>01</span><div><b>Quoted payment versus calculated payment</b><p>Compare the dealer&apos;s $739.95 quote with the $703.36 payment calculated from the entered figures.</p></div><strong>+$36.59/mo</strong></div>
           <div className="audit-finding"><span>02</span><div><b>Products plus estimated financing</b><p>See that $4,189 in entered products may cost roughly $5,361 when financed for the full term.</p></div><strong>$5,361</strong></div>
           <div className="audit-finding"><span>03</span><div><b>Amount financed rebuilt</b><p>See how the vehicle, tax, fees, products, and cash down produce the estimated loan balance.</p></div><strong>$39,574</strong></div>
           <div className="audit-unlock">
-            <span>THE COMPLETE AUDIT ALSO INCLUDES</span>
+            <span>THE FULL QUOTE AUDIT ALSO INCLUDES</span>
             <ul><li>Plain-language product explanations</li><li>Prioritized questions for the finance office</li><li>A copy-ready request for a revised quote</li><li>Printable action plan</li></ul>
           </div>
         </div>
@@ -232,8 +232,8 @@ export default function Home() {
       <section className="section dark-section" id="pricing">
         <div className="shell offer-grid">
           <div>
-            <p className="kicker kicker-light">ONE-TIME DEAL AUDIT</p>
-            <h2>See that it works first. Then decide if the full $39 analysis is worth it.</h2>
+            <p className="kicker kicker-light">ONE-TIME FULL QUOTE AUDIT</p>
+            <h2>See that it works first. Then decide if the $39 Full Quote Audit is worth it.</h2>
             <p className="offer-copy">
               The goal is not to scare you out of a product or a deal. It is to
               make the cost visible, explain the terms, and help you ask better
@@ -241,19 +241,19 @@ export default function Home() {
             </p>
           </div>
           <div className="price-card">
-            <div className="price-line"><span>Complete Deal Audit</span><strong>$39</strong></div>
+            <div className="price-line"><span>Full Quote Audit</span><strong>$39</strong></div>
             <ul>
               <li>Private PDF and photo autofill</li>
-              <li>Required import confirmation before analysis</li>
+              <li>Required import confirmation before the audit</li>
               <li>Multi-option finance and lease menu detection</li>
               <li>Payment with and without products</li>
               <li>VSC, GAP, PPM, and add-on guidance</li>
               <li>APR and full-term cost comparison</li>
               <li>Trade-equity and payment-math checks</li>
               <li>Copy-ready dealer questions</li>
-              <li>Print or save the finished review</li>
+              <li>Print or save the finished audit</li>
             </ul>
-            <a className="button button-light" href={CHECKOUT_URL}>Access full analysis · $39 <Arrow /></a>
+            <a className="button button-light" href={CHECKOUT_URL}>Unlock My Full Quote Audit · $39 <Arrow /></a>
             <small>One-time payment. Educational estimate. No guaranteed savings. If your quote cannot be processed, use the support options on your receipt for help or a refund review.</small>
           </div>
         </div>
@@ -262,7 +262,7 @@ export default function Home() {
       <footer>
         <div className="shell footer-grid">
           <Link className="brand brand-footer" href="/"><span className="brand-mark">P</span><span>PencilProof</span></Link>
-          <p>Independent educational deal analysis. Not affiliated with any dealership or lender.</p>
+          <p>Independent educational quote audit. Not affiliated with any dealership or lender.</p>
           <div><Link href="/questions">Q&amp;A</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link></div>
         </div>
       </footer>

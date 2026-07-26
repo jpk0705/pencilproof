@@ -4,7 +4,7 @@ import { CHECKOUT_URL } from "@/lib/checkout";
 
 export const metadata: Metadata = {
   title: "Questions & Answers | PencilProof",
-  description: "Straight answers about PencilProof deal reviews, quote imports, payment calculations, privacy, and what to verify before signing.",
+  description: "Straight answers about PencilProof quote audits, quote imports, payment calculations, privacy, and what to verify before signing.",
 };
 
 const questions = [
@@ -18,7 +18,7 @@ const questions = [
   },
   {
     question: "Can I update the deal after the dealer responds?",
-    answer: "Yes. Change the inputs to compare a revised worksheet, then print or save the updated review before signing.",
+    answer: "Yes. Change the inputs to compare a revised worksheet, then print or save the updated audit before signing.",
   },
   {
     question: "Can PencilProof read every document?",
@@ -26,7 +26,7 @@ const questions = [
   },
   {
     question: "What if an imported number is wrong?",
-    answer: "Do not pay from the free preview. Try a clearer copy or plan to enter the missing figure manually. PencilProof rejects weak scans, labels every detected value, locks preview checkout until you confirm that you reviewed the import, and requires confirmation again before analysis.",
+    answer: "Do not pay from the free preview. Try a clearer copy or plan to enter the missing figure manually. PencilProof rejects weak scans, labels every detected value, locks preview checkout until you confirm that you reviewed the import, and requires confirmation again before the audit.",
   },
   {
     question: "Can it compare a quote with several payment choices?",
@@ -69,7 +69,7 @@ export default function QuestionsPage() {
         <div className="nav-links">
           <Link href="/">Home</Link>
           <Link href="/#pricing">Pricing</Link>
-          <a className="nav-cta" href={CHECKOUT_URL}>Get my review · $39</a>
+          <a className="nav-cta" href={CHECKOUT_URL}>Full Quote Audit · $39</a>
         </div>
       </nav>
 
@@ -92,7 +92,7 @@ export default function QuestionsPage() {
       <footer>
         <div className="shell footer-grid">
           <Link className="brand brand-footer" href="/"><span className="brand-mark">P</span><span>PencilProof</span></Link>
-          <p>Independent educational deal analysis. Not affiliated with any dealership or lender.</p>
+          <p>Independent educational quote audit. Not affiliated with any dealership or lender.</p>
           <div><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link></div>
         </div>
       </footer>

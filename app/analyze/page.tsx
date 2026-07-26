@@ -210,7 +210,7 @@ export default function AnalyzePage() {
         status: handoff.offerMatrix ? "warning" : "success",
         message: handoff.offerMatrix
           ? `Your free scan found ${handoff.offerMatrix.options.length} payment choices. Select the option you are considering, then confirm the imported values.`
-          : "Your free quote scan is ready. Confirm the detected values before the complete analysis uses them.",
+          : "Your free quote scan is ready. Confirm the detected values before the Full Quote Audit uses them.",
         fields: Object.keys(importedFields).map(
           (field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields],
         ),
@@ -288,7 +288,7 @@ export default function AnalyzePage() {
           ? `Filled ${result.fieldNames.length} fields from ${file.name}. ${result.warnings.join(" ")}`
           : result.offerMatrix
             ? `Detected ${result.offerMatrix.options.length} payment choices in ${file.name}. Select the finance or lease option you are considering.`
-            : `Found ${result.fieldNames.length} field${result.fieldNames.length === 1 ? "" : "s"} in ${file.name}${result.sourceType === "pdf" ? ` (${result.pageCount} page${result.pageCount === 1 ? "" : "s"}${result.usedOcr ? ", scanned-document OCR" : ""})` : ""}. Confirm the draft before PencilProof analyzes it.`,
+            : `Found ${result.fieldNames.length} field${result.fieldNames.length === 1 ? "" : "s"} in ${file.name}${result.sourceType === "pdf" ? ` (${result.pageCount} page${result.pageCount === 1 ? "" : "s"}${result.usedOcr ? ", scanned-document OCR" : ""})` : ""}. Confirm the draft before starting the audit.`,
         fields: result.fieldNames,
       });
     } catch (error) {
@@ -509,7 +509,7 @@ export default function AnalyzePage() {
       flags.unshift({
         tone: "note",
         title: "Start with the dealer worksheet",
-        detail: "Enter the written figures or load the sample to see how a complete audit works.",
+        detail: "Enter the written figures or load the sample to see how the Full Quote Audit works.",
       });
     }
 
@@ -660,7 +660,7 @@ export default function AnalyzePage() {
                 <section className="offer-group" key={type} aria-label={`${type} options`}>
                   <div className="offer-group-title">
                     <h4>{type === "finance" ? "Finance alternatives" : "Lease estimates"}</h4>
-                    <p>{type === "finance" ? "Select one row to fill the finance audit." : "Lease figures need additional contract details for a complete audit."}</p>
+                    <p>{type === "finance" ? "Select one row to fill the Full Quote Audit." : "Lease figures need additional contract details for a Full Quote Audit."}</p>
                   </div>
                   <div className="offer-options-grid">
                     {options.map((option) => (
@@ -726,7 +726,7 @@ export default function AnalyzePage() {
               })}
             </div>
             <div className="verification-actions">
-              <button className="button button-primary" type="button" onClick={confirmPendingImport}>Confirm values and analyze <Arrow /></button>
+              <button className="button button-primary" type="button" onClick={confirmPendingImport}>Confirm values and run audit <Arrow /></button>
               <button type="button" onClick={clearImport}>Enter manually instead</button>
             </div>
           </section>
@@ -881,7 +881,7 @@ export default function AnalyzePage() {
                 <div><p>YOUR REQUEST TO THE DESK</p><button type="button" onClick={copyMessage}>{copied ? "Copied" : "Copy message"}</button></div>
                 <pre>{message}</pre>
               </div>
-              <button className="print-button" type="button" onClick={() => window.print()}>Print or save this Deal Audit</button>
+              <button className="print-button" type="button" onClick={() => window.print()}>Print or save this Full Quote Audit</button>
             </> : (
               <div className="empty-audit">
                 <strong>Your audit will appear here.</strong>

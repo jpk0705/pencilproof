@@ -1,6 +1,6 @@
 # PencilProof
 
-PencilProof is a privacy-first car finance Deal Audit. It rebuilds a dealer
+PencilProof is a privacy-first car finance Full Quote Audit. It rebuilds a dealer
 quote from the numbers a buyer enters, compares the payment with and without
 optional products, explains common finance-office products, highlights APR
 and trade-equity differences, and creates a copy-ready list of questions for
@@ -17,7 +17,7 @@ the dealership.
 - full-term finance charge
 
 Customers purchase one-time access through a Stripe Managed Payments payment
-link, then use the analyzer in the browser. Deal inputs are not uploaded or
+link, then use the audit tool in the browser. Deal inputs are not uploaded or
 stored by PencilProof.
 
 ## Important limitation

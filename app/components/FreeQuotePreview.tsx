@@ -456,7 +456,7 @@ export default function FreeQuotePreview() {
                   <strong>
                     {preview.reviewAreas
                       ? `${preview.reviewAreas} area${preview.reviewAreas === 1 ? "" : "s"} worth reviewing`
-                      : "The quote is ready for a complete review"}
+                      : "The quote is ready for a Full Quote Audit"}
                   </strong>
                   <p>Unlock exact payment differences, product cost, APR scenarios, full-term totals, and a dealer-ready request.</p>
                 </div>
@@ -468,7 +468,7 @@ export default function FreeQuotePreview() {
                   />
                   <span>
                     <b>I compared the imported values with my quote.</b>
-                    <small>I understand that missing fields must be entered manually and every value must be confirmed again before analysis.</small>
+                    <small>I understand that missing fields must be entered manually and every value must be confirmed again before the audit.</small>
                   </span>
                 </label>
                 {importReviewed ? (
@@ -487,7 +487,7 @@ export default function FreeQuotePreview() {
                       );
                     }}
                   >
-                    Unlock full analysis · $39 <span aria-hidden="true">→</span>
+                    Unlock My Full Quote Audit · $39 <span aria-hidden="true">→</span>
                   </a>
                 ) : (
                   <button className="button button-primary" type="button" disabled>
