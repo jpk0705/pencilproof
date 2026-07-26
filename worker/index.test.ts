@@ -17,6 +17,7 @@ const makeEnv = (): Env => ({
   PUBLIC_SITE_ORIGIN: "https://pencilproof.com",
   SESSION_SECRET: "test-session-secret-with-enough-entropy",
   SITE_ORIGIN: "https://audit.pencilproof.com",
+  STRIPE_PRICE_ID: "price_test_not_a_real_price",
   STRIPE_SECRET_KEY: "sk_test_not_a_real_key",
 });
 
@@ -64,7 +65,7 @@ test("the handoff page keeps quote data in browser storage", async () => {
   assert.doesNotMatch(body, /sk_test_not_a_real_key/);
 });
 
-test("checkout creates the exact $39 Stripe product", async () => {
+test("checkout uses the configured Stripe price", async () => {
   let requestBody = "";
   globalThis.fetch = async (_input, init) => {
     requestBody = String(init?.body ?? "");
@@ -86,9 +87,10 @@ test("checkout creates the exact $39 Stripe product", async () => {
 
   assert.equal(response.status, 200);
   assert.equal(
-    parameters.get("line_items[0][price_data][unit_amount]"),
-    "3900",
+    parameters.get("line_items[0][price]"),
+    "price_test_not_a_real_price",
   );
+  assert.equal(parameters.get("line_items[0][price_data][unit_amount]"), null);
   assert.equal(
     parameters.get("metadata[pencilproof_product]"),
     "full_quote_audit_v1",
