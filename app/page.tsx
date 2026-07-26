@@ -21,9 +21,14 @@ const productCards = [
     copy: "Prepays listed maintenance services. It is not a repair warranty, so the audit separates convenience from actual included value.",
   },
   {
+    short: "T&W",
+    title: "Tire & wheel protection",
+    copy: "May cover eligible road-hazard damage. Cosmetic coverage, deductibles, limits, and exclusions should be verified.",
+  },
+  {
     short: "ADD-ONS",
-    title: "Protection and accessories",
-    copy: "Appearance products, theft products, accessories, and other packages can raise both the amount financed and the interest you pay.",
+    title: "Accessories and other add-ons",
+    copy: "Appearance, GPS, theft, etch, nitrogen, physical accessories, and other packages can raise both the amount financed and the interest you pay.",
   },
 ];
 
@@ -85,7 +90,7 @@ export default function Home() {
           <div className="flag-list">
             <div className="flag flag-warn">
               <span className="flag-icon">!</span>
-              <p><b>3 products add about $74/month</b><small>A service contract, GAP, and appearance protection are included in the loan.</small></p>
+              <p><b>3 products add about $74/month</b><small>A service contract, GAP, and an appearance add-on are included in the loan.</small></p>
             </div>
             <div className="flag flag-warn">
               <span className="flag-icon">!</span>

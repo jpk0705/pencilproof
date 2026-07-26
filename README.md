@@ -10,8 +10,8 @@ the dealership.
 
 - estimated amount financed and monthly payment
 - dealer APR versus the customer’s desired APR
-- vehicle service contracts (VSC), GAP, prepaid maintenance (PPM), protection
-  products, and accessories
+- vehicle service contracts (VSC), GAP, prepaid maintenance (PPM), tire and
+  wheel protection (T&W), and accessories or other dealer add-ons
 - estimated payment and full-term cost with and without entered products
 - trade equity or negative equity
 - full-term finance charge
