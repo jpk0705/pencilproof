@@ -54,7 +54,7 @@ export default function Home() {
           </p>
           <div className="hero-actions">
             <a className="button button-primary" href="#free-scan">
-              Upload my quote free <Arrow />
+              Scan my quote free <Arrow />
             </a>
             <a className="button button-quiet" href="#deal-questions">See a sample audit</a>
           </div>
@@ -253,7 +253,7 @@ export default function Home() {
               <li>Copy-ready dealer questions</li>
               <li>Print or save the finished review</li>
             </ul>
-            <a className="button button-light" href={CHECKOUT_URL}>Purchase full analysis · $39 <Arrow /></a>
+            <a className="button button-light" href={CHECKOUT_URL}>Access full analysis · $39 <Arrow /></a>
             <small>One-time payment. Educational estimate. No guaranteed savings. If your quote cannot be processed, use the support options on your receipt for help or a refund review.</small>
           </div>
         </div>
