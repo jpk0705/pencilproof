@@ -17,8 +17,8 @@ const makeEnv = (): Env => ({
   PUBLIC_SITE_ORIGIN: "https://pencilproof.com",
   SESSION_SECRET: "test-session-secret-with-enough-entropy",
   SITE_ORIGIN: "https://audit.pencilproof.com",
-  STRIPE_PRICE_ID: "price_test_not_a_real_price",
-  STRIPE_SECRET_KEY: "sk_test_not_a_real_key",
+  STRIPE_PRICE_ID: "price_123TestValid",
+  STRIPE_SECRET_KEY: "rk_test_123TestValid",
 });
 
 test.afterEach(() => {
@@ -88,7 +88,7 @@ test("checkout uses the configured Stripe price", async () => {
   assert.equal(response.status, 200);
   assert.equal(
     parameters.get("line_items[0][price]"),
-    "price_test_not_a_real_price",
+    "price_123TestValid",
   );
   assert.equal(parameters.get("line_items[0][price_data][unit_amount]"), null);
   assert.equal(
@@ -100,6 +100,27 @@ test("checkout uses the configured Stripe price", async () => {
     "https://audit.pencilproof.com/success?session_id={CHECKOUT_SESSION_ID}",
   );
   assert.equal(result.url, "https://checkout.stripe.com/c/pay/cs_test_created");
+});
+
+test("checkout safely identifies an invalid Stripe secret binding", async () => {
+  const env = makeEnv();
+  env.STRIPE_SECRET_KEY = "price_not_a_secret_key";
+
+  const response = await handleRequest(
+    new Request("https://audit.pencilproof.com/api/checkout", {
+      method: "POST",
+      headers: { Origin: "https://audit.pencilproof.com" },
+    }),
+    env,
+  );
+  const result = await response.json() as {
+    code: string;
+    error: string;
+  };
+
+  assert.equal(response.status, 502);
+  assert.equal(result.code, "stripe_secret_key_invalid");
+  assert.equal(result.error, "Checkout is temporarily unavailable.");
 });
 
 test("a verified paid session receives protected access", async () => {
