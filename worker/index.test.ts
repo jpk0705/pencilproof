@@ -97,6 +97,7 @@ test("checkout uses the configured Stripe price", async () => {
     "price_123TestValid",
   );
   assert.equal(parameters.get("line_items[0][price_data][unit_amount]"), null);
+  assert.equal(parameters.get("managed_payments[enabled]"), "true");
   assert.equal(
     parameters.get("metadata[pencilproof_product]"),
     "full_quote_audit_v1",
@@ -108,18 +109,15 @@ test("checkout uses the configured Stripe price", async () => {
   assert.equal(result.url, "https://checkout.stripe.com/c/pay/cs_test_created");
 });
 
-test("checkout falls back to fixed product data when the price binding is absent", async () => {
-  let requestBody = "";
-  globalThis.fetch = async (_input, init) => {
-    requestBody = String(init?.body ?? "");
-    return Response.json({
-      id: "cs_test_created",
-      url: "https://checkout.stripe.com/c/pay/cs_test_created",
-    });
+test("checkout fails safely when the Stripe price binding is absent", async () => {
+  let stripeCalled = false;
+  globalThis.fetch = async () => {
+    stripeCalled = true;
+    return Response.json({});
   };
 
   const env = makeEnv();
-  delete env.STRIPE_PRICE_ID;
+  delete (env as Partial<Env>).STRIPE_PRICE_ID;
   const response = await handleRequest(
     new Request("https://audit.pencilproof.com/api/checkout", {
       method: "POST",
@@ -127,22 +125,15 @@ test("checkout falls back to fixed product data when the price binding is absent
     }),
     env,
   );
-  const parameters = new URLSearchParams(requestBody);
+  const result = await response.json() as {
+    code: string;
+    error: string;
+  };
 
-  assert.equal(response.status, 200);
-  assert.equal(parameters.get("line_items[0][price]"), null);
-  assert.equal(
-    parameters.get("line_items[0][price_data][product_data][name]"),
-    "PencilProof Full Quote Audit",
-  );
-  assert.equal(
-    parameters.get("line_items[0][price_data][unit_amount]"),
-    "3900",
-  );
-  assert.equal(
-    parameters.get("metadata[pencilproof_product]"),
-    "full_quote_audit_v1",
-  );
+  assert.equal(response.status, 502);
+  assert.equal(result.code, "stripe_price_id_invalid");
+  assert.equal(result.error, "Checkout is temporarily unavailable.");
+  assert.equal(stripeCalled, false);
 });
 
 test("checkout safely identifies an invalid Stripe secret binding", async () => {
@@ -169,13 +160,20 @@ test("checkout safely identifies an invalid Stripe secret binding", async () => 
 test("a verified paid session receives protected access", async () => {
   globalThis.fetch = async () =>
     Response.json({
-      amount_total: 3900,
+      amount_subtotal: 3900,
+      amount_total: 4235,
       currency: "usd",
       id: "cs_test_paid",
+      managed_payments: { enabled: true },
       metadata: { pencilproof_product: "full_quote_audit_v1" },
       mode: "payment",
       payment_status: "paid",
       status: "complete",
+      total_details: {
+        amount_discount: 0,
+        amount_shipping: 0,
+        amount_tax: 335,
+      },
     });
 
   const env = makeEnv();
@@ -207,16 +205,56 @@ test("a verified paid session receives protected access", async () => {
   assert.equal(await auditResponse.text(), "asset");
 });
 
+test("a non-Managed Payments session does not unlock the audit", async () => {
+  globalThis.fetch = async () =>
+    Response.json({
+      amount_subtotal: 3900,
+      amount_total: 4235,
+      currency: "usd",
+      id: "cs_test_not_managed",
+      managed_payments: { enabled: false },
+      metadata: { pencilproof_product: "full_quote_audit_v1" },
+      mode: "payment",
+      payment_status: "paid",
+      status: "complete",
+      total_details: {
+        amount_discount: 0,
+        amount_shipping: 0,
+        amount_tax: 335,
+      },
+    });
+
+  const response = await handleRequest(
+    new Request(
+      "https://audit.pencilproof.com/success?session_id=cs_test_not_managed",
+    ),
+    makeEnv(),
+  );
+  assert.equal(response.status, 303);
+  assert.equal(response.headers.get("Set-Cookie"), null);
+  assert.equal(
+    response.headers.get("Location"),
+    "https://pencilproof.com/?payment=unverified#pricing",
+  );
+});
+
 test("the wrong Stripe product does not unlock the audit", async () => {
   globalThis.fetch = async () =>
     Response.json({
+      amount_subtotal: 100,
       amount_total: 100,
       currency: "usd",
       id: "cs_test_wrong",
+      managed_payments: { enabled: true },
       metadata: { pencilproof_product: "different_product" },
       mode: "payment",
       payment_status: "paid",
       status: "complete",
+      total_details: {
+        amount_discount: 0,
+        amount_shipping: 0,
+        amount_tax: 0,
+      },
     });
 
   const response = await handleRequest(
