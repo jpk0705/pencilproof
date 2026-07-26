@@ -3,6 +3,7 @@ const PRODUCT_CODE = "full_quote_audit_v1";
 const PRODUCT_PRICE_CENTS = 3900;
 const DEFAULT_ACCESS_SECONDS = 60 * 60 * 24 * 30;
 const QUOTE_HANDOFF_KEY = "pencilproof:pending-import";
+const QUOTE_HANDOFF_TYPE = "pencilproof:quote-handoff:v1";
 
 export interface Env {
   ASSETS: {
@@ -203,10 +204,24 @@ const handoffPage = () =>
       (() => {
         const status = document.getElementById("status");
         try {
-          const handoff = window.location.hash.slice(1);
+          const handoff = window.name;
           if (handoff) {
-            sessionStorage.setItem(${JSON.stringify(QUOTE_HANDOFF_KEY)}, decodeURIComponent(handoff));
-            history.replaceState(null, "", window.location.pathname);
+            const envelope = JSON.parse(handoff);
+            if (envelope?.type === ${JSON.stringify(QUOTE_HANDOFF_TYPE)}) {
+              window.name = "";
+              if (
+                !envelope.payload
+                || typeof envelope.payload !== "object"
+                || !envelope.payload.fields
+                || typeof envelope.payload.fields !== "object"
+              ) {
+                throw new Error("invalid quote handoff");
+              }
+              sessionStorage.setItem(
+                ${JSON.stringify(QUOTE_HANDOFF_KEY)},
+                JSON.stringify(envelope.payload),
+              );
+            }
           }
         } catch {
           status.textContent = "Your quote could not be carried forward. You can still enter the figures manually after checkout.";
