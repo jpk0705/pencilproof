@@ -298,6 +298,7 @@ const createCheckoutSession = async (env: Env) => {
   }
 
   const parameters = new URLSearchParams({
+    "adaptive_pricing[enabled]": "false",
     "allow_promotion_codes": "false",
     "billing_address_collection": "auto",
     "cancel_url": `${env.PUBLIC_SITE_ORIGIN}/#pricing`,
