@@ -13,7 +13,7 @@ export interface Env {
   PUBLIC_SITE_ORIGIN: string;
   SESSION_SECRET: string;
   SITE_ORIGIN: string;
-  STRIPE_PRICE_ID?: string;
+  STRIPE_PRICE_ID: string;
   STRIPE_SECRET_KEY: string;
 }
 
@@ -23,19 +23,28 @@ type AccessPayload = {
 };
 
 type StripeCheckoutSession = {
+  amount_subtotal?: number | null;
   amount_total?: number | null;
   currency?: string | null;
   id: string;
+  managed_payments?: { enabled?: boolean } | null;
   metadata?: Record<string, string> | null;
   mode?: string | null;
   payment_status?: string | null;
   status?: string | null;
+  total_details?: {
+    amount_discount?: number | null;
+    amount_shipping?: number | null;
+    amount_tax?: number | null;
+  } | null;
   url?: string | null;
 };
 
 type CheckoutErrorCode =
   | "stripe_price_id_invalid"
   | "stripe_secret_key_invalid"
+  | "stripe_product_ineligible"
+  | "managed_payments_unavailable"
   | "stripe_api_rejected"
   | "checkout_internal_error";
 
@@ -268,6 +277,16 @@ const stripeRequest = async (
 };
 
 const createCheckoutSession = async (env: Env) => {
+  const stripePriceId = typeof env.STRIPE_PRICE_ID === "string"
+    ? env.STRIPE_PRICE_ID.trim()
+    : "";
+  if (!/^price_[A-Za-z0-9]+$/.test(stripePriceId)) {
+    throw new CheckoutError(
+      "stripe_price_id_invalid",
+      "Stripe price is not configured",
+    );
+  }
+
   if (
     typeof env.STRIPE_SECRET_KEY !== "string"
     || !/^rk_(test|live)_[A-Za-z0-9]+$/.test(env.STRIPE_SECRET_KEY)
@@ -278,50 +297,51 @@ const createCheckoutSession = async (env: Env) => {
     );
   }
 
-  const stripePriceId = typeof env.STRIPE_PRICE_ID === "string"
-    ? env.STRIPE_PRICE_ID.trim()
-    : "";
   const parameters = new URLSearchParams({
     "allow_promotion_codes": "false",
     "billing_address_collection": "auto",
     "cancel_url": `${env.PUBLIC_SITE_ORIGIN}/#pricing`,
     "customer_creation": "always",
     "line_items[0][quantity]": "1",
+    "managed_payments[enabled]": "true",
     "metadata[pencilproof_product]": PRODUCT_CODE,
     mode: "payment",
     "payment_intent_data[description]": "PencilProof Full Quote Audit",
     "payment_intent_data[metadata][pencilproof_product]": PRODUCT_CODE,
     "success_url": `${env.SITE_ORIGIN}/success?session_id={CHECKOUT_SESSION_ID}`,
   });
-  if (/^price_[A-Za-z0-9]+$/.test(stripePriceId)) {
-    parameters.set("line_items[0][price]", stripePriceId);
-  } else {
-    parameters.set("line_items[0][price_data][currency]", "usd");
-    parameters.set(
-      "line_items[0][price_data][product_data][name]",
-      "PencilProof Full Quote Audit",
-    );
-    parameters.set(
-      "line_items[0][price_data][unit_amount]",
-      String(PRODUCT_PRICE_CENTS),
-    );
-  }
+  parameters.set("line_items[0][price]", stripePriceId);
 
   const response = await stripeRequest("/checkout/sessions", env, {
     body: parameters,
     method: "POST",
   });
   const session = await response.json() as StripeCheckoutSession & {
-    error?: { message?: string };
+    error?: { code?: string; message?: string; param?: string };
   };
   if (
     !response.ok
     || !session.url
     || !session.url.startsWith("https://checkout.stripe.com/")
   ) {
+    const stripeError = session.error;
+    const errorDetails = [
+      stripeError?.code,
+      stripeError?.param,
+      stripeError?.message,
+    ].filter(Boolean).join(" ").toLowerCase();
+    const code: CheckoutErrorCode =
+      errorDetails.includes("tax code")
+        || errorDetails.includes("tax_code")
+        || errorDetails.includes("eligible product")
+        ? "stripe_product_ineligible"
+        : errorDetails.includes("managed payments")
+          || errorDetails.includes("managed_payments")
+          ? "managed_payments_unavailable"
+          : "stripe_api_rejected";
     throw new CheckoutError(
-      "stripe_api_rejected",
-      session.error?.message ?? "Stripe checkout session failed",
+      code,
+      stripeError?.message ?? "Stripe checkout session failed",
     );
   }
   return session;
@@ -337,16 +357,25 @@ const retrieveCheckoutSession = async (sessionId: string, env: Env) => {
   return response.json() as Promise<StripeCheckoutSession>;
 };
 
-const isPaidPencilProofSession = (session: StripeCheckoutSession | null) =>
-  Boolean(
+const isPaidPencilProofSession = (session: StripeCheckoutSession | null) => {
+  const tax = session?.total_details?.amount_tax;
+  return Boolean(
     session
     && session.status === "complete"
     && session.payment_status === "paid"
     && session.mode === "payment"
-    && session.amount_total === PRODUCT_PRICE_CENTS
+    && session.managed_payments?.enabled === true
+    && session.amount_subtotal === PRODUCT_PRICE_CENTS
+    && typeof tax === "number"
+    && Number.isInteger(tax)
+    && tax >= 0
+    && session.total_details?.amount_discount === 0
+    && session.total_details?.amount_shipping === 0
+    && session.amount_total === PRODUCT_PRICE_CENTS + tax
     && session.currency?.toLowerCase() === "usd"
-    && session.metadata?.pencilproof_product === PRODUCT_CODE,
+    && session.metadata?.pencilproof_product === PRODUCT_CODE
   );
+};
 
 const handleCheckout = async (request: Request, env: Env) => {
   if (request.method !== "POST") {
