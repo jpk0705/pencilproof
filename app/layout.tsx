@@ -3,8 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
 const isGitHubPages = process.env.GITHUB_ACTIONS === "true";
-const repositoryName = process.env.GITHUB_REPOSITORY?.split("/")[1] ?? "pencilproof";
-const iconPath = isGitHubPages ? `/${repositoryName}/favicon.svg` : "/favicon.svg";
+const iconPath = "/favicon.svg";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
