@@ -12,6 +12,7 @@ export interface Env {
   PUBLIC_SITE_ORIGIN: string;
   SESSION_SECRET: string;
   SITE_ORIGIN: string;
+  STRIPE_PRICE_ID: string;
   STRIPE_SECRET_KEY: string;
 }
 
@@ -228,17 +229,16 @@ const stripeRequest = async (
 };
 
 const createCheckoutSession = async (env: Env) => {
+  if (!/^price_[A-Za-z0-9]+$/.test(env.STRIPE_PRICE_ID)) {
+    throw new Error("Stripe price is not configured");
+  }
+
   const parameters = new URLSearchParams({
     "allow_promotion_codes": "false",
     "billing_address_collection": "auto",
     "cancel_url": `${env.PUBLIC_SITE_ORIGIN}/#pricing`,
     "customer_creation": "always",
-    "line_items[0][price_data][currency]": "usd",
-    "line_items[0][price_data][product_data][description]":
-      "One-time access to the PencilProof Full Quote Audit",
-    "line_items[0][price_data][product_data][name]":
-      "PencilProof Full Quote Audit",
-    "line_items[0][price_data][unit_amount]": String(PRODUCT_PRICE_CENTS),
+    "line_items[0][price]": env.STRIPE_PRICE_ID,
     "line_items[0][quantity]": "1",
     "metadata[pencilproof_product]": PRODUCT_CODE,
     mode: "payment",
