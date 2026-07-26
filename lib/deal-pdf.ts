@@ -284,6 +284,9 @@ const findAmount = (lines: string[], labels: RegExp[], options?: { allowZero?: b
     const onLineCurrency = currencyValues(line, options?.allowZero);
     if (onLineCurrency.length) return onLineCurrency[onLineCurrency.length - 1].value;
 
+    const onLinePrice = priceValues(line, options?.allowZero);
+    if (onLinePrice.length) return onLinePrice[onLinePrice.length - 1].value;
+
     for (let offset = 1; offset <= 2; offset += 1) {
       const nextLine = lines[index + offset];
       if (!nextLine) break;
@@ -291,9 +294,6 @@ const findAmount = (lines: string[], labels: RegExp[], options?: { allowZero?: b
       if (nextValues.length) return nextValues[0].value;
       if (/[A-Za-z]{4,}/.test(nextLine) && !/^\s*[$\d(.-]/.test(nextLine)) break;
     }
-
-    const usable = priceValues(line, options?.allowZero);
-    if (usable.length) return usable[usable.length - 1].value;
 
     for (let offset = 1; offset <= 2; offset += 1) {
       const nextLine = lines[index + offset];
@@ -360,7 +360,7 @@ const sumDistinctAmounts = (lines: string[], labels: RegExp[]) => {
       if (amountLineIndex < 0 || matchedAmountLines.has(amountLineIndex)) continue;
       const amountLine = lines[amountLineIndex] ?? "";
       if (amountLineIndex !== index && /[A-Za-z]{3,}/.test(amountLine)) continue;
-      const values = currencyValues(amountLine);
+      const values = priceValues(amountLine);
       if (!values.length) continue;
       matchedAmountLines.add(amountLineIndex);
       total += values[values.length - 1].value;
@@ -376,7 +376,7 @@ const findPaymentNearLabel = (lines: string[], labels: RegExp[]) => {
     for (let distance = 0; distance <= 12; distance += 1) {
       for (const candidateIndex of distance ? [index + distance, index - distance] : [index]) {
         const candidateLine = lines[candidateIndex] ?? "";
-        const values = currencyValues(candidateLine);
+        const values = priceValues(candidateLine);
         const printedPayment = values.find(({ value, raw }) => {
           if (value < 50 || value > 5000) return false;
           const remainingText = candidateLine.replace(raw, "").replace(/[\s:|()[\].,-]/g, "");
@@ -449,6 +449,7 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     /\bvehicle service contract\b/i,
     /\bservice contract\b/i,
     /\bextended warranty\b/i,
+    /\bAlly\b.*\b(?:vehicle protection|Major Guard)\b/i,
     /\bAPP\s+Major Guard\b/i,
     /\bMajor Guard\b/i,
   ]);
@@ -457,6 +458,7 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
   const gap = findAmount(lines, [
     /\bGAP(?: protection| waiver| coverage| insurance)?\b/i,
     /\bguaranteed asset protection\b/i,
+    /\bAmeri\s*Plus\b.*\b(?:debt cancellation|total loss protection)\b/i,
   ]);
   if (gap) fields.gap = gap;
 
@@ -479,8 +481,20 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
   if (protection) fields.protection = protection;
 
   const accessories = sumDistinctAmounts(lines, [
-    /\bconnected car(?: \d+ year)? plan\b/i,
+    /\bconnected car(?: \d+ year)?(?: plan)?\b/i,
     /\bcarnamic connect(?: \d+ year)? plan\b/i,
+    /\bZurich Shield\b/i,
+    /\bLo\s*Jack\b/i,
+    /\bKahu\b/i,
+    /\bGPS (?:tracker|tracking|recovery)\b/i,
+    /\bvehicle recovery (?:device|system)\b/i,
+    /\banti[- ]?theft (?:device|system)\b/i,
+    /\bwindow tint\b/i,
+    /\bwheel locks?\b/i,
+    /\bfloor mats?\b/i,
+    /\bcargo (?:liner|mat|tray)\b/i,
+    /\bdoor edge guards?\b/i,
+    /\bsplash guards?\b/i,
     /\bshipping\b/i,
     /\bdealer installed (?:options|accessories)\b/i,
     /\baccessories\b/i,
@@ -513,7 +527,7 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     /\bmanufacturer rebate\b/i,
     /\bcash rebate\b/i,
     /\bdealer discount\b/i,
-    /^discount(?:\s*\(-\))?\b/i,
+    /\bdiscount(?:\s*\(-\))?\b/i,
     /\bincentive(?:s)?\b/i,
     /\brebate(?:s)?\b/i,
   ]);
@@ -600,7 +614,7 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
 
   if (!fields.quotedPayment) {
     const unmatchedPaymentCandidates = [...new Set(
-      lines.flatMap((line) => currencyValues(line).map(({ value }) => value))
+      lines.flatMap((line) => priceValues(line).map(({ value }) => value))
         .filter((value) => value >= 50 && value <= 5000)
         .filter((value) => !knownNonPaymentAmounts.some((known) => Math.abs(known - value) < 0.01)),
     )];

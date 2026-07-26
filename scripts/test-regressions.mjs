@@ -55,6 +55,48 @@ const taxRateAndAmount = parseDealerText([
 closeTo(taxRateAndAmount.tax, 4137.47);
 assert.notEqual(taxRateAndAmount.tax, 9.375);
 
+const dalyCityPhotoQuote = parseDealerText([
+  "2018 Ram ProMaster City Tradesman Cargo Van 4D",
+  "Estimated Payment",
+  "387.97",
+  "72 Months @ 5.5900%",
+  "Pricing Breakdown Asking Price 18,500.00",
+  "Discount (-) 500.00",
+  "Sales Price 18,000.00",
+  "Connected Car 1 Year Plan 299.00",
+  "Zurich Shield - Standard 199.00",
+  "Gap Insurance 795.00",
+  "Vehicle Service Contract - (Elite) Platinum Used 36/45000 3,632.00",
+  "DMV License / Title Fees 192.00",
+  "DMV Reg / Transfer Fees 263.00",
+  "Doc Fee 85.00",
+  "Smog Certification Fee 8.25",
+  "Electronic Filing Fee 37.00",
+  "Sales Tax: 9.25% 1,723.55",
+  "TOTAL SALES AMOUNT 25,283.80",
+  "Deposit / Cash Down (-) 1,600.00",
+  "CASH DUE / FINANCE AMOUNT 23,683.80",
+]);
+closeTo(dalyCityPhotoQuote.sellingPrice, 18500);
+closeTo(dalyCityPhotoQuote.rebate, 500);
+closeTo(dalyCityPhotoQuote.accessories, 498);
+closeTo(dalyCityPhotoQuote.gap, 795);
+closeTo(dalyCityPhotoQuote.serviceContract, 3632);
+closeTo(dalyCityPhotoQuote.quotedPayment, 387.97);
+closeTo(dalyCityPhotoQuote.apr, 5.59);
+assert.equal(dalyCityPhotoQuote.term, 72);
+
+const namedProducts = parseDealerText([
+  "Ally VSC $2,495.00",
+  "AmeriPlus GAP $995.00",
+  "Connected Car $299.00",
+  "LoJack $695.00",
+  "Zurich Shield $199.00",
+]);
+closeTo(namedProducts.serviceContract, 2495);
+closeTo(namedProducts.gap, 995);
+closeTo(namedProducts.accessories, 1193);
+
 const reconstructedTax = parseDealerText([
   "Asking Price $44,635.00",
   "Dealer Discount $4,500.00",
