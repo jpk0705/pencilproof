@@ -234,7 +234,7 @@ h1 { max-width: 690px; margin: 0; font-family: Georgia, 'Times New Roman', serif
 .product-intro { display: grid; grid-template-columns: 1.25fr .75fr; gap: 65px; max-width: none; align-items: end; }
 .product-intro .kicker { grid-column: 1 / -1; margin-bottom: -42px; }
 .product-intro > p:last-child { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.75; }
-.product-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 65px; }
+.product-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-top: 65px; }
 .product-grid article { min-height: 290px; padding: 26px; border: 1px solid #c7cdb9; background: rgba(255,255,255,.46); }
 .product-grid article > span { display: inline-block; padding: 6px 8px; color: var(--accent); background: var(--ink); border-radius: 3px; font-size: 8px; font-weight: 900; letter-spacing: .1em; }
 .product-grid h3 { margin: 52px 0 13px; font-family: Georgia, serif; font-size: 23px; line-height: 1.1; font-weight: 500; }

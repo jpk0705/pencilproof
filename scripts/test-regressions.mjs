@@ -97,6 +97,49 @@ closeTo(namedProducts.serviceContract, 2495);
 closeTo(namedProducts.gap, 995);
 closeTo(namedProducts.accessories, 1193);
 
+const categorizedDealerAddOns = parseDealerText([
+  "Toyota Extra Care Vehicle Service Agreement $2,795.00",
+  "Safe-Guard GAP Waiver $895.00",
+  "ToyotaCare Plus Scheduled Maintenance Plan $1,025.00",
+  "Zurich Tire & Wheel Protection Plan $1,249.00",
+  "ResistAll Appearance Protection $699.00",
+  "LoJack GPS Recovery System $795.00",
+  "Nitrogen Tire Package $189.00",
+  "VIN Etch $299.00",
+  "Door Edge Guards $149.00",
+]);
+closeTo(categorizedDealerAddOns.serviceContract, 2795);
+closeTo(categorizedDealerAddOns.gap, 895);
+closeTo(categorizedDealerAddOns.prepaidMaintenance, 1025);
+closeTo(categorizedDealerAddOns.tireWheel, 1249);
+closeTo(categorizedDealerAddOns.accessories, 2131);
+
+const photoStyleDealerAddOns = parseDealerText([
+  "Ally VSC 2,495.00",
+  "AmeriPlus GAP 995.00",
+  "Prepaid Maintenance 899.00",
+  "Tire & Wheel 1,199.00",
+  "Zurich Shield 199.00",
+  "Connected Car 299.00",
+  "Nitrogen 189.00",
+]);
+closeTo(photoStyleDealerAddOns.serviceContract, 2495);
+closeTo(photoStyleDealerAddOns.gap, 995);
+closeTo(photoStyleDealerAddOns.prepaidMaintenance, 899);
+closeTo(photoStyleDealerAddOns.tireWheel, 1199);
+closeTo(photoStyleDealerAddOns.accessories, 687);
+
+const noCategoryDoubleCounting = parseDealerText([
+  "Vehicle Service Contract Protection Plan $2,495.00",
+  "GAP Protection Plan $995.00",
+  "Tire & Wheel Protection Plan $1,199.00",
+  "Appearance Protection Plan $699.00",
+]);
+closeTo(noCategoryDoubleCounting.serviceContract, 2495);
+closeTo(noCategoryDoubleCounting.gap, 995);
+closeTo(noCategoryDoubleCounting.tireWheel, 1199);
+closeTo(noCategoryDoubleCounting.accessories, 699);
+
 const reconstructedTax = parseDealerText([
   "Asking Price $44,635.00",
   "Dealer Discount $4,500.00",
@@ -126,7 +169,7 @@ const printedPayment = parseDealerText([
 closeTo(printedPayment.sellingPrice, 31000);
 closeTo(printedPayment.rebate, 1500);
 closeTo(printedPayment.quotedPayment, 642.94);
-closeTo(printedPayment.accessories, 2499);
+closeTo(printedPayment.accessories, 3198);
 
 const separatedPackedPayment = parseDealerText([
   "Estimated Payment",
@@ -228,7 +271,7 @@ const allPricedProducts = {
   serviceContract: 3453,
   gap: 1200,
   prepaidMaintenance: 899,
-  protection: 699,
+  tireWheel: 699,
   accessories: 299,
 };
 assert.equal(countPricedProducts(allPricedProducts), 5);

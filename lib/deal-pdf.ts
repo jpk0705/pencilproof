@@ -7,7 +7,7 @@ export type ImportedDealFields = Partial<{
   serviceContract: number;
   gap: number;
   prepaidMaintenance: number;
-  protection: number;
+  tireWheel: number;
   accessories: number;
   tradeValue: number;
   tradePayoff: number;
@@ -28,7 +28,7 @@ export const DEAL_FIELD_LABELS: Record<keyof ImportedDealFields, string> = {
   serviceContract: "VSC / service contract",
   gap: "GAP protection",
   prepaidMaintenance: "Prepaid maintenance",
-  protection: "Appearance / protection products",
+  tireWheel: "Tire & wheel protection (T&W)",
   accessories: "Accessories / other add-ons",
   tradeValue: "Trade allowance",
   tradePayoff: "Trade payoff",
@@ -105,7 +105,7 @@ export const reconcileQuotedPayment = (sourceFields: ImportedDealFields) => {
   }
 
   const products = (fields.serviceContract ?? 0) + (fields.gap ?? 0) +
-    (fields.prepaidMaintenance ?? 0) + (fields.protection ?? 0) + (fields.accessories ?? 0);
+    (fields.prepaidMaintenance ?? 0) + (fields.tireWheel ?? 0) + (fields.accessories ?? 0);
   const amountFinanced = Math.max(0,
     fields.sellingPrice + (fields.tax ?? 0) + (fields.govFees ?? 0) + (fields.docFee ?? 0) + products +
     (fields.tradePayoff ?? 0) - (fields.tradeValue ?? 0) - (fields.cashDown ?? 0) - (fields.rebate ?? 0),
@@ -350,11 +350,16 @@ const vehicleFromLines = (lines: string[]) => {
   return undefined;
 };
 
-const sumDistinctAmounts = (lines: string[], labels: RegExp[]) => {
+const sumDistinctAmounts = (
+  lines: string[],
+  labels: RegExp[],
+  excludedLabels: RegExp[] = [],
+) => {
   const matchedAmountLines = new Set<number>();
   let total = 0;
   lines.forEach((line, index) => {
     if (!labels.some((label) => label.test(line))) return;
+    if (excludedLabels.some((label) => label.test(line))) return;
     const candidates = [index, index + 1, index - 1];
     for (const amountLineIndex of candidates) {
       if (amountLineIndex < 0 || matchedAmountLines.has(amountLineIndex)) continue;
@@ -444,61 +449,130 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
   ]);
   if (docFee) fields.docFee = docFee;
 
-  const serviceContract = findAmount(lines, [
+  const serviceContractLabels = [
     /\bVSC\b/i,
     /\bvehicle service contract\b/i,
     /\bservice contract\b/i,
+    /\bservice agreement\b/i,
     /\bextended warranty\b/i,
+    /\bmechanical breakdown (?:coverage|insurance|protection|contract)\b/i,
+    /\bvehicle protection (?:plan|program|agreement)\b/i,
     /\bAlly\b.*\b(?:vehicle protection|Major Guard)\b/i,
     /\bAPP\s+Major Guard\b/i,
     /\bMajor Guard\b/i,
-  ]);
+    /\b(?:Toyota Extra Care|Ford Protect|Mopar Vehicle Protection|GM Protection Plan)\b/i,
+    /\b(?:XtraRide|AUL|CNA National|Portfolio|Protective)\b.*\b(?:service|vehicle|warranty|coverage|contract)\b/i,
+    /\b(?:Fidelity|JM&A|Zurich|Safe[- ]?Guard)\b.*\b(?:VSC|service contract|vehicle protection|mechanical breakdown)\b/i,
+  ];
+  const serviceContract = findAmount(lines, serviceContractLabels);
   if (serviceContract) fields.serviceContract = serviceContract;
 
-  const gap = findAmount(lines, [
+  const gapLabels = [
     /\bGAP(?: protection| waiver| coverage| insurance)?\b/i,
     /\bguaranteed asset protection\b/i,
+    /\bdebt cancellation (?:agreement|addendum|waiver|coverage)\b/i,
+    /\bdeficiency waiver\b/i,
+    /\bloan(?:\s*\/\s*| and )lease (?:gap|payoff)\b/i,
     /\bAmeri\s*Plus\b.*\b(?:debt cancellation|total loss protection)\b/i,
-  ]);
+    /\b(?:Ameri\s*Plus|Ally|Zurich|Safe[- ]?Guard|Fidelity|JM&A|Portfolio)\b.*\bGAP\b/i,
+  ];
+  const gap = findAmount(lines, gapLabels);
   if (gap) fields.gap = gap;
 
-  const prepaidMaintenance = findAmount(lines, [
+  const prepaidMaintenanceLabels = [
     /\bPPM\b/i,
     /\bprepaid maintenance\b/i,
     /\bmaintenance (?:plan|package|agreement)\b/i,
-  ]);
+    /\bscheduled maintenance (?:plan|program|coverage)\b/i,
+    /\bmaintenance care\b/i,
+    /\b(?:ToyotaCare Plus|Audi Care|BMW Ultimate Care)\b/i,
+    /\b(?:Honda Care|Mercedes-Benz|Mopar)\b.*\bmaintenance\b/i,
+  ];
+  const prepaidMaintenance = findAmount(lines, prepaidMaintenanceLabels);
   if (prepaidMaintenance) fields.prepaidMaintenance = prepaidMaintenance;
 
-  const protection = findAmount(lines, [
-    /\bappearance(?:\*+)?\b/i,
-    /\bappearance protection\b/i,
-    /\bpaint(?: and|\s*&)? fabric\b/i,
-    /\btheft protection\b/i,
-    /\betch(?:ing)?\b/i,
-    /\btire(?: and|\s*&)? wheel\b/i,
-    /\bprotection (?:plan|package|product)\b/i,
-  ]);
-  if (protection) fields.protection = protection;
+  const tireWheelLabels = [
+    /\bT\s*&\s*W\b/i,
+    /\btire(?:s)?\s*(?:and|&|\/)\s*wheel(?:s)?\b/i,
+    /\bwheel(?:s)?\s*(?:and|&|\/)\s*tire(?:s)?\b/i,
+    /\btire[- ]wheel (?:protection|coverage|plan|package)\b/i,
+    /\broad hazard(?: protection| coverage| plan)?\b/i,
+    /\b(?:Safe[- ]?Guard|Zurich|Sonsio|Fidelity|JM&A|IAS)\b.*\b(?:tire|wheel|road hazard)\b/i,
+  ];
+  const tireWheel = findAmount(lines, tireWheelLabels);
+  if (tireWheel) fields.tireWheel = tireWheel;
 
   const accessories = sumDistinctAmounts(lines, [
     /\bconnected car(?: \d+ year)?(?: plan)?\b/i,
     /\bcarnamic connect(?: \d+ year)? plan\b/i,
     /\bZurich Shield\b/i,
+    /\bResistAll\b/i,
+    /\bCilajet\b/i,
+    /\bXzilon\b/i,
+    /\bSimoniz(?: GlassCoat)?\b/i,
+    /\bPermaPlate\b/i,
+    /\bLuxCare\b/i,
+    /\bDiamond Ceramic\b/i,
+    /\bNanoCure\b/i,
+    /\bECP\b.*\b(?:appearance|paint|fabric|environmental)\b/i,
     /\bLo\s*Jack\b/i,
     /\bKahu\b/i,
-    /\bGPS (?:tracker|tracking|recovery)\b/i,
+    /\bStarGard\b/i,
+    /\bSWAT\b.*\b(?:GPS|recovery|theft)\b/i,
+    /\bRecovR\b/i,
+    /\bPassTime\b/i,
+    /\bSpireon\b/i,
+    /\bElo GPS\b/i,
+    /\bGuidepoint\b/i,
+    /\bIkon\b.*\b(?:GPS|connect|recovery)\b/i,
+    /\bGPS(?: tracker| tracking| recovery| system| device| package)?\b/i,
     /\bvehicle recovery (?:device|system)\b/i,
     /\banti[- ]?theft (?:device|system)\b/i,
+    /\bappearance(?:\*+)?(?: protection| package| product| plan)?\b/i,
+    /\bpaint\s*(?:and|&|\/)\s*fabric(?: protection)?\b/i,
+    /\bpaint protection film\b/i,
+    /\bPPF\b/i,
+    /\bceramic(?: coat(?:ing)?| protection| package)?\b/i,
+    /\bclear(?: ?coat)? protection\b/i,
+    /\binterior protection\b/i,
+    /\benvironmental protection\b/i,
+    /\bwindshield (?:protection|coverage|repair)\b/i,
+    /\bdent(?: and|\s*&)? ding\b/i,
+    /\bkey (?:replacement|protection|coverage)\b/i,
+    /\btheft protection\b/i,
+    /\bVIN (?:etch|etching)\b/i,
+    /\betch(?:ing)?\b/i,
+    /\bdata dots?\b/i,
+    /\bnitrogen(?: tire| fill| package| protection)?\b/i,
     /\bwindow tint\b/i,
+    /\bsecurity (?:system|package)\b/i,
+    /\balarm(?: system)?\b/i,
     /\bwheel locks?\b/i,
     /\bfloor mats?\b/i,
     /\bcargo (?:liner|mat|tray)\b/i,
+    /\bcargo net\b/i,
     /\bdoor edge guards?\b/i,
+    /\bdoor cup guards?\b/i,
     /\bsplash guards?\b/i,
+    /\bmud guards?\b/i,
+    /\brunning boards?\b/i,
+    /\bside steps?\b/i,
+    /\bbed ?liner\b/i,
+    /\btonneau cover\b/i,
+    /\broof (?:rack|rails?)\b/i,
+    /\bcross ?bars?\b/i,
+    /\btow(?:ing)? hitch\b/i,
+    /\bpinstripes?\b/i,
+    /\bprotection (?:plan|package|product)\b/i,
     /\bshipping\b/i,
     /\bdealer installed (?:options|accessories)\b/i,
     /\baccessories\b/i,
     /\bother add[- ]?ons\b/i,
+  ], [
+    ...serviceContractLabels,
+    ...gapLabels,
+    ...prepaidMaintenanceLabels,
+    ...tireWheelLabels,
   ]);
   if (accessories) fields.accessories = accessories;
 
@@ -540,7 +614,7 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
       const netVehiclePrice = fields.sellingPrice - (fields.rebate ?? 0);
       const knownPretaxAmount = netVehiclePrice + (fields.govFees ?? 0) + (fields.docFee ?? 0) +
         (fields.serviceContract ?? 0) + (fields.gap ?? 0) + (fields.prepaidMaintenance ?? 0) +
-        (fields.protection ?? 0) + (fields.accessories ?? 0);
+        (fields.tireWheel ?? 0) + (fields.accessories ?? 0);
       const reconstructedTax = totalSalesAmount - knownPretaxAmount;
       if (reconstructedTax > 0 && reconstructedTax <= netVehiclePrice * 0.2) {
         fields.tax = Math.round(reconstructedTax * 100) / 100;
@@ -548,7 +622,7 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     }
     const knownExtras = (fields.tax ?? 0) + (fields.govFees ?? 0) + (fields.docFee ?? 0) +
       (fields.serviceContract ?? 0) + (fields.gap ?? 0) + (fields.prepaidMaintenance ?? 0) +
-      (fields.protection ?? 0) + (fields.accessories ?? 0);
+      (fields.tireWheel ?? 0) + (fields.accessories ?? 0);
     const reconciledSellingPrice = totalSalesAmount - knownExtras + (fields.rebate ?? 0);
     if (reconciledSellingPrice >= 1000 && (!fields.sellingPrice || fields.sellingPrice < 1000)) {
       fields.sellingPrice = Math.round(reconciledSellingPrice * 100) / 100;
@@ -583,7 +657,7 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     fields.serviceContract,
     fields.gap,
     fields.prepaidMaintenance,
-    fields.protection,
+    fields.tireWheel,
     fields.accessories,
     fields.tradeValue,
     fields.tradePayoff,

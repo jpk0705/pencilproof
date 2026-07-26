@@ -36,7 +36,7 @@ const previewFields: (keyof ImportedDealFields)[] = [
   "serviceContract",
   "gap",
   "prepaidMaintenance",
-  "protection",
+  "tireWheel",
   "accessories",
   "tradeValue",
   "tradePayoff",
@@ -210,7 +210,7 @@ export default function FreeQuotePreview() {
       (fields.serviceContract ?? 0) +
       (fields.gap ?? 0) +
       (fields.prepaidMaintenance ?? 0) +
-      (fields.protection ?? 0) +
+      (fields.tireWheel ?? 0) +
       (fields.accessories ?? 0);
     const amountFinanced = fields.sellingPrice
       ? Math.max(

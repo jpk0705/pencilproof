@@ -26,7 +26,7 @@ type Deal = {
   serviceContract: number;
   gap: number;
   prepaidMaintenance: number;
-  protection: number;
+  tireWheel: number;
   accessories: number;
   tradeValue: number;
   tradePayoff: number;
@@ -67,7 +67,7 @@ const verificationFields: (keyof ImportedDealFields)[] = [
   "serviceContract",
   "gap",
   "prepaidMaintenance",
-  "protection",
+  "tireWheel",
   "accessories",
   "tradeValue",
   "tradePayoff",
@@ -88,8 +88,8 @@ const sample: Deal = {
   serviceContract: 2495,
   gap: 995,
   prepaidMaintenance: 0,
-  protection: 699,
-  accessories: 0,
+  tireWheel: 0,
+  accessories: 699,
   tradeValue: 0,
   tradePayoff: 0,
   cashDown: 5000,
@@ -109,7 +109,7 @@ const blank: Deal = {
   serviceContract: 0,
   gap: 0,
   prepaidMaintenance: 0,
-  protection: 0,
+  tireWheel: 0,
   accessories: 0,
   tradeValue: 0,
   tradePayoff: 0,
@@ -192,7 +192,11 @@ export default function AnalyzePage() {
         offerMatrix?: DealOfferMatrix | null;
       };
       if (!handoff.fields || !Object.keys(handoff.fields).length) return;
-      const importedFields = { ...handoff.fields };
+      const importedFields = { ...handoff.fields } as Partial<Deal> & { protection?: number };
+      if (importedFields.protection) {
+        importedFields.accessories = (importedFields.accessories ?? 0) + importedFields.protection;
+        delete importedFields.protection;
+      }
       if (handoff.offerMatrix) {
         delete importedFields.cashDown;
         delete importedFields.term;
@@ -392,7 +396,7 @@ export default function AnalyzePage() {
       deal.serviceContract +
       deal.gap +
       deal.prepaidMaintenance +
-      deal.protection +
+      deal.tireWheel +
       deal.accessories;
     const totalFees = deal.govFees + deal.docFee;
     const tradeEquity = deal.tradeValue - deal.tradePayoff;
@@ -458,7 +462,7 @@ export default function AnalyzePage() {
       flags.push({
         tone: "good",
         title: "No optional products entered",
-        detail: "Check the worksheet carefully for service contracts, GAP, maintenance, protection packages, and accessories.",
+        detail: "Check the worksheet carefully for service contracts, GAP, maintenance, tire-and-wheel coverage, and other dealer add-ons.",
       });
     }
     if (aprGap >= 0.25) {
@@ -542,20 +546,20 @@ export default function AnalyzePage() {
         question: "Which exact services and intervals are included, where can I use it, and what would those services cost if I paid as I went?",
       });
     }
-    if (deal.protection > 0) {
+    if (deal.tireWheel > 0) {
       productInsights.push({
-        name: "Appearance or protection products",
-        amount: deal.protection,
-        explanation: "May include paint, fabric, wheel, tire, key, theft, or other protection. Product benefits and whether treatment was already applied should be itemized.",
-        question: "What exact products are included, what has already been installed, what claims are covered, and can I decline the package?",
+        name: "Tire & wheel protection (T&W)",
+        amount: deal.tireWheel,
+        explanation: "May cover eligible tire and wheel damage from road hazards. Cosmetic damage, replacement limits, deductibles, exclusions, and claim procedures vary.",
+        question: "What tire and wheel damage is covered, are cosmetic repairs included, what are the limits and deductible, and can I decline the coverage?",
       });
     }
     if (deal.accessories > 0) {
       productInsights.push({
         name: "Accessories and other add-ons",
         amount: deal.accessories,
-        explanation: "Dealer-installed equipment can be useful, but it also increases the amount financed and may cost more than purchasing comparable equipment separately.",
-        question: "Please itemize every accessory, its installed price, and whether the vehicle can be purchased without it.",
+        explanation: "Includes appearance, paint/fabric, GPS/theft, etch, nitrogen, physical accessories, and other dealer add-ons. These items increase the amount financed and should be individually priced.",
+        question: "Please itemize every add-on, its installed price, what has already been applied or installed, and whether the vehicle can be purchased without it.",
       });
     }
 
@@ -767,7 +771,7 @@ export default function AnalyzePage() {
               <MoneyField label="VSC / service contract" field="serviceContract" value={deal.serviceContract} onChange={setNumber} hint="Sometimes called an extended warranty" />
               <MoneyField label="GAP protection" field="gap" value={deal.gap} onChange={setNumber} />
               <MoneyField label="Prepaid maintenance (PPM)" field="prepaidMaintenance" value={deal.prepaidMaintenance} onChange={setNumber} />
-              <MoneyField label="Appearance / protection products" field="protection" value={deal.protection} onChange={setNumber} />
+              <MoneyField label="Tire & wheel protection (T&W)" field="tireWheel" value={deal.tireWheel} onChange={setNumber} />
               <MoneyField label="Accessories / other add-ons" field="accessories" value={deal.accessories} onChange={setNumber} />
             </div>
           </section>
@@ -877,7 +881,7 @@ export default function AnalyzePage() {
                     <small><b>Ask:</b> {product.question}</small>
                   </article>
                 )) : (
-                  <p className="empty-products">Enter any VSC, GAP, maintenance, protection, or accessory prices shown on the quote to receive product-specific guidance.</p>
+                  <p className="empty-products">Enter any VSC, GAP, PPM, T&W, or accessory/add-on prices shown on the quote to receive product-specific guidance.</p>
                 )}
               </div>
 

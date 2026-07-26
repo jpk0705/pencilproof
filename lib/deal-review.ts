@@ -4,7 +4,7 @@ export const REVIEW_PRODUCT_FIELDS = [
   "serviceContract",
   "gap",
   "prepaidMaintenance",
-  "protection",
+  "tireWheel",
   "accessories",
 ] as const satisfies readonly (keyof ImportedDealFields)[];
 
