@@ -6,6 +6,11 @@ import {
 } from "../lib/deal-pdf.ts";
 import { paymentFor } from "../lib/deal-calculations.ts";
 import {
+  CHECKOUT_URL,
+  QUOTE_HANDOFF_TYPE,
+  createQuoteHandoffEnvelope,
+} from "../lib/checkout.ts";
+import {
   countPreviewReviewAreas,
   countPricedProducts,
   isPreviewImportUsable,
@@ -23,6 +28,19 @@ const closeTo = (actual, expected, tolerance = 0.01) => {
     `Expected ${actual} to be within ${tolerance} of ${expected}`,
   );
 };
+
+const handoffPayload = {
+  fields: { sellingPrice: 38995, apr: 7.49 },
+  confidence: { sellingPrice: "high", apr: "review" },
+  offerMatrix: null,
+};
+const handoffEnvelope = JSON.parse(
+  createQuoteHandoffEnvelope(handoffPayload),
+);
+assert.equal(CHECKOUT_URL, "https://audit.pencilproof.com/handoff");
+assert.equal(handoffEnvelope.type, QUOTE_HANDOFF_TYPE);
+assert.deepEqual(handoffEnvelope.payload, handoffPayload);
+assert.equal(CHECKOUT_URL.includes("#"), false);
 
 const taxRateAndAmount = parseDealerText([
   "Selling Price $44,635.00",

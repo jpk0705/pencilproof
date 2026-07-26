@@ -1,7 +1,10 @@
 "use client";
 
 import { useMemo, useState, type ChangeEvent } from "react";
-import { CHECKOUT_URL, QUOTE_HANDOFF_KEY } from "@/lib/checkout";
+import {
+  CHECKOUT_URL,
+  createQuoteHandoffEnvelope,
+} from "@/lib/checkout";
 import {
   DEAL_FIELD_LABELS,
   extractDealFromFile,
@@ -476,15 +479,11 @@ export default function FreeQuotePreview() {
                     className="button button-primary"
                     href={CHECKOUT_URL}
                     onClick={() => {
-                      sessionStorage.setItem(
-                        QUOTE_HANDOFF_KEY,
-                        JSON.stringify({
-                          fields: scan.result.fields,
-                          confidence: scan.result.fieldConfidence,
-                          fileName: scan.fileName,
-                          offerMatrix: scan.result.offerMatrix ?? null,
-                        }),
-                      );
+                      window.name = createQuoteHandoffEnvelope({
+                        fields: scan.result.fields,
+                        confidence: scan.result.fieldConfidence,
+                        offerMatrix: scan.result.offerMatrix ?? null,
+                      });
                     }}
                   >
                     Unlock My Full Quote Audit · $39 <span aria-hidden="true">→</span>
