@@ -13,20 +13,21 @@
 }
 
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
   margin: 0;
   background: var(--paper);
   color: var(--ink);
+  font-size: 16px;
   font-family: Arial, Helvetica, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 a { color: inherit; text-decoration: none; }
 button, input, select { font: inherit; }
-.shell { width: min(1180px, calc(100% - 48px)); margin: 0 auto; }
+.shell { width: min(1280px, calc(100% - 64px)); margin: 0 auto; }
 
 .site-nav {
-  width: min(1180px, calc(100% - 48px));
+  width: min(1280px, calc(100% - 64px));
   height: 84px;
   margin: 0 auto;
   display: flex;
@@ -408,6 +409,155 @@ footer { border-top: 1px solid var(--line); padding: 34px 0; }
 .legal-copy > p:not(.kicker):not(.legal-date) { color: var(--muted); font-size: 14px; line-height: 1.8; }
 .legal-copy .legal-note { margin-top: 48px; padding: 18px; border: 1px solid var(--line); background: var(--card); font-size: 11px !important; }
 
+/* Readability baseline
+   Dense deal data still fits on one screen, but meaningful text no longer
+   drops into the 7–10px range that required browser zoom. */
+.hero-caution { font-size: 12px; line-height: 1.5; }
+.proof-row { font-size: 13px; line-height: 1.45; }
+.deal-card-head p { font-size: 12px; }
+.sample-status span { font-size: 11px; line-height: 1.3; }
+.deal-metrics span { font-size: 12px; }
+.deal-metrics strong { font-size: 17px; }
+.flag p { font-size: 14px; }
+.flag small { font-size: 12px; line-height: 1.45; }
+.deal-card-foot { font-size: 12px; }
+.deal-card-foot a { font-size: 13px; }
+.signal-grid b { font-size: 14px; }
+.signal-grid small { font-size: 12px; line-height: 1.4; }
+.desk-copy > p:not(.kicker),
+.founder-copy > p,
+.free-scan-copy > p:not(.kicker),
+.sample-copy > p:not(.kicker),
+.product-intro > p:last-child { font-size: 16px; }
+.desk-copy .desk-limit { font-size: 13px; }
+.audience-grid span,
+.role-row span { font-size: 12px; }
+.audience-grid p { font-size: 14px; }
+.founder-copy > small { font-size: 12px; }
+.free-scan-copy ul { font-size: 14px; }
+.free-scan-head > div > span,
+.free-badge,
+.free-scan-summary span,
+.free-math-preview > div:first-child span,
+.free-unlock > div > span { font-size: 11px; }
+.free-scan-drop p { font-size: 14px; }
+.free-scan-drop small,
+.free-scan-note { font-size: 12px; }
+.free-scan-progress p,
+.free-scan-error p { font-size: 13px; }
+.free-manual-grid label > span { font-size: 12px; }
+.free-manual-grid input { min-height: 44px; font-size: 14px; }
+.vehicle-photo figcaption span { font-size: 12px; }
+.vehicle-photo figcaption small { font-size: 10px; }
+.vehicle-photo-loading > div,
+.vehicle-photo-unavailable > div { font-size: 11px; }
+.vehicle-photo-loading p span,
+.vehicle-photo-unavailable p span { font-size: 12px; }
+.free-detected-values span { font-size: 11px; }
+.free-detected-values strong { font-size: 14px; }
+.free-detected-values small { font-size: 10px; }
+.free-math-preview > div:first-child small { font-size: 10px; }
+.free-preview-statuses p { font-size: 12px; }
+.free-preview-statuses p b { font-size: 13px; }
+.free-unlock > div > p { font-size: 13px; }
+.free-import-confirm b { font-size: 13px; }
+.free-import-confirm small { font-size: 12px; }
+.free-unlock > button { font-size: 12px; }
+.free-unlock > button.button { font-size: 14px; }
+.section { padding-top: 96px; padding-bottom: 96px; }
+.text-link { font-size: 15px; }
+.audit-preview-head span,
+.audit-unlock > span,
+.product-grid article > span { font-size: 11px; }
+.audit-preview-head strong { font-size: 20px; }
+.audit-finding b { font-size: 14px; }
+.audit-finding p { font-size: 13px; }
+.audit-unlock ul { font-size: 13px; }
+.product-grid p { font-size: 14px; }
+.price-card ul { font-size: 14px; }
+.price-card > small { font-size: 12px; line-height: 1.5; }
+.faq-grid h2,
+.faq-grid h3 { font-size: 17px; }
+.faq-grid p { font-size: 15px; }
+.footer-grid p { font-size: 12px; line-height: 1.5; }
+.footer-grid div { font-size: 13px; }
+
+.privacy-chip { font-size: 12px; }
+.analyzer-header > div > h1 + p { font-size: 16px; }
+.analyzer-header > div > .analyzer-founder { font-size: 13px; }
+.analyzer-actions button { min-height: 44px; font-size: 13px; }
+.pdf-kicker { font-size: 11px; }
+.pdf-import-main > div:nth-child(2) > p:last-child { font-size: 13px; }
+.pdf-upload-button { min-height: 46px; font-size: 13px; }
+.pdf-import-status { font-size: 13px; }
+.manual-entry-button { min-height: 40px; font-size: 12px; }
+.pdf-field-list small { font-size: 11px; }
+.offer-matrix-heading > span { font-size: 11px; }
+.offer-group-title h4 { font-size: 13px; }
+.offer-group-title p { font-size: 12px; }
+.offer-card { min-height: 108px; }
+.offer-card strong small,
+.offer-card span,
+.offer-card b { font-size: 11px; }
+.offer-card em { font-size: 10px; line-height: 1.4; }
+.offer-matrix-warning { font-size: 12px; }
+.pdf-import-note { font-size: 11px; }
+.verification-heading p:last-child { font-size: 13px; }
+.verification-legend span,
+.verification-field small { font-size: 11px; }
+.verification-field > span { font-size: 12px; }
+.verification-field input { height: 42px; font-size: 15px; }
+.verification-actions > button:not(.button) { font-size: 13px; }
+.lease-only-panel p:not(.kicker) { font-size: 13px; }
+.lease-only-panel button { min-height: 42px; font-size: 12px; }
+.analyzer-layout { grid-template-columns: minmax(0, 1fr) 520px; gap: 28px; }
+.form-section-title p { font-size: 13px; line-height: 1.5; }
+.input-field { font-size: 13px; }
+.input-field input,
+.input-field select,
+.input-money { height: 48px; }
+.input-money input { height: 46px; }
+.input-field input,
+.input-field select { font-size: 16px; }
+.input-field small { font-size: 12px; line-height: 1.4; }
+.live-payment span { font-size: 11px; }
+.live-payment strong small { font-size: 11px; }
+.live-payment p { font-size: 13px; }
+.result-top p,
+.audit-status,
+.deal-check > span,
+.result-numbers span,
+.result-section-title span,
+.dealer-message p { font-size: 11px; }
+.result-top h2 { font-size: 26px; }
+.score-note { font-size: 12px; }
+.deal-check { min-height: 90px; }
+.deal-check strong { font-size: 13px; }
+.deal-check small { font-size: 11px; }
+.payment-compare span { font-size: 11px; }
+.payment-compare strong { font-size: 20px; }
+.payment-compare strong small,
+.payment-compare div > small { font-size: 10px; }
+.result-numbers strong { font-size: 22px; }
+.result-numbers strong small { font-size: 10px; }
+.payment-truth span { font-size: 10px; }
+.payment-truth strong { font-size: 14px; }
+.deal-equation > div span { font-size: 11px; }
+.deal-equation > div strong { font-size: 12px; }
+.empty-audit p { font-size: 12px; }
+.result-flag b { font-size: 12px; }
+.result-flag small { font-size: 11px; }
+.product-insight h3,
+.product-insight strong { font-size: 12px; }
+.product-insight p,
+.product-insight > small,
+.empty-products { font-size: 11px; }
+.dealer-message button { min-height: 36px; font-size: 12px; }
+.dealer-message pre { font: 12px/1.55 Arial, sans-serif; }
+.print-button { height: 48px; font-size: 14px; }
+.result-disclaimer { font-size: 10px; }
+.legal-copy .legal-note { font-size: 13px !important; }
+
 @media print {
   .analyzer-nav, .analyzer-header, .pdf-import, .deal-form, .print-button { display: none !important; }
   .analyzer-layout { display: block; padding: 0; }.results-panel { width: 100%; }.results-sticky { position: static; box-shadow: none; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
@@ -422,11 +572,17 @@ footer { border-top: 1px solid var(--line); padding: 34px 0; }
   .verification-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 680px) {
-  .shell, .site-nav { width: min(100% - 30px, 1180px); }.site-nav { height: 70px; }.nav-links > a:not(.nav-cta) { display: none; }.nav-links { gap: 0; }.nav-cta { padding: 10px 14px; font-size: 12px; }
-  .hero { min-height: auto; padding-top: 54px; padding-bottom: 64px; }.hero-actions { flex-direction: column; }.button { width: 100%; }.proof-row { flex-direction: column; gap: 10px; }
+  .shell, .site-nav { width: min(100% - 36px, 1280px); }.site-nav { height: 70px; }.nav-links > a:not(.nav-cta) { display: none; }.nav-links { gap: 0; }.nav-cta { padding: 11px 15px; font-size: 14px; }
+  h1 { font-size: clamp(44px, 12.5vw, 52px); line-height: 1.02; }
+  .analyzer-header h1 { font-size: clamp(42px, 12vw, 50px); }
+  .section h2,
+  .sample-copy h2,
+  .desk-copy h2,
+  .questions-page .section-intro h1 { font-size: clamp(36px, 10vw, 44px); }
+  .hero { min-height: auto; padding-top: 48px; padding-bottom: 58px; }.hero-lede { font-size: 17px; line-height: 1.6; }.hero-actions { flex-direction: column; }.button { width: 100%; min-height: 56px; font-size: 16px; }.proof-row { flex-direction: column; gap: 10px; font-size: 14px; }
   .deal-card { padding: 20px; box-shadow: 8px 10px 0 #dfe5cf; transform: none; }.deal-metrics { grid-template-columns: 1fr; }.deal-metrics div { flex-direction: row; justify-content: space-between; }.deal-card-foot > span { display: none; }
   .signal-grid { grid-template-columns: 1fr; }.signal-grid div { padding: 18px 0; border-right: 0; border-bottom: 1px solid rgba(255,255,255,.15); }.signal-grid div:last-child { border-bottom: 0; }
-  .section { padding-top: 78px; padding-bottom: 78px; }.audit-preview { box-shadow: 7px 8px 0 #dfe5cf; }.audit-preview-head { align-items: flex-start; flex-direction: column; gap: 7px; }.audit-finding { grid-template-columns: 32px 1fr; }.audit-finding > strong { grid-column: 2; }.audit-unlock ul { grid-template-columns: 1fr; }.product-grid { grid-template-columns: 1fr; }.product-grid article { min-height: 230px; }.steps { grid-template-columns: 1fr; }.steps article { min-height: 220px; }.offer-grid { gap: 40px; }.faq-grid { grid-template-columns: 1fr; }.footer-grid { grid-template-columns: 1fr; gap: 18px; text-align: center; }.footer-grid p { order: 3; }.footer-grid div { justify-content: center; }.brand-footer { justify-self: center; }
+  .section { padding-top: 68px; padding-bottom: 68px; }.audit-preview { box-shadow: 7px 8px 0 #dfe5cf; }.audit-preview-head { align-items: flex-start; flex-direction: column; gap: 7px; }.audit-finding { grid-template-columns: 32px 1fr; }.audit-finding > strong { grid-column: 2; }.audit-unlock ul { grid-template-columns: 1fr; }.product-grid { grid-template-columns: 1fr; }.product-grid article { min-height: 230px; }.steps { grid-template-columns: 1fr; }.steps article { min-height: 220px; }.offer-grid { gap: 40px; }.faq-grid { grid-template-columns: 1fr; }.footer-grid { grid-template-columns: 1fr; gap: 18px; text-align: center; }.footer-grid p { order: 3; }.footer-grid div { justify-content: center; }.brand-footer { justify-self: center; }
   .privacy-chip { display: none; }.analyzer-header { align-items: flex-start; flex-direction: column; gap: 24px; padding-top: 42px; }.analyzer-actions { width: 100%; }.analyzer-actions button { flex: 1; }.pdf-import { padding: 18px; }.pdf-import-main { grid-template-columns: auto 1fr; }.pdf-upload-button { grid-column: 1 / -1; width: 100%; }.analyzer-layout { width: 100%; padding-bottom: 50px; }.deal-form { padding: 0 15px; }.form-section { padding: 22px 18px; }.field-grid, .field-grid-four { grid-template-columns: 1fr; }.results-sticky { border-radius: 0; padding: 23px 18px; }.result-flags { display: flex; }.analyzer-header.shell { width: min(100% - 30px, 1180px); }
   .offer-matrix-heading, .offer-group-title { flex-direction: column; }.offer-options-grid { grid-template-columns: 1fr; }
   .audience-grid { grid-template-columns: 1fr; }.audience-grid article { min-height: 220px; }.audience-grid h3 { margin-top: 28px; }
@@ -436,8 +592,69 @@ footer { border-top: 1px solid var(--line); padding: 34px 0; }
   .deal-check-grid { grid-template-columns: 1fr; }
   .vehicle-photo { grid-template-columns: 1fr; }.vehicle-photo img { min-height: 0; aspect-ratio: 16 / 9; }.vehicle-photo figcaption { gap: 10px; padding: 14px; }.vehicle-photo-compact { min-height: 0; }
   .free-scan-head { align-items: flex-start; }.free-scan-summary { grid-template-columns: 1fr 1fr; }.free-scan-summary div:nth-child(2) { border-right: 0; }.free-scan-summary div:nth-child(-n+2) { border-bottom: 1px solid #d3dccb; }.free-detected-values { grid-template-columns: 1fr 1fr; }.free-math-preview, .free-manual-grid { grid-template-columns: 1fr; }.free-manual-grid .manual-field-wide { grid-column: auto; }.free-scan-drop { padding: 42px 20px; }.free-scan-drop .button, .free-scan-error .button { width: 100%; }
-  .pdf-import-main > div:nth-child(2) > p:last-child, .pdf-import-status, .pdf-import-note, .score-note, .result-disclaimer { font-size: 10px; }
-  .result-flag b, .product-insight h3 { font-size: 12px; }.result-flag small, .product-insight p, .product-insight > small, .empty-products { font-size: 10px; }
+  .pdf-import-main > div:nth-child(2) > p:last-child, .pdf-import-status, .pdf-import-note, .score-note, .result-disclaimer { font-size: 12px; }
+  .result-flag b, .product-insight h3 { font-size: 13px; }.result-flag small, .product-insight p, .product-insight > small, .empty-products { font-size: 12px; }
+  .analyzer-header.shell { width: min(100% - 36px, 1280px); }
+  .input-field,
+  .verification-field > span { font-size: 14px; }
+  .input-field input,
+  .input-field select,
+  .free-manual-grid input,
+  .verification-field input { font-size: 16px; }
+  .hero-caution,
+  .sample-status span,
+  .deal-card-head p,
+  .deal-metrics span,
+  .deal-card-foot,
+  .signal-grid small,
+  .desk-copy .desk-limit,
+  .founder-copy > small,
+  .free-scan-head > div > span,
+  .free-badge,
+  .free-scan-drop small,
+  .free-manual-grid label > span,
+  .free-scan-summary span,
+  .vehicle-photo figcaption span,
+  .vehicle-photo figcaption small,
+  .free-detected-values span,
+  .free-detected-values small,
+  .free-math-preview > div:first-child span,
+  .free-math-preview > div:first-child small,
+  .free-preview-statuses p,
+  .free-unlock > div > span,
+  .free-import-confirm small,
+  .free-scan-note,
+  .price-card > small,
+  .footer-grid p,
+  .pdf-kicker,
+  .pdf-field-list small,
+  .offer-matrix-heading > span,
+  .offer-card strong small,
+  .offer-card span,
+  .offer-card em,
+  .offer-card b,
+  .verification-legend span,
+  .verification-field small,
+  .input-field small,
+  .live-payment span,
+  .live-payment strong small,
+  .result-top p,
+  .audit-status,
+  .deal-check > span,
+  .deal-check small,
+  .payment-compare span,
+  .payment-compare strong small,
+  .payment-compare div > small,
+  .result-numbers span,
+  .result-numbers strong small,
+  .payment-truth span,
+  .result-flag small,
+  .result-section-title span,
+  .product-insight p,
+  .product-insight > small,
+  .empty-products,
+  .dealer-message p,
+  .result-disclaimer { font-size: 12px; }
 }
 
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; }.button { transition: none; }.vehicle-photo-loading > div::after { animation: none; } }
