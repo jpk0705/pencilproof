@@ -98,6 +98,7 @@ test("checkout uses the configured Stripe price", async () => {
   );
   assert.equal(parameters.get("line_items[0][price_data][unit_amount]"), null);
   assert.equal(parameters.get("managed_payments[enabled]"), "true");
+  assert.equal(parameters.get("adaptive_pricing[enabled]"), "false");
   assert.equal(
     parameters.get("metadata[pencilproof_product]"),
     "full_quote_audit_v1",
