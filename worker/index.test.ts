@@ -295,6 +295,9 @@ test("checkout configures one Stripe webhook without exposing its secret", async
     [
       "checkout.session.completed",
       "checkout.session.async_payment_succeeded",
+      "refund.created",
+      "charge.refunded",
+      "charge.dispute.created",
     ],
   );
 
@@ -317,6 +320,52 @@ test("checkout configures one Stripe webhook without exposing its secret", async
     env,
   );
   assert.deepEqual(stripePaths, ["/v1/checkout/sessions"]);
+});
+
+test("an existing webhook endpoint is upgraded with revocation events", async () => {
+  const storage = new MemoryStorage();
+  await storage.put("webhookConfig", {
+    createdAt: 1_000,
+    endpointId: "we_ExistingEndpoint123",
+    secret: "whsec_ExistingSecret123",
+    url: "https://audit.pencilproof.com/api/stripe/webhook",
+  });
+  const env = makeEnv();
+  let updateBody = "";
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    assert.equal(
+      url.pathname,
+      "/v1/webhook_endpoints/we_ExistingEndpoint123",
+    );
+    updateBody = String(init?.body ?? "");
+    return Response.json({
+      id: "we_ExistingEndpoint123",
+      url: "https://audit.pencilproof.com/api/stripe/webhook",
+    });
+  };
+
+  const store = new OrderStore({ storage }, env);
+  const response = await store.fetch(
+    new Request("https://order-store.internal/webhook/ensure", {
+      body: JSON.stringify({
+        url: "https://audit.pencilproof.com/api/stripe/webhook",
+      }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    }),
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(
+    new URLSearchParams(updateBody).getAll("enabled_events[]"),
+    [
+      "checkout.session.completed",
+      "checkout.session.async_payment_succeeded",
+      "refund.created",
+      "charge.refunded",
+      "charge.dispute.created",
+    ],
+  );
 });
 
 test("checkout fails safely when the Stripe price binding is absent", async () => {
@@ -469,6 +518,247 @@ test("a verified webhook records one order and binds recovery to its browser", a
     sharedLinkResponse.headers.get("Location"),
     "https://audit.pencilproof.com/recover?reason=device_mismatch",
   );
+});
+
+test("a full refund revokes an existing cookie and duplicate events are safe", async () => {
+  const env = makeEnv();
+  const deviceHash = await sha256Hex(TEST_DEVICE_ID);
+  const sessionId = "cs_test_refunded";
+  const paidEvent = {
+    created: Math.floor(Date.now() / 1000),
+    data: { object: { id: sessionId } },
+    id: "evt_test_refund_paid",
+    type: "checkout.session.completed",
+  };
+  const paidPayload = JSON.stringify(paidEvent);
+
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith("/line_items")) {
+      return Response.json({
+        data: [{
+          price: { id: "price_123TestValid" },
+          quantity: 1,
+        }],
+        has_more: false,
+      });
+    }
+    return Response.json(paidSession(deviceHash, sessionId));
+  };
+  assert.equal(
+    (await handleRequest(
+      new Request("https://audit.pencilproof.com/api/stripe/webhook", {
+        body: paidPayload,
+        headers: { "Stripe-Signature": await signWebhook(paidPayload) },
+        method: "POST",
+      }),
+      env,
+    )).status,
+    200,
+  );
+
+  const success = await handleRequest(
+    new Request(
+      `https://audit.pencilproof.com/success?session_id=${sessionId}`,
+      { headers: { Cookie: `pp_device=${TEST_DEVICE_ID}` } },
+    ),
+    env,
+  );
+  const token = (success.headers.get("Set-Cookie") ?? "")
+    .match(/^pp_access=([^;]+)/)?.[1] ?? "";
+  const authorizedRequest = () =>
+    new Request("https://audit.pencilproof.com/analyze/", {
+      headers: {
+        Cookie: `pp_access=${token}; pp_device=${TEST_DEVICE_ID}`,
+      },
+    });
+  assert.equal((await handleRequest(authorizedRequest(), env)).status, 200);
+
+  const partialRefund = {
+    created: Math.floor(Date.now() / 1000),
+    data: {
+      object: {
+        charge: "ch_testRefunded",
+        id: "re_test_partial",
+        payment_intent: "pi_testRefunded",
+      },
+    },
+    id: "evt_test_partial_refund",
+    type: "refund.created",
+  };
+  const partialPayload = JSON.stringify(partialRefund);
+  globalThis.fetch = async () => Response.json({
+    amount: 4235,
+    amount_refunded: 1000,
+    id: "ch_testRefunded",
+    payment_intent: "pi_testRefunded",
+    refunded: false,
+  });
+  assert.equal(
+    (await handleRequest(
+      new Request("https://audit.pencilproof.com/api/stripe/webhook", {
+        body: partialPayload,
+        headers: { "Stripe-Signature": await signWebhook(partialPayload) },
+        method: "POST",
+      }),
+      env,
+    )).status,
+    200,
+  );
+  assert.equal((await handleRequest(authorizedRequest(), env)).status, 200);
+
+  const fullRefund = {
+    ...partialRefund,
+    data: {
+      object: {
+        charge: "ch_testRefunded",
+        id: "re_test_full",
+        payment_intent: "pi_testRefunded",
+      },
+    },
+    id: "evt_testFullRefund",
+  };
+  const fullPayload = JSON.stringify(fullRefund);
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (url.pathname === "/v1/charges/ch_testRefunded") {
+      return Response.json({
+        amount: 4235,
+        amount_refunded: 4235,
+        id: "ch_testRefunded",
+        payment_intent: "pi_testRefunded",
+        refunded: true,
+      });
+    }
+    if (url.pathname === "/v1/checkout/sessions") {
+      return Response.json({
+        data: [paidSession(deviceHash, sessionId)],
+        has_more: false,
+      });
+    }
+    throw new Error(`Unexpected Stripe path: ${url.pathname}`);
+  };
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    assert.equal(
+      (await handleRequest(
+        new Request("https://audit.pencilproof.com/api/stripe/webhook", {
+          body: fullPayload,
+          headers: { "Stripe-Signature": await signWebhook(fullPayload) },
+          method: "POST",
+        }),
+        env,
+      )).status,
+      200,
+    );
+  }
+
+  const revokedAudit = await handleRequest(authorizedRequest(), env);
+  assert.equal(revokedAudit.status, 303);
+  assert.equal(
+    revokedAudit.headers.get("Location"),
+    "https://audit.pencilproof.com/recover?reason=revoked",
+  );
+  assert.match(
+    revokedAudit.headers.get("Set-Cookie") ?? "",
+    /^pp_access=; Max-Age=0/,
+  );
+
+  const revokedRecovery = await handleRequest(
+    new Request(
+      `https://audit.pencilproof.com/success?session_id=${sessionId}`,
+      { headers: { Cookie: `pp_device=${TEST_DEVICE_ID}` } },
+    ),
+    env,
+  );
+  assert.equal(
+    revokedRecovery.headers.get("Location"),
+    "https://audit.pencilproof.com/recover?reason=revoked",
+  );
+  assert.equal(revokedRecovery.headers.get("Set-Cookie"), null);
+});
+
+test("a dispute arriving before fulfillment prevents later redemption", async () => {
+  const env = makeEnv();
+  const deviceHash = await sha256Hex(TEST_DEVICE_ID);
+  const sessionId = "cs_test_disputed";
+  const dispute = {
+    created: Math.floor(Date.now() / 1000),
+    data: {
+      object: {
+        charge: "ch_testDisputed",
+        id: "du_test_disputed",
+        payment_intent: "pi_testDisputed",
+      },
+    },
+    id: "evt_testDisputed",
+    type: "charge.dispute.created",
+  };
+  const disputePayload = JSON.stringify(dispute);
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    assert.equal(url.pathname, "/v1/checkout/sessions");
+    return Response.json({
+      data: [paidSession(deviceHash, sessionId)],
+      has_more: false,
+    });
+  };
+  assert.equal(
+    (await handleRequest(
+      new Request("https://audit.pencilproof.com/api/stripe/webhook", {
+        body: disputePayload,
+        headers: { "Stripe-Signature": await signWebhook(disputePayload) },
+        method: "POST",
+      }),
+      env,
+    )).status,
+    200,
+  );
+
+  const paidEvent = {
+    created: Math.floor(Date.now() / 1000),
+    data: { object: { id: sessionId } },
+    id: "evt_test_disputed_paid",
+    type: "checkout.session.completed",
+  };
+  const paidPayload = JSON.stringify(paidEvent);
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith("/line_items")) {
+      return Response.json({
+        data: [{
+          price: { id: "price_123TestValid" },
+          quantity: 1,
+        }],
+        has_more: false,
+      });
+    }
+    return Response.json(paidSession(deviceHash, sessionId));
+  };
+  assert.equal(
+    (await handleRequest(
+      new Request("https://audit.pencilproof.com/api/stripe/webhook", {
+        body: paidPayload,
+        headers: { "Stripe-Signature": await signWebhook(paidPayload) },
+        method: "POST",
+      }),
+      env,
+    )).status,
+    200,
+  );
+
+  const response = await handleRequest(
+    new Request(
+      `https://audit.pencilproof.com/success?session_id=${sessionId}`,
+      { headers: { Cookie: `pp_device=${TEST_DEVICE_ID}` } },
+    ),
+    env,
+  );
+  assert.equal(
+    response.headers.get("Location"),
+    "https://audit.pencilproof.com/recover?reason=revoked",
+  );
+  assert.equal(response.headers.get("Set-Cookie"), null);
 });
 
 test("an invalid webhook signature is rejected before Stripe is called", async () => {
