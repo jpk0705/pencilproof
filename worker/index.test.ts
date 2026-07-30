@@ -71,6 +71,25 @@ test("the handoff page keeps quote data in browser storage", async () => {
   assert.doesNotMatch(body, /sk_test_not_a_real_key/);
 });
 
+test("the temporary Stripe price recovery endpoint is removed", async () => {
+  let stripeCalled = false;
+  globalThis.fetch = async () => {
+    stripeCalled = true;
+    return Response.json({});
+  };
+
+  const response = await handleRequest(
+    new Request("https://audit.pencilproof.com/api/recover-price", {
+      method: "POST",
+      headers: { Origin: "https://audit.pencilproof.com" },
+    }),
+    makeEnv(),
+  );
+
+  assert.equal(response.status, 404);
+  assert.equal(stripeCalled, false);
+});
+
 test("checkout uses the configured Stripe price", async () => {
   let requestBody = "";
   globalThis.fetch = async (_input, init) => {
