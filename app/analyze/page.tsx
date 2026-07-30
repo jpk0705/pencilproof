@@ -286,13 +286,17 @@ export default function AnalyzePage() {
       setSelectedOfferId("");
       setSelectedOfferType(null);
       setFailedImportAttempts(0);
+      const missingVerificationFields = verificationFields.filter(
+        (field) => result.fields[field] === undefined,
+      );
+      const hasImportGaps = missingVerificationFields.length > 0;
       setDealImport({
-        status: result.warnings?.length ? "warning" : "success",
+        status: result.warnings?.length || hasImportGaps ? "warning" : "success",
         message: result.warnings?.length
-          ? `Filled ${result.fieldNames.length} fields from ${file.name}. ${result.warnings.join(" ")}`
+          ? `Filled ${result.fieldNames.length} fields from ${file.name}. ${result.warnings.join(" ")}${hasImportGaps ? ` ${missingVerificationFields.length} categories were not detected. Review every field and enter missing numbers manually.` : ""}`
           : result.offerMatrix
-            ? `Detected ${result.offerMatrix.options.length} payment choices in ${file.name}. Select the finance or lease option you are considering.`
-            : `Found ${result.fieldNames.length} field${result.fieldNames.length === 1 ? "" : "s"} in ${file.name}${result.sourceType === "pdf" ? ` (${result.pageCount} page${result.pageCount === 1 ? "" : "s"}${result.usedOcr ? ", scanned-document OCR" : ""})` : ""}. Confirm the draft before starting the audit.`,
+            ? `Detected ${result.offerMatrix.options.length} payment choices in ${file.name}. Select the finance or lease option you are considering.${hasImportGaps ? ` ${missingVerificationFields.length} other categories were not detected; review and enter them manually.` : ""}`
+            : `Found ${result.fieldNames.length} field${result.fieldNames.length === 1 ? "" : "s"} in ${file.name}${result.sourceType === "pdf" ? ` (${result.pageCount} page${result.pageCount === 1 ? "" : "s"}${result.usedOcr ? ", scanned-document OCR" : ""})` : ""}.${hasImportGaps ? ` Import incomplete: ${missingVerificationFields.length} categories were not detected. Review every field and enter missing numbers manually.` : " Confirm every value before starting the audit."}`,
         fields: result.fieldNames,
       });
     } catch (error) {
