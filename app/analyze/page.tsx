@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import {
   DEAL_FIELD_LABELS,
   extractDealFromFile,
@@ -180,6 +180,8 @@ export default function AnalyzePage() {
   const [selectedOfferType, setSelectedOfferType] = useState<DealOfferOption["type"] | null>(null);
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
   const [failedImportAttempts, setFailedImportAttempts] = useState(0);
+  const [manualEntryMode, setManualEntryMode] = useState(false);
+  const manualEntryRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const saved = sessionStorage.getItem(QUOTE_HANDOFF_KEY);
@@ -225,6 +227,20 @@ export default function AnalyzePage() {
     }
     sessionStorage.removeItem(QUOTE_HANDOFF_KEY);
   }, []);
+
+  useEffect(() => {
+    if (!manualEntryMode) return;
+    const frame = requestAnimationFrame(() => {
+      manualEntryRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      manualEntryRef.current
+        ?.querySelector<HTMLInputElement>('input[aria-label="Vehicle description"]')
+        ?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [manualEntryMode]);
 
   const setNumber = (field: keyof Deal, value: string) =>
     setDeal((current) => ({ ...current, [field]: value === "" ? 0 : Number(value) }));
@@ -383,12 +399,7 @@ export default function AnalyzePage() {
 
   const startManualEntry = () => {
     clearImport();
-    requestAnimationFrame(() => {
-      document.getElementById("manual-entry")?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    });
+    setManualEntryMode(true);
   };
 
   const analysis = useMemo(() => {
@@ -750,14 +761,21 @@ export default function AnalyzePage() {
         <p className="pdf-import-note">Best results: use a dealer-generated PDF or a bright, sharp, straight-on image with the full figures visible. Scanned PDFs use OCR on up to the first five pages. OCR can make mistakes, so compare every imported value with the original.</p>
       </section>
 
-      {!pendingImport && selectedOfferType !== "lease" ? <div className="analyzer-layout shell" id="manual-entry">
+      {!pendingImport && selectedOfferType !== "lease" ? <div className="analyzer-layout shell" id="manual-entry" ref={manualEntryRef}>
         <form className="deal-form" onSubmit={(event) => event.preventDefault()}>
+          {manualEntryMode ? (
+            <section className="manual-entry-intro" aria-live="polite">
+              <p className="kicker">MANUAL QUOTE ENTRY</p>
+              <h2>Enter the figures printed on your quote</h2>
+              <p>Every box below is editable. Leave a box blank when the quote does not show that item.</p>
+            </section>
+          ) : null}
           <section className="form-section">
             <div className="form-section-title"><span>01</span><div><h2>Vehicle & price</h2><p>Start with the top of the buyer&apos;s order or dealer worksheet.</p></div></div>
             <label className="input-field full-field"><span>Vehicle description</span><input aria-label="Vehicle description" type="text" placeholder="e.g. 2026 Honda CR-V EX-L" value={deal.vehicle} onChange={(event) => setDeal((current) => ({ ...current, vehicle: event.target.value }))} /></label>
             <div className="field-grid">
               <MoneyField label="Selling price" field="sellingPrice" value={deal.sellingPrice} onChange={setNumber} />
-              <MoneyField label="Rebate or discount" field="rebate" value={deal.rebate} onChange={setNumber} hint="Only if not already deducted" />
+              <MoneyField label="Rebate" field="rebate" value={deal.rebate} onChange={setNumber} hint="Only a true manufacturer or cash rebate" />
               <MoneyField label="Sales tax" field="tax" value={deal.tax} onChange={setNumber} />
               <MoneyField label="Cash down" field="cashDown" value={deal.cashDown} onChange={setNumber} />
             </div>
@@ -852,7 +870,7 @@ export default function AnalyzePage() {
                   ["Trade loan payoff", deal.tradePayoff, "+"],
                   ["Trade allowance", deal.tradeValue, "−"],
                   ["Cash down", deal.cashDown, "−"],
-                  ["Rebate / discount", deal.rebate, "−"],
+                  ["Rebate", deal.rebate, "−"],
                 ].map(([label, amount, sign]) => (
                   <div key={String(label)}>
                     <span>{sign} {label}</span>

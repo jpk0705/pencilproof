@@ -33,7 +33,7 @@ export const DEAL_FIELD_LABELS: Record<keyof ImportedDealFields, string> = {
   tradeValue: "Trade allowance",
   tradePayoff: "Trade payoff",
   cashDown: "Cash down",
-  rebate: "Rebate / discount",
+  rebate: "Rebate",
   apr: "Dealer APR",
   outsideApr: "Desired APR",
   term: "Loan term",
@@ -416,6 +416,13 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
   ]);
   if (sellingPrice) fields.sellingPrice = sellingPrice;
   const askingPrice = findAmount(lines, [/\basking price\b/i]);
+  const dealerDiscount = findAmount(lines, [
+    /\bdealer discount\b/i,
+    /\bdiscount(?:\s*\(-\))?\b/i,
+  ]);
+  if (!fields.sellingPrice && askingPrice) {
+    fields.sellingPrice = Math.max(0, askingPrice - (dealerDiscount ?? 0));
+  }
 
   const linesWithoutTaxRates = lines.map((line) => line.replace(/\b\d{1,2}(?:\.\d{1,4})?\s*%/g, ""));
   const tax = findAmount(linesWithoutTaxRates, [
@@ -528,6 +535,7 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     /\bGPS(?: tracker| tracking| recovery| system| device| package)?\b/i,
     /\bvehicle recovery (?:device|system)\b/i,
     /\banti[- ]?theft (?:device|system)\b/i,
+    /\btheft DNA(?: DLP)?\b/i,
     /\bappearance(?:\*+)?(?: protection| package| product| plan)?\b/i,
     /\bpaint\s*(?:and|&|\/)\s*fabric(?: protection)?\b/i,
     /\bpaint protection film\b/i,
@@ -600,13 +608,10 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
   const rebate = findAmount(lines, [
     /\bmanufacturer rebate\b/i,
     /\bcash rebate\b/i,
-    /\bdealer discount\b/i,
-    /\bdiscount(?:\s*\(-\))?\b/i,
-    /\bincentive(?:s)?\b/i,
+    /\bcustomer(?: cash)? rebate\b/i,
     /\brebate(?:s)?\b/i,
   ]);
   if (rebate) fields.rebate = rebate;
-  if (rebate && askingPrice) fields.sellingPrice = askingPrice;
 
   const totalSalesAmount = findAmount(lines, [/\btotal sales amount\b/i]);
   if (totalSalesAmount) {
