@@ -185,12 +185,22 @@ test("checkout safely identifies an invalid Stripe secret binding", async () => 
   assert.equal(result.error, "Checkout is temporarily unavailable.");
 });
 
-test("a verified paid session receives protected access", async () => {
-  globalThis.fetch = async () =>
-    Response.json({
-      amount_subtotal: 3900,
-      amount_total: 4235,
-      currency: "usd",
+test("a localized paid session with the exact price receives access", async () => {
+  globalThis.fetch = async (input) => {
+    const requestUrl = String(input);
+    if (requestUrl.endsWith("/line_items?limit=2")) {
+      return Response.json({
+        data: [{
+          price: { id: "price_123TestValid" },
+          quantity: 1,
+        }],
+        has_more: false,
+      });
+    }
+    return Response.json({
+      amount_subtotal: 27402,
+      amount_total: 29868,
+      currency: "cny",
       id: "cs_test_paid",
       managed_payments: { enabled: true },
       metadata: { pencilproof_product: "full_quote_audit_v1" },
@@ -200,9 +210,10 @@ test("a verified paid session receives protected access", async () => {
       total_details: {
         amount_discount: 0,
         amount_shipping: 0,
-        amount_tax: 335,
+        amount_tax: 2466,
       },
     });
+  };
 
   const env = makeEnv();
   const response = await handleRequest(
@@ -231,6 +242,50 @@ test("a verified paid session receives protected access", async () => {
   );
   assert.equal(auditResponse.status, 200);
   assert.equal(await auditResponse.text(), "asset");
+});
+
+test("a paid session with a different price does not unlock the audit", async () => {
+  globalThis.fetch = async (input) => {
+    const requestUrl = String(input);
+    if (requestUrl.endsWith("/line_items?limit=2")) {
+      return Response.json({
+        data: [{
+          price: { id: "price_different" },
+          quantity: 1,
+        }],
+        has_more: false,
+      });
+    }
+    return Response.json({
+      amount_subtotal: 3900,
+      amount_total: 4235,
+      currency: "usd",
+      id: "cs_test_wrong_price",
+      managed_payments: { enabled: true },
+      metadata: { pencilproof_product: "full_quote_audit_v1" },
+      mode: "payment",
+      payment_status: "paid",
+      status: "complete",
+      total_details: {
+        amount_discount: 0,
+        amount_shipping: 0,
+        amount_tax: 335,
+      },
+    });
+  };
+
+  const response = await handleRequest(
+    new Request(
+      "https://audit.pencilproof.com/success?session_id=cs_test_wrong_price",
+    ),
+    makeEnv(),
+  );
+  assert.equal(response.status, 303);
+  assert.equal(response.headers.get("Set-Cookie"), null);
+  assert.equal(
+    response.headers.get("Location"),
+    "https://pencilproof.com/?payment=unverified#pricing",
+  );
 });
 
 test("a non-Managed Payments session does not unlock the audit", async () => {
