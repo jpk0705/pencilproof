@@ -1,7 +1,10 @@
 "use client";
 
 import { useMemo, useState, type ChangeEvent } from "react";
-import { CHECKOUT_URL, QUOTE_HANDOFF_KEY } from "@/lib/checkout";
+import {
+  CHECKOUT_URL,
+  createQuoteHandoffEnvelope,
+} from "@/lib/checkout";
 import {
   DEAL_FIELD_LABELS,
   extractDealFromFile,
@@ -51,13 +54,6 @@ const money = (value: number, cents = false) =>
     maximumFractionDigits: cents ? 2 : 0,
   }).format(Number.isFinite(value) ? value : 0);
 
-const formatValue = (field: keyof ImportedDealFields, value: string | number) => {
-  if (field === "vehicle") return String(value);
-  if (field === "apr" || field === "outsideApr") return `${Number(value).toFixed(2)}%`;
-  if (field === "term") return `${Number(value)} months`;
-  return money(Number(value), field === "quotedPayment");
-};
-
 export default function FreeQuotePreview() {
   const [scan, setScan] = useState<ScanState>({ status: "idle" });
   const [importReviewed, setImportReviewed] = useState(false);
@@ -85,6 +81,43 @@ export default function FreeQuotePreview() {
           : Number(rawValue);
     setManualFields((fields) => ({ ...fields, [field]: value }));
     setManualError("");
+  };
+
+  const updateReadyField = (
+    field: keyof ImportedDealFields,
+    rawValue: string,
+  ) => {
+    setImportReviewed(false);
+    setScan((current) => {
+      if (current.status !== "ready") return current;
+      const fields = { ...current.result.fields };
+      const fieldConfidence = { ...current.result.fieldConfidence };
+      const empty = rawValue.trim() === "";
+
+      if (empty) {
+        delete fields[field];
+        delete fieldConfidence[field];
+      } else {
+        const editableFields = fields as Record<
+          keyof ImportedDealFields,
+          string | number | undefined
+        >;
+        editableFields[field] = field === "vehicle" ? rawValue : Number(rawValue);
+        fieldConfidence[field] = "review";
+      }
+
+      return {
+        ...current,
+        result: {
+          ...current.result,
+          fields,
+          fieldConfidence,
+          fieldNames: previewFields
+            .filter((candidate) => fields[candidate] !== undefined)
+            .map((candidate) => DEAL_FIELD_LABELS[candidate]),
+        },
+      };
+    });
   };
 
   const previewManualEntry = () => {
@@ -210,6 +243,7 @@ export default function FreeQuotePreview() {
     ];
     const missingCritical = criticalFields.filter((field) => fields[field] === undefined);
     const found = previewFields.filter((field) => fields[field] !== undefined);
+    const missing = previewFields.filter((field) => fields[field] === undefined);
     const highConfidence = found.filter(
       (field) => scan.result.fieldConfidence[field] === "high",
     ).length;
@@ -232,6 +266,7 @@ export default function FreeQuotePreview() {
     return {
       fields,
       found,
+      missing,
       highConfidence,
       reviewCount,
       products,
@@ -401,17 +436,48 @@ export default function FreeQuotePreview() {
                 compact
               />
 
+              <div className={`free-import-warning ${preview.missing.length ? "free-import-warning-missing" : ""}`}>
+                <strong>
+                  {preview.missing.length
+                    ? `Import incomplete: ${preview.missing.length} categor${preview.missing.length === 1 ? "y was" : "ies were"} not found`
+                    : "Review every imported value"}
+                </strong>
+                <p>
+                  {preview.missing.length
+                    ? "Check the quote and enter any missing numbers below. A blank field may mean the item does not apply, or that OCR missed it."
+                    : "OCR can still be wrong. Every value below is editable, and checkout will relock after a correction until you confirm the import again."}
+                </p>
+              </div>
+
               <div className="free-detected-values">
-                {preview.found.map((field) => {
+                {previewFields.map((field) => {
                   const value = preview.fields[field];
-                  if (value === undefined) return null;
-                  const confidence = scan.result.fieldConfidence[field] === "high" ? "high" : "review";
+                  const confidence = value === undefined
+                    ? "missing"
+                    : scan.result.fieldConfidence[field] === "high"
+                      ? "high"
+                      : "review";
                   return (
-                    <div key={field}>
+                    <div className={`free-detected-field confidence-${confidence}`} key={field}>
                       <span>{DEAL_FIELD_LABELS[field]}</span>
-                      <strong>{formatValue(field, value)}</strong>
-                      <small className={`confidence-${confidence}`}>
-                        {confidence === "high" ? "High confidence" : "Verify on quote"}
+                      <input
+                        aria-label={`Review ${DEAL_FIELD_LABELS[field]}`}
+                        type={field === "vehicle" ? "text" : "number"}
+                        inputMode={field === "vehicle" ? undefined : "decimal"}
+                        min={field === "vehicle" ? undefined : "0"}
+                        step={field === "term" ? "1" : "0.01"}
+                        value={value ?? ""}
+                        placeholder={field === "vehicle" ? "Not found" : "0.00"}
+                        onChange={(event) =>
+                          updateReadyField(field, event.target.value)
+                        }
+                      />
+                      <small>
+                        {confidence === "missing"
+                          ? "Not found — enter manually"
+                          : confidence === "high"
+                            ? "Imported — verify"
+                            : "Verify on quote"}
                       </small>
                     </div>
                   );
@@ -476,15 +542,11 @@ export default function FreeQuotePreview() {
                     className="button button-primary"
                     href={CHECKOUT_URL}
                     onClick={() => {
-                      sessionStorage.setItem(
-                        QUOTE_HANDOFF_KEY,
-                        JSON.stringify({
-                          fields: scan.result.fields,
-                          confidence: scan.result.fieldConfidence,
-                          fileName: scan.fileName,
-                          offerMatrix: scan.result.offerMatrix ?? null,
-                        }),
-                      );
+                      window.name = createQuoteHandoffEnvelope({
+                        fields: scan.result.fields,
+                        confidence: scan.result.fieldConfidence,
+                        offerMatrix: scan.result.offerMatrix ?? null,
+                      });
                     }}
                   >
                     Unlock My Full Quote Audit · $39 <span aria-hidden="true">→</span>
