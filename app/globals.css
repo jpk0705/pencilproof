@@ -173,8 +173,15 @@ h1 { max-width: 690px; margin: 0; font-family: Georgia, 'Times New Roman', serif
 .free-detected-values { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); max-height: 290px; overflow: auto; padding: 18px; gap: 8px; background: #faf8f2; }
 .free-detected-values > div { min-width: 0; display: flex; flex-direction: column; gap: 5px; padding: 10px; border: 1px solid #d8d5cc; border-radius: 6px; background: white; }
 .free-detected-values span { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 8px; font-weight: 800; }
-.free-detected-values strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.free-detected-values input { width: 100%; min-height: 34px; padding: 7px 8px; border: 1px solid #d7d3ca; border-radius: 4px; color: var(--ink); background: #fff; font: inherit; font-size: 11px; font-weight: 800; }
+.free-detected-values input:focus { border-color: var(--green); outline: 2px solid rgba(28,103,73,.14); }
+.free-detected-values .confidence-missing { border-color: #d7aa7d; background: #fff8ec; }
 .free-detected-values small { font-size: 7px; font-weight: 800; }
+.free-detected-values .confidence-missing small { color: #8a4b1d; }
+.free-import-warning { margin: 0 18px 2px; padding: 13px 15px; border: 1px solid #b9d0c3; border-radius: 6px; color: #15543f; background: #e8f3ed; }
+.free-import-warning-missing { border-color: #d7aa7d; color: #743a12; background: #fff0d8; }
+.free-import-warning strong { font-size: 10px; }
+.free-import-warning p { margin: 5px 0 0; font-size: 8px; line-height: 1.5; }
 .free-math-preview { display: grid; grid-template-columns: .85fr 1.15fr; gap: 16px; padding: 20px 22px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .free-math-preview > div:first-child { display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 16px; color: white; background: var(--ink); border-radius: 7px; }
 .free-math-preview > div:first-child span { color: var(--accent); font-size: 7px; font-weight: 900; letter-spacing: .1em; }
@@ -454,8 +461,10 @@ footer { border-top: 1px solid var(--line); padding: 34px 0; }
 .vehicle-photo-loading p span,
 .vehicle-photo-unavailable p span { font-size: 12px; }
 .free-detected-values span { font-size: 11px; }
-.free-detected-values strong { font-size: 14px; }
+.free-detected-values input { font-size: 14px; }
 .free-detected-values small { font-size: 10px; }
+.free-import-warning strong { font-size: 13px; }
+.free-import-warning p { font-size: 12px; }
 .free-math-preview > div:first-child small { font-size: 10px; }
 .free-preview-statuses p { font-size: 12px; }
 .free-preview-statuses p b { font-size: 13px; }
