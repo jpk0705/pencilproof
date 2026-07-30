@@ -4,7 +4,7 @@ const PRODUCT_CODE = "full_quote_audit_v1";
 const DEFAULT_ACCESS_SECONDS = 60 * 60 * 24 * 30;
 const DEVICE_COOKIE_SECONDS = 60 * 60 * 24 * 400;
 const WEBHOOK_TOLERANCE_SECONDS = 5 * 60;
-const WEBHOOK_CONFIG_VERSION = 2;
+const WEBHOOK_CONFIG_VERSION = 3;
 const ORDER_RETENTION_MILLISECONDS = 1000 * 60 * 60 * 24 * 400;
 const QUOTE_HANDOFF_KEY = "pencilproof:pending-import";
 const QUOTE_HANDOFF_TYPE = "pencilproof:quote-handoff:v1";
@@ -95,6 +95,11 @@ type StripeEvent = {
   type?: string;
 };
 
+type StripeEvents = {
+  data?: StripeEvent[];
+  has_more?: boolean;
+};
+
 type StripeCheckoutSessions = {
   data?: StripeCheckoutSession[];
   has_more?: boolean;
@@ -146,6 +151,7 @@ type OrderRevocation = {
 type WebhookConfig = {
   createdAt: number;
   endpointId: string;
+  reconciledAt?: number;
   secret: string;
   url: string;
   version?: number;
@@ -310,6 +316,23 @@ const orderStub = (sessionId: string, env: Env) =>
 const webhookConfigStub = (env: Env) =>
   orderStub("__pencilproof_webhook_config__", env);
 
+const webhookIsReady = async (env: Env) => {
+  if (
+    typeof env.STRIPE_WEBHOOK_SECRET === "string"
+    && /^whsec_[A-Za-z0-9]+$/.test(env.STRIPE_WEBHOOK_SECRET)
+  ) {
+    return true;
+  }
+  const response = await webhookConfigStub(env).fetch(
+    new Request("https://order-store.internal/webhook/status", {
+      method: "POST",
+    }),
+  );
+  if (!response.ok) return false;
+  const body = await response.json() as { ready?: boolean };
+  return body.ready === true;
+};
+
 const configuredWebhookSecret = async (env: Env) => {
   if (
     typeof env.STRIPE_WEBHOOK_SECRET === "string"
@@ -443,12 +466,17 @@ export class OrderStore {
       const existing = await this.state.storage.get<WebhookConfig>(
         "webhookConfig",
       );
-      if (
+      const existingIsValid = Boolean(
         existing
         && existing.url === url
         && /^we_[A-Za-z0-9]+$/.test(existing.endpointId)
         && /^whsec_[A-Za-z0-9]+$/.test(existing.secret)
-        && existing.version === WEBHOOK_CONFIG_VERSION
+      );
+      if (
+        existingIsValid
+        && existing?.version === WEBHOOK_CONFIG_VERSION
+        && Number.isInteger(existing.reconciledAt)
+        && (existing.reconciledAt ?? 0) > 0
       ) {
         return Response.json({ ready: true });
       }
@@ -456,17 +484,40 @@ export class OrderStore {
         return Response.json({ ready: false }, { status: 503 });
       }
 
-      const configured = existing
-        && existing.url === url
-        && /^we_[A-Za-z0-9]+$/.test(existing.endpointId)
-        && /^whsec_[A-Za-z0-9]+$/.test(existing.secret)
-        ? await updateStripeWebhookEndpoint(existing, this.env)
+      const configured = existingIsValid
+        ? existing?.version === WEBHOOK_CONFIG_VERSION
+          ? existing
+          : await updateStripeWebhookEndpoint(existing!, this.env)
         : await createStripeWebhookEndpoint(url, this.env);
       if (!configured) {
         return Response.json({ ready: false }, { status: 503 });
       }
       await this.state.storage.put("webhookConfig", configured);
+
+      const reconciled = await reconcileRecentRevocations(this.env);
+      if (!reconciled) {
+        return Response.json({ ready: false }, { status: 503 });
+      }
+      await this.state.storage.put("webhookConfig", {
+        ...configured,
+        reconciledAt: Math.floor(Date.now() / 1000),
+      });
       return Response.json({ ready: true });
+    }
+
+    if (path === "/webhook/status") {
+      const config = await this.state.storage.get<WebhookConfig>(
+        "webhookConfig",
+      );
+      const ready = Boolean(
+        config
+        && /^we_[A-Za-z0-9]+$/.test(config.endpointId)
+        && /^whsec_[A-Za-z0-9]+$/.test(config.secret)
+        && config.version === WEBHOOK_CONFIG_VERSION
+        && Number.isInteger(config.reconciledAt)
+        && (config.reconciledAt ?? 0) > 0
+      );
+      return Response.json({ ready });
     }
 
     if (path === "/webhook/secret") {
@@ -917,6 +968,19 @@ const retrieveCheckoutSessionsForPaymentIntent = async (
   return response.json() as Promise<StripeCheckoutSessions>;
 };
 
+const retrieveRecentRevocationEvents = async (env: Env) => {
+  const parameters = new URLSearchParams({ limit: "100" });
+  for (const event of STRIPE_WEBHOOK_EVENTS.slice(2)) {
+    parameters.append("types[]", event);
+  }
+  const response = await stripeRequest(
+    `/events?${parameters.toString()}`,
+    env,
+  );
+  if (!response.ok) return null;
+  return response.json() as Promise<StripeEvents>;
+};
+
 const isPaidPencilProofSession = (session: StripeCheckoutSession | null) => {
   const tax = session?.total_details?.amount_tax;
   return Boolean(
@@ -1083,6 +1147,59 @@ const revokeAccessForPaymentIntent = async (
   }, env);
 };
 
+const processRevocationEvent = async (
+  event: StripeEvent,
+  env: Env,
+) => {
+  const eventId = event.id ?? "";
+  const eventCreated = event.created ?? Math.floor(Date.now() / 1000);
+  const object = event.data?.object ?? {};
+  let reason: OrderRevocation["reason"] | null = null;
+  let paymentIntentId: string | null = null;
+
+  if (event.type === "refund.created") {
+    const chargeId = typeof object.charge === "string" ? object.charge : "";
+    const charge = await retrieveCharge(chargeId, env);
+    if (!charge) return false;
+    if (charge.refunded !== true) return true;
+    paymentIntentId = typeof charge.payment_intent === "string"
+      ? charge.payment_intent
+      : await resolvePaymentIntent(object, env);
+    reason = "refunded";
+  } else if (event.type === "charge.refunded") {
+    if (object.refunded !== true) return true;
+    paymentIntentId = await resolvePaymentIntent(object, env);
+    reason = "refunded";
+  } else if (event.type === "charge.dispute.created") {
+    paymentIntentId = await resolvePaymentIntent(object, env);
+    reason = "disputed";
+  } else {
+    return true;
+  }
+
+  if (!paymentIntentId || !reason || !/^evt_[A-Za-z0-9]+$/.test(eventId)) {
+    return false;
+  }
+  return revokeAccessForPaymentIntent(
+    paymentIntentId,
+    eventId,
+    eventCreated,
+    reason,
+    env,
+  );
+};
+
+async function reconcileRecentRevocations(env: Env) {
+  const events = await retrieveRecentRevocationEvents(env);
+  if (!events || events.has_more === true || !Array.isArray(events.data)) {
+    return false;
+  }
+  for (const event of events.data) {
+    if (!await processRevocationEvent(event, env)) return false;
+  }
+  return true;
+}
+
 const handleStripeWebhook = async (request: Request, env: Env) => {
   if (request.method !== "POST") {
     return new Response("Method not allowed", {
@@ -1137,50 +1254,11 @@ const handleStripeWebhook = async (request: Request, env: Env) => {
     return Response.json({ received: true });
   }
 
-  let reason: OrderRevocation["reason"] | null = null;
-  let paymentIntentId: string | null = null;
-
-  if (event.type === "refund.created") {
-    const chargeId = typeof object.charge === "string" ? object.charge : "";
-    const charge = await retrieveCharge(chargeId, env);
-    if (!charge) {
-      return new Response("Refund verification failed", { status: 503 });
-    }
-    if (charge.refunded !== true) {
-      return Response.json({ received: true });
-    }
-    paymentIntentId = typeof charge.payment_intent === "string"
-      ? charge.payment_intent
-      : await resolvePaymentIntent(object, env);
-    reason = "refunded";
-  } else if (event.type === "charge.refunded") {
-    if (object.refunded !== true) {
-      return Response.json({ received: true });
-    }
-    paymentIntentId = await resolvePaymentIntent(object, env);
-    reason = "refunded";
-  } else if (event.type === "charge.dispute.created") {
-    paymentIntentId = await resolvePaymentIntent(object, env);
-    reason = "disputed";
-  } else {
-    return Response.json({ received: true });
-  }
-
-  if (!paymentIntentId || !reason || !/^evt_[A-Za-z0-9]+$/.test(eventId)) {
-    return new Response("Revocation verification failed", { status: 503 });
-  }
-  const revoked = await revokeAccessForPaymentIntent(
-    paymentIntentId,
-    eventId,
-    eventCreated,
-    reason,
-    env,
-  );
+  const revoked = await processRevocationEvent(event, env);
   if (!revoked) {
     console.error("Paid access could not be revoked", {
       eventId,
-      paymentIntentId,
-      reason,
+      type: event.type,
     });
     return new Response("Access revocation failed", { status: 503 });
   }
@@ -1242,7 +1320,7 @@ const handleWebhookStatus = async (request: Request, env: Env) => {
     });
   }
   return Response.json(
-    { ready: Boolean(await configuredWebhookSecret(env)) },
+    { ready: await webhookIsReady(env) },
     { headers: { "Cache-Control": "no-store" } },
   );
 };

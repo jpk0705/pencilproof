@@ -266,6 +266,9 @@ test("checkout configures one Stripe webhook without exposing its secret", async
         url: "https://audit.pencilproof.com/api/stripe/webhook",
       });
     }
+    if (url.pathname === "/v1/events") {
+      return Response.json({ data: [], has_more: false });
+    }
     return Response.json({
       id: "cs_test_created",
       url: "https://checkout.stripe.com/c/pay/cs_test_created",
@@ -282,6 +285,7 @@ test("checkout configures one Stripe webhook without exposing its secret", async
   assert.equal(checkoutResponse.status, 200);
   assert.deepEqual(stripePaths, [
     "/v1/webhook_endpoints",
+    "/v1/events",
     "/v1/checkout/sessions",
   ]);
 
@@ -334,10 +338,10 @@ test("an existing webhook endpoint is upgraded with revocation events", async ()
   let updateBody = "";
   globalThis.fetch = async (input, init) => {
     const url = new URL(String(input));
-    assert.equal(
-      url.pathname,
-      "/v1/webhook_endpoints/we_ExistingEndpoint123",
-    );
+    if (url.pathname === "/v1/events") {
+      return Response.json({ data: [], has_more: false });
+    }
+    assert.equal(url.pathname, "/v1/webhook_endpoints/we_ExistingEndpoint123");
     updateBody = String(init?.body ?? "");
     return Response.json({
       id: "we_ExistingEndpoint123",
