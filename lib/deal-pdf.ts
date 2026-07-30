@@ -381,7 +381,7 @@ const findPaymentNearLabel = (lines: string[], labels: RegExp[]) => {
     for (let distance = 0; distance <= 12; distance += 1) {
       for (const candidateIndex of distance ? [index + distance, index - distance] : [index]) {
         const candidateLine = lines[candidateIndex] ?? "";
-        const values = currencyValues(candidateLine);
+        const values = priceValues(candidateLine);
         const printedPayment = values.find(({ value, raw }) => {
           if (value < 50 || value > 5000) return false;
           const remainingText = candidateLine.replace(raw, "").replace(/[\s:|()[\].,-]/g, "");
@@ -601,7 +601,7 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     /\bmanufacturer rebate\b/i,
     /\bcash rebate\b/i,
     /\bdealer discount\b/i,
-    /^discount(?:\s*\(-\))?\b/i,
+    /\bdiscount(?:\s*\(-\))?\b/i,
     /\bincentive(?:s)?\b/i,
     /\brebate(?:s)?\b/i,
   ]);
@@ -688,7 +688,7 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
 
   if (!fields.quotedPayment) {
     const unmatchedPaymentCandidates = [...new Set(
-      lines.flatMap((line) => currencyValues(line).map(({ value }) => value))
+      lines.flatMap((line) => priceValues(line).map(({ value }) => value))
         .filter((value) => value >= 50 && value <= 5000)
         .filter((value) => !knownNonPaymentAmounts.some((known) => Math.abs(known - value) < 0.01)),
     )];
