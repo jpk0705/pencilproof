@@ -298,16 +298,11 @@ const createCheckoutSession = async (env: Env) => {
   }
 
   const parameters = new URLSearchParams({
-    "allow_promotion_codes": "false",
-    "billing_address_collection": "auto",
     "cancel_url": `${env.PUBLIC_SITE_ORIGIN}/#pricing`,
-    "customer_creation": "always",
     "line_items[0][quantity]": "1",
     "managed_payments[enabled]": "true",
     "metadata[pencilproof_product]": PRODUCT_CODE,
     mode: "payment",
-    "payment_intent_data[description]": "PencilProof Full Quote Audit",
-    "payment_intent_data[metadata][pencilproof_product]": PRODUCT_CODE,
     "success_url": `${env.SITE_ORIGIN}/success?session_id={CHECKOUT_SESSION_ID}`,
   });
   parameters.set("line_items[0][price]", stripePriceId);
