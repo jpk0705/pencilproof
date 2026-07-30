@@ -1,22 +1,51 @@
 const ACCESS_COOKIE = "pp_access";
+const DEVICE_COOKIE = "pp_device";
 const PRODUCT_CODE = "full_quote_audit_v1";
 const DEFAULT_ACCESS_SECONDS = 60 * 60 * 24 * 30;
+const DEVICE_COOKIE_SECONDS = 60 * 60 * 24 * 400;
+const WEBHOOK_TOLERANCE_SECONDS = 5 * 60;
+const ORDER_RETENTION_MILLISECONDS = 1000 * 60 * 60 * 24 * 400;
 const QUOTE_HANDOFF_KEY = "pencilproof:pending-import";
 const QUOTE_HANDOFF_TYPE = "pencilproof:quote-handoff:v1";
+
+type DurableObjectIdLike = unknown;
+
+type DurableObjectStubLike = {
+  fetch(request: Request): Promise<Response>;
+};
+
+type DurableObjectNamespaceLike = {
+  get(id: DurableObjectIdLike): DurableObjectStubLike;
+  idFromName(name: string): DurableObjectIdLike;
+};
+
+type DurableObjectStorageLike = {
+  deleteAll(): Promise<void>;
+  get<T>(key: string): Promise<T | undefined>;
+  put<T>(key: string, value: T): Promise<void>;
+  setAlarm?(scheduledTime: number): Promise<void>;
+};
+
+type DurableObjectStateLike = {
+  storage: DurableObjectStorageLike;
+};
 
 export interface Env {
   ASSETS: {
     fetch(request: Request): Promise<Response>;
   };
   ACCESS_MAX_AGE_SECONDS?: string;
+  ORDERS: DurableObjectNamespaceLike;
   PUBLIC_SITE_ORIGIN: string;
   SESSION_SECRET: string;
   SITE_ORIGIN: string;
   STRIPE_PRICE_ID: string;
   STRIPE_SECRET_KEY: string;
+  STRIPE_WEBHOOK_SECRET: string;
 }
 
 type AccessPayload = {
+  did: string;
   exp: number;
   sid: string;
 };
@@ -24,6 +53,7 @@ type AccessPayload = {
 type StripeCheckoutSession = {
   amount_subtotal?: number | null;
   amount_total?: number | null;
+  created?: number | null;
   currency?: string | null;
   id: string;
   managed_payments?: { enabled?: boolean } | null;
@@ -39,12 +69,39 @@ type StripeCheckoutSession = {
   url?: string | null;
 };
 
+type StripeEvent = {
+  created?: number;
+  data?: { object?: { id?: string } };
+  id?: string;
+  type?: string;
+};
+
 type StripeCheckoutLineItems = {
   data?: Array<{
     price?: { id?: string | null } | null;
     quantity?: number | null;
   }>;
   has_more?: boolean;
+};
+
+type OrderRecord = {
+  accessExpiresAt: number;
+  amountTotal: number;
+  createdAt: number;
+  currency: string;
+  deviceHash: string;
+  firstRedeemedAt?: number;
+  lastRedeemedAt?: number;
+  priceId: string;
+  redemptionCount: number;
+  sessionId: string;
+  stripeEventId: string;
+};
+
+type OrderRedeemResult = {
+  allowed: boolean;
+  expiresAt?: number;
+  reason?: "device_mismatch" | "expired" | "not_found";
 };
 
 type CheckoutErrorCode =
@@ -94,12 +151,14 @@ const importSigningKey = (secret: string) =>
 
 export const createAccessToken = async (
   sessionId: string,
+  deviceHash: string,
   secret: string,
   maxAgeSeconds = DEFAULT_ACCESS_SECONDS,
   nowSeconds = Math.floor(Date.now() / 1000),
 ) => {
   const payload = base64UrlEncode(
     encoder.encode(JSON.stringify({
+      did: deviceHash,
       exp: nowSeconds + maxAgeSeconds,
       sid: sessionId,
     } satisfies AccessPayload)),
@@ -135,6 +194,8 @@ export const verifyAccessToken = async (
     if (
       typeof parsed.sid !== "string"
       || !parsed.sid.startsWith("cs_")
+      || typeof parsed.did !== "string"
+      || !/^[a-f0-9]{64}$/.test(parsed.did)
       || typeof parsed.exp !== "number"
       || parsed.exp <= nowSeconds
     ) {
@@ -161,6 +222,164 @@ const accessSeconds = (env: Env) => {
     ? Math.floor(configured)
     : DEFAULT_ACCESS_SECONDS;
 };
+
+const randomDeviceId = () => {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return base64UrlEncode(bytes);
+};
+
+const validDeviceId = (value: string | null): value is string =>
+  Boolean(value && /^[A-Za-z0-9_-]{43}$/.test(value));
+
+const sha256Hex = async (value: string) => {
+  const digest = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", encoder.encode(value)),
+  );
+  return Array.from(digest, (byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+};
+
+const deviceCookie = (deviceId: string) => [
+  `${DEVICE_COOKIE}=${deviceId}`,
+  `Max-Age=${DEVICE_COOKIE_SECONDS}`,
+  "Path=/",
+  "HttpOnly",
+  "Secure",
+  "SameSite=Lax",
+].join("; ");
+
+const accessCookie = (token: string, maxAge: number) => [
+  `${ACCESS_COOKIE}=${token}`,
+  `Max-Age=${maxAge}`,
+  "Path=/",
+  "HttpOnly",
+  "Secure",
+  "SameSite=Lax",
+].join("; ");
+
+const orderStub = (sessionId: string, env: Env) =>
+  env.ORDERS.get(env.ORDERS.idFromName(sessionId));
+
+const storePaidOrder = async (order: OrderRecord, env: Env) => {
+  const response = await orderStub(order.sessionId, env).fetch(
+    new Request("https://order-store.internal/paid", {
+      body: JSON.stringify(order),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    }),
+  );
+  return response.ok;
+};
+
+const redeemOrder = async (
+  sessionId: string,
+  deviceHash: string,
+  env: Env,
+): Promise<OrderRedeemResult> => {
+  const response = await orderStub(sessionId, env).fetch(
+    new Request("https://order-store.internal/redeem", {
+      body: JSON.stringify({
+        deviceHash,
+        now: Math.floor(Date.now() / 1000),
+      }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    }),
+  );
+  if (!response.ok) return { allowed: false, reason: "not_found" };
+  return response.json() as Promise<OrderRedeemResult>;
+};
+
+export class OrderStore {
+  private readonly state: DurableObjectStateLike;
+
+  constructor(state: DurableObjectStateLike) {
+    this.state = state;
+  }
+
+  async fetch(request: Request) {
+    if (request.method !== "POST") {
+      return new Response("Method not allowed", { status: 405 });
+    }
+
+    const path = new URL(request.url).pathname;
+    if (path === "/paid") {
+      const incoming = await request.json() as OrderRecord;
+      if (
+        !/^cs_(test_|live_)?[A-Za-z0-9]+$/.test(incoming.sessionId)
+        || !/^price_[A-Za-z0-9]+$/.test(incoming.priceId)
+        || !/^[a-f0-9]{64}$/.test(incoming.deviceHash)
+        || !Number.isInteger(incoming.createdAt)
+        || !Number.isInteger(incoming.accessExpiresAt)
+        || incoming.accessExpiresAt <= incoming.createdAt
+      ) {
+        return new Response("Invalid order", { status: 400 });
+      }
+
+      const existing = await this.state.storage.get<OrderRecord>("order");
+      if (existing) {
+        const sameOrder = existing.sessionId === incoming.sessionId
+          && existing.priceId === incoming.priceId
+          && existing.deviceHash === incoming.deviceHash;
+        return Response.json(
+          { stored: sameOrder },
+          { status: sameOrder ? 200 : 409 },
+        );
+      }
+
+      await this.state.storage.put("order", incoming);
+      await this.state.storage.setAlarm?.(
+        Date.now() + ORDER_RETENTION_MILLISECONDS,
+      );
+      return Response.json({ stored: true });
+    }
+
+    if (path === "/redeem") {
+      const body = await request.json() as {
+        deviceHash?: string;
+        now?: number;
+      };
+      const order = await this.state.storage.get<OrderRecord>("order");
+      if (!order) {
+        return Response.json({
+          allowed: false,
+          reason: "not_found",
+        } satisfies OrderRedeemResult);
+      }
+      if (
+        typeof body.now !== "number"
+        || !Number.isInteger(body.now)
+        || body.now >= order.accessExpiresAt
+      ) {
+        return Response.json({
+          allowed: false,
+          reason: "expired",
+        } satisfies OrderRedeemResult);
+      }
+      if (body.deviceHash !== order.deviceHash) {
+        return Response.json({
+          allowed: false,
+          reason: "device_mismatch",
+        } satisfies OrderRedeemResult);
+      }
+
+      order.firstRedeemedAt ??= body.now;
+      order.lastRedeemedAt = body.now;
+      order.redemptionCount += 1;
+      await this.state.storage.put("order", order);
+      return Response.json({
+        allowed: true,
+        expiresAt: order.accessExpiresAt,
+      } satisfies OrderRedeemResult);
+    }
+
+    return new Response("Not found", { status: 404 });
+  }
+
+  async alarm() {
+    await this.state.storage.deleteAll();
+  }
+}
 
 const noStoreHeaders = {
   "Cache-Control": "no-store, max-age=0",
@@ -214,6 +433,7 @@ const handoffPage = () =>
       <h1>Opening secure checkout</h1>
       <p>Your quote stays in this browser. PencilProof is preparing Stripe checkout for the one-time Full Quote Audit.</p>
       <div class="status" id="status" role="status">Connecting securely…</div>
+      <p><a href="/recover">Already purchased? Restore access.</a></p>
       <noscript><p>JavaScript is required to continue. Return to <a href="https://pencilproof.com/">PencilProof</a> after enabling it.</p></noscript>
     </main>
     <script>
@@ -283,7 +503,7 @@ const stripeRequest = async (
   return fetch(`https://api.stripe.com/v1${path}`, { ...init, headers });
 };
 
-const createCheckoutSession = async (env: Env) => {
+const createCheckoutSession = async (env: Env, deviceHash: string) => {
   const stripePriceId = typeof env.STRIPE_PRICE_ID === "string"
     ? env.STRIPE_PRICE_ID.trim()
     : "";
@@ -308,6 +528,7 @@ const createCheckoutSession = async (env: Env) => {
     "cancel_url": `${env.PUBLIC_SITE_ORIGIN}/#pricing`,
     "line_items[0][quantity]": "1",
     "managed_payments[enabled]": "true",
+    "metadata[pencilproof_device_hash]": deviceHash,
     "metadata[pencilproof_product]": PRODUCT_CODE,
     mode: "payment",
     "success_url": `${env.SITE_ORIGIN}/success?session_id={CHECKOUT_SESSION_ID}`,
@@ -402,6 +623,134 @@ const hasExactPencilProofLineItem = (
   && lineItems.data[0]?.price?.id === expectedPriceId
 );
 
+const hexToBytes = (value: string) => {
+  if (!/^[a-f0-9]+$/i.test(value) || value.length % 2 !== 0) return null;
+  const bytes = new Uint8Array(value.length / 2);
+  for (let index = 0; index < bytes.length; index += 1) {
+    bytes[index] = Number.parseInt(value.slice(index * 2, index * 2 + 2), 16);
+  }
+  return bytes;
+};
+
+export const verifyStripeSignature = async (
+  payload: string,
+  signatureHeader: string,
+  secret: string,
+  nowSeconds = Math.floor(Date.now() / 1000),
+) => {
+  if (!/^whsec_[A-Za-z0-9]+$/.test(secret)) return false;
+
+  const parts = signatureHeader.split(",");
+  const timestampValue = parts
+    .find((part) => part.startsWith("t="))
+    ?.slice(2);
+  const timestamp = Number(timestampValue);
+  if (
+    !Number.isInteger(timestamp)
+    || Math.abs(nowSeconds - timestamp) > WEBHOOK_TOLERANCE_SECONDS
+  ) {
+    return false;
+  }
+
+  const key = await importSigningKey(secret);
+  const signedPayload = encoder.encode(`${timestamp}.${payload}`);
+  const signatures = parts
+    .filter((part) => part.startsWith("v1="))
+    .map((part) => hexToBytes(part.slice(3)))
+    .filter((value): value is Uint8Array => value !== null);
+
+  for (const signature of signatures) {
+    if (
+      await crypto.subtle.verify("HMAC", key, signature, signedPayload)
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const verifyAndStorePaidOrder = async (
+  sessionId: string,
+  stripeEventId: string,
+  paidAt: number,
+  env: Env,
+) => {
+  const session = await retrieveCheckoutSession(sessionId, env);
+  if (!isPaidPencilProofSession(session)) return false;
+
+  const expectedPriceId = env.STRIPE_PRICE_ID.trim();
+  const lineItems = await retrieveCheckoutLineItems(sessionId, env);
+  if (!hasExactPencilProofLineItem(lineItems, expectedPriceId)) return false;
+
+  const deviceHash = session?.metadata?.pencilproof_device_hash ?? "";
+  if (!/^[a-f0-9]{64}$/.test(deviceHash)) return false;
+
+  const createdAt = Number.isInteger(paidAt) && paidAt > 0
+    ? paidAt
+    : Math.floor(Date.now() / 1000);
+  return storePaidOrder({
+    accessExpiresAt: createdAt + accessSeconds(env),
+    amountTotal: session?.amount_total ?? 0,
+    createdAt,
+    currency: session?.currency?.toLowerCase() ?? "",
+    deviceHash,
+    priceId: expectedPriceId,
+    redemptionCount: 0,
+    sessionId,
+    stripeEventId,
+  }, env);
+};
+
+const handleStripeWebhook = async (request: Request, env: Env) => {
+  if (request.method !== "POST") {
+    return new Response("Method not allowed", {
+      status: 405,
+      headers: { Allow: "POST" },
+    });
+  }
+
+  const payload = await request.text();
+  const validSignature = await verifyStripeSignature(
+    payload,
+    request.headers.get("Stripe-Signature") ?? "",
+    env.STRIPE_WEBHOOK_SECRET,
+  );
+  if (!validSignature) {
+    return new Response("Invalid signature", { status: 400 });
+  }
+
+  let event: StripeEvent;
+  try {
+    event = JSON.parse(payload) as StripeEvent;
+  } catch {
+    return new Response("Invalid payload", { status: 400 });
+  }
+
+  if (
+    event.type !== "checkout.session.completed"
+    && event.type !== "checkout.session.async_payment_succeeded"
+  ) {
+    return Response.json({ received: true });
+  }
+
+  const sessionId = event.data?.object?.id ?? "";
+  const stored = await verifyAndStorePaidOrder(
+    sessionId,
+    event.id ?? "stripe_event_unknown",
+    event.created ?? Math.floor(Date.now() / 1000),
+    env,
+  );
+  if (!stored) {
+    console.error("Paid order could not be verified", {
+      eventId: event.id ?? "unknown",
+      sessionId,
+    });
+    return new Response("Order verification failed", { status: 503 });
+  }
+
+  return Response.json({ received: true });
+};
+
 const handleCheckout = async (request: Request, env: Env) => {
   if (request.method !== "POST") {
     return new Response("Method not allowed", {
@@ -416,10 +765,19 @@ const handleCheckout = async (request: Request, env: Env) => {
   }
 
   try {
-    const session = await createCheckoutSession(env);
+    const existingDeviceId = readCookie(request, DEVICE_COOKIE);
+    const deviceId = validDeviceId(existingDeviceId)
+      ? existingDeviceId
+      : randomDeviceId();
+    const deviceHash = await sha256Hex(deviceId);
+    const session = await createCheckoutSession(env, deviceHash);
+    const headers = new Headers({ "Cache-Control": "no-store" });
+    if (deviceId !== existingDeviceId) {
+      headers.append("Set-Cookie", deviceCookie(deviceId));
+    }
     return Response.json(
       { url: session.url },
-      { headers: { "Cache-Control": "no-store" } },
+      { headers },
     );
   } catch (error) {
     const code = error instanceof CheckoutError
@@ -436,41 +794,101 @@ const handleCheckout = async (request: Request, env: Env) => {
   }
 };
 
-const handleSuccess = async (url: URL, env: Env) => {
+const handleSuccess = async (request: Request, env: Env) => {
+  const url = new URL(request.url);
   const sessionId = url.searchParams.get("session_id") ?? "";
-  const session = await retrieveCheckoutSession(sessionId, env);
-  if (!isPaidPencilProofSession(session)) {
-    return redirect(`${env.PUBLIC_SITE_ORIGIN}/?payment=unverified#pricing`);
+  const deviceId = readCookie(request, DEVICE_COOKIE);
+  if (!validDeviceId(deviceId)) {
+    return redirect(`${env.SITE_ORIGIN}/recover?reason=device_missing`);
   }
-  const lineItems = await retrieveCheckoutLineItems(sessionId, env);
-  if (
-    !hasExactPencilProofLineItem(lineItems, env.STRIPE_PRICE_ID.trim())
-  ) {
+  const deviceHash = await sha256Hex(deviceId);
+
+  let redemption = await redeemOrder(sessionId, deviceHash, env);
+  if (!redemption.allowed && redemption.reason === "not_found") {
+    const stored = await verifyAndStorePaidOrder(
+      sessionId,
+      "redirect_fallback",
+      Math.floor(Date.now() / 1000),
+      env,
+    );
+    if (stored) redemption = await redeemOrder(sessionId, deviceHash, env);
+  }
+
+  if (!redemption.allowed || typeof redemption.expiresAt !== "number") {
+    const reason = redemption.reason === "device_mismatch"
+      ? "device_mismatch"
+      : redemption.reason === "expired"
+        ? "expired"
+        : "unverified";
+    if (reason !== "unverified") {
+      return redirect(`${env.SITE_ORIGIN}/recover?reason=${reason}`);
+    }
     return redirect(`${env.PUBLIC_SITE_ORIGIN}/?payment=unverified#pricing`);
   }
 
-  const maxAge = accessSeconds(env);
+  const maxAge = Math.max(
+    1,
+    redemption.expiresAt - Math.floor(Date.now() / 1000),
+  );
   const token = await createAccessToken(
     sessionId,
+    deviceHash,
     env.SESSION_SECRET,
     maxAge,
   );
   return redirect(`${env.SITE_ORIGIN}/analyze/`, {
-    "Set-Cookie": [
-      `${ACCESS_COOKIE}=${token}`,
-      `Max-Age=${maxAge}`,
-      "Path=/",
-      "HttpOnly",
-      "Secure",
-      "SameSite=Lax",
-    ].join("; "),
+    "Set-Cookie": accessCookie(token, maxAge),
   });
 };
 
 const hasAccess = async (request: Request, env: Env) => {
   const token = readCookie(request, ACCESS_COOKIE);
-  if (!token) return false;
-  return Boolean(await verifyAccessToken(token, env.SESSION_SECRET));
+  const deviceId = readCookie(request, DEVICE_COOKIE);
+  if (!token || !validDeviceId(deviceId)) return false;
+  const payload = await verifyAccessToken(token, env.SESSION_SECRET);
+  if (!payload) return false;
+  return payload.did === await sha256Hex(deviceId);
+};
+
+const recoverPage = (reason = "") => {
+  const message = reason === "device_missing" || reason === "device_mismatch"
+    ? "This purchase is linked to the browser that opened checkout. Open this page in that original browser, or email support@pencilproof.com with your Stripe receipt for help."
+    : reason === "expired"
+      ? "This purchase's 30-day access period has ended."
+      : "Enter the Checkout Session ID from your original PencilProof return link. Access can be restored only in the browser that completed checkout.";
+  const headers = {
+    ...noStoreHeaders,
+    "Content-Security-Policy":
+      noStoreHeaders["Content-Security-Policy"].replace(
+        "form-action 'none'",
+        "form-action 'self'",
+      ),
+    "Content-Type": "text/html; charset=utf-8",
+  };
+  return new Response(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Restore access | PencilProof</title>
+    <style>
+      :root{color-scheme:light}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f5f4ee;color:#11233b;font:16px/1.5 Arial,sans-serif}.card{width:min(560px,calc(100% - 32px));padding:40px;border:1px solid #d9d7cf;background:#fff;box-shadow:0 18px 50px rgba(17,35,59,.08)}.brand{font-weight:800}h1{margin:24px 0 10px;font:700 34px/1.1 Georgia,serif}p{color:#596675}label{display:block;margin:24px 0 8px;font-weight:700}input{width:100%;padding:13px;border:1px solid #a9b0b8;font:inherit}button{margin-top:14px;padding:13px 18px;border:0;background:#11233b;color:#fff;font:700 16px Arial,sans-serif;cursor:pointer}a{color:#17633a}
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <div class="brand">PencilProof</div>
+      <h1>Restore your audit</h1>
+      <p>${message}</p>
+      <form action="/recover/access" method="get">
+        <label for="session_id">Checkout Session ID</label>
+        <input id="session_id" name="session_id" pattern="cs_[A-Za-z0-9_]+" required autocomplete="off">
+        <button type="submit">Restore access</button>
+      </form>
+      <p><a href="mailto:support@pencilproof.com">Contact PencilProof support</a></p>
+    </main>
+  </body>
+</html>`, { headers });
 };
 
 export const handleRequest = async (request: Request, env: Env) => {
@@ -485,8 +903,20 @@ export const handleRequest = async (request: Request, env: Env) => {
   if (url.pathname === "/api/checkout") {
     return handleCheckout(request, env);
   }
+  if (url.pathname === "/api/stripe/webhook") {
+    return handleStripeWebhook(request, env);
+  }
   if (url.pathname === "/success" || url.pathname === "/success/") {
-    return handleSuccess(url, env);
+    return handleSuccess(request, env);
+  }
+  if (url.pathname === "/recover" || url.pathname === "/recover/") {
+    return recoverPage(url.searchParams.get("reason") ?? "");
+  }
+  if (
+    url.pathname === "/recover/access"
+    || url.pathname === "/recover/access/"
+  ) {
+    return handleSuccess(request, env);
   }
   if (url.pathname === "/logout" || url.pathname === "/logout/") {
     return redirect(env.PUBLIC_SITE_ORIGIN, {

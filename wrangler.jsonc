@@ -13,6 +13,8 @@
       "/api/*",
       "/handoff",
       "/handoff/*",
+      "/recover",
+      "/recover/*",
       "/success",
       "/success/*",
       "/logout",
@@ -28,6 +30,22 @@
     "SITE_ORIGIN": "https://audit.pencilproof.com",
     "STRIPE_PRICE_ID": "price_1Tu1GEEopq0gcXsNeXF2QMry"
   },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "ORDERS",
+        "class_name": "OrderStore"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "OrderStore"
+      ]
+    }
+  ],
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1
