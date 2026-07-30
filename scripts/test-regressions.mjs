@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  DEAL_FIELD_LABELS,
   parseDealerText,
   parseOfferMatrix,
   reconcileQuotedPayment,
@@ -28,6 +29,8 @@ const closeTo = (actual, expected, tolerance = 0.01) => {
     `Expected ${actual} to be within ${tolerance} of ${expected}`,
   );
 };
+
+assert.equal(DEAL_FIELD_LABELS.rebate, "Rebate");
 
 const handoffPayload = {
   fields: { sellingPrice: 38995, apr: 7.49 },
@@ -77,8 +80,8 @@ const dalyCityPhotoQuote = parseDealerText([
   "Deposit / Cash Down (-) 1,600.00",
   "CASH DUE / FINANCE AMOUNT 23,683.80",
 ]);
-closeTo(dalyCityPhotoQuote.sellingPrice, 18500);
-closeTo(dalyCityPhotoQuote.rebate, 500);
+closeTo(dalyCityPhotoQuote.sellingPrice, 18000);
+assert.equal(dalyCityPhotoQuote.rebate, undefined);
 closeTo(dalyCityPhotoQuote.accessories, 498);
 closeTo(dalyCityPhotoQuote.gap, 795);
 closeTo(dalyCityPhotoQuote.serviceContract, 3632);
@@ -149,6 +152,8 @@ const reconstructedTax = parseDealerText([
   "Connected Car Plan $299.00",
   "Total Sales Amount $49,757.22",
 ]);
+closeTo(reconstructedTax.sellingPrice, 40135);
+assert.equal(reconstructedTax.rebate, undefined);
 closeTo(reconstructedTax.tax, 4137.47);
 
 const printedPayment = parseDealerText([
@@ -166,10 +171,56 @@ const printedPayment = parseDealerText([
   "Term 72 months",
   "Monthly Payment $642.94",
 ]);
-closeTo(printedPayment.sellingPrice, 31000);
-closeTo(printedPayment.rebate, 1500);
+closeTo(printedPayment.sellingPrice, 29500);
+assert.equal(printedPayment.rebate, undefined);
 closeTo(printedPayment.quotedPayment, 642.94);
 closeTo(printedPayment.accessories, 3198);
+
+const dalyCityTacomaQuote = parseDealerText([
+  "2022 Toyota Tacoma Double Cab TRD Off-Road Pickup 4D 6 ft",
+  "Estimated Payment $688.13",
+  "72 Months @ 5.8900%",
+  "Asking Price $41,300.00",
+  "Discount (-) $3,800.00",
+  "Sales Price $37,500.00",
+  "Catalytic Marking - VC 24020 - Declined** $0.00",
+  "Theft DNA DLP** $1.00",
+  "Appearance** $699.00",
+  "Connected Car 1 Year Plan** $299.00",
+  "Gap Insurance** $1,200.00",
+  "DMV License / Title Fees* $400.00",
+  "DMV Reg / Transfer Fees* $506.00",
+  "Doc Fee $85.00",
+  "Smog Fee $50.00",
+  "Smog Certification Fee $8.25",
+  "Electronic Filing Fee $37.00",
+  "Sales Tax: 10% $3,863.40",
+  "TOTAL SALES AMOUNT $44,648.65",
+  "Deposit / Cash Down (-) $3,000.00",
+  "CASH DUE / FINANCE AMOUNT $41,648.65",
+]);
+closeTo(dalyCityTacomaQuote.sellingPrice, 37500);
+assert.equal(dalyCityTacomaQuote.rebate, undefined);
+closeTo(dalyCityTacomaQuote.accessories, 999);
+closeTo(dalyCityTacomaQuote.gap, 1200);
+closeTo(dalyCityTacomaQuote.govFees, 1001.25);
+closeTo(
+  dalyCityTacomaQuote.sellingPrice +
+    dalyCityTacomaQuote.tax +
+    dalyCityTacomaQuote.govFees +
+    dalyCityTacomaQuote.docFee +
+    dalyCityTacomaQuote.accessories +
+    dalyCityTacomaQuote.gap -
+    dalyCityTacomaQuote.cashDown,
+  41648.65,
+);
+
+const explicitManufacturerRebate = parseDealerText([
+  "Sales Price $30,000.00",
+  "Manufacturer Rebate $1,000.00",
+]);
+closeTo(explicitManufacturerRebate.sellingPrice, 30000);
+closeTo(explicitManufacturerRebate.rebate, 1000);
 
 const separatedPackedPayment = parseDealerText([
   "Estimated Payment",

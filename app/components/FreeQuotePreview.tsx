@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import {
   CHECKOUT_URL,
   createQuoteHandoffEnvelope,
@@ -61,8 +61,23 @@ export default function FreeQuotePreview() {
   const [manualMode, setManualMode] = useState(false);
   const [manualFields, setManualFields] = useState<ImportedDealFields>({ term: 72 });
   const [manualError, setManualError] = useState("");
+  const manualPanelRef = useRef<HTMLDivElement>(null);
 
   const showManualFallback = shouldOfferManualEntry(failedImportAttempts);
+
+  useEffect(() => {
+    if (!manualMode) return;
+    const frame = requestAnimationFrame(() => {
+      manualPanelRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+      manualPanelRef.current
+        ?.querySelector<HTMLInputElement>("input")
+        ?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [manualMode]);
 
   const failImport = (message: string) => {
     setFailedImportAttempts((attempts) => attempts + 1);
@@ -368,15 +383,15 @@ export default function FreeQuotePreview() {
                   <button
                     className="button button-primary"
                     type="button"
-                    onClick={() => setManualMode((open) => !open)}
+                    onClick={() => setManualMode(true)}
                     aria-expanded={manualMode}
                   >
-                    Enter numbers manually
+                    {manualMode ? "Manual entry open below" : "Enter numbers manually"}
                   </button>
                 ) : null}
               </div>
               {showManualFallback && manualMode ? (
-                <div className="free-manual-entry">
+                <div className="free-manual-entry" ref={manualPanelRef}>
                   <div>
                     <strong>Enter the figures shown on the quote</strong>
                     <p>Leave anything blank if the dealer did not provide it.</p>

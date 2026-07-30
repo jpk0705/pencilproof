@@ -105,14 +105,6 @@ type StripeCheckoutSessions = {
   has_more?: boolean;
 };
 
-type StripeCharge = {
-  amount?: number | null;
-  amount_refunded?: number | null;
-  id?: string;
-  payment_intent?: string | null;
-  refunded?: boolean | null;
-};
-
 type StripeCheckoutLineItems = {
   data?: Array<{
     price?: { id?: string | null } | null;
@@ -160,6 +152,7 @@ type WebhookConfig = {
 type CheckoutErrorCode =
   | "stripe_price_id_invalid"
   | "stripe_secret_key_invalid"
+  | "webhook_unavailable"
   | "stripe_product_ineligible"
   | "managed_payments_unavailable"
   | "stripe_api_rejected"
@@ -941,16 +934,6 @@ const retrieveCheckoutLineItems = async (sessionId: string, env: Env) => {
   return response.json() as Promise<StripeCheckoutLineItems>;
 };
 
-const retrieveCharge = async (chargeId: string, env: Env) => {
-  if (!/^ch_[A-Za-z0-9]+$/.test(chargeId)) return null;
-  const response = await stripeRequest(
-    `/charges/${encodeURIComponent(chargeId)}`,
-    env,
-  );
-  if (!response.ok) return null;
-  return response.json() as Promise<StripeCharge>;
-};
-
 const retrieveCheckoutSessionsForPaymentIntent = async (
   paymentIntentId: string,
   env: Env,
@@ -1097,27 +1080,11 @@ const verifyAndStorePaidOrder = async (
 
 const resolvePaymentIntent = async (
   object: StripeEventObject,
-  env: Env,
 ) => {
-  if (
+  return (
     typeof object.payment_intent === "string"
     && /^pi_[A-Za-z0-9]+$/.test(object.payment_intent)
-  ) {
-    return object.payment_intent;
-  }
-  const chargeId = typeof object.charge === "string"
-    ? object.charge
-    : typeof object.id === "string" && /^ch_[A-Za-z0-9]+$/.test(object.id)
-      ? object.id
-      : "";
-  if (!/^ch_[A-Za-z0-9]+$/.test(chargeId)) {
-    return null;
-  }
-  const charge = await retrieveCharge(chargeId, env);
-  return typeof charge?.payment_intent === "string"
-      && /^pi_[A-Za-z0-9]+$/.test(charge.payment_intent)
-    ? charge.payment_intent
-    : null;
+  ) ? object.payment_intent : null;
 };
 
 const revokeAccessForPaymentIntent = async (
@@ -1154,24 +1121,19 @@ const processRevocationEvent = async (
   const eventId = event.id ?? "";
   const eventCreated = event.created ?? Math.floor(Date.now() / 1000);
   const object = event.data?.object ?? {};
+  if (event.type === "refund.created") {
+    return /^evt_[A-Za-z0-9]+$/.test(eventId);
+  }
+
   let reason: OrderRevocation["reason"] | null = null;
   let paymentIntentId: string | null = null;
 
-  if (event.type === "refund.created") {
-    const chargeId = typeof object.charge === "string" ? object.charge : "";
-    const charge = await retrieveCharge(chargeId, env);
-    if (!charge) return false;
-    if (charge.refunded !== true) return true;
-    paymentIntentId = typeof charge.payment_intent === "string"
-      ? charge.payment_intent
-      : await resolvePaymentIntent(object, env);
-    reason = "refunded";
-  } else if (event.type === "charge.refunded") {
+  if (event.type === "charge.refunded") {
     if (object.refunded !== true) return true;
-    paymentIntentId = await resolvePaymentIntent(object, env);
+    paymentIntentId = await resolvePaymentIntent(object);
     reason = "refunded";
   } else if (event.type === "charge.dispute.created") {
-    paymentIntentId = await resolvePaymentIntent(object, env);
+    paymentIntentId = await resolvePaymentIntent(object);
     reason = "disputed";
   } else {
     return true;
@@ -1281,7 +1243,10 @@ const handleCheckout = async (request: Request, env: Env) => {
   try {
     const webhookReady = await ensureWebhookEndpoint(env);
     if (!webhookReady) {
-      console.error("Stripe webhook is not ready");
+      throw new CheckoutError(
+        "webhook_unavailable",
+        "Stripe webhook is not ready",
+      );
     }
     const existingDeviceId = readCookie(request, DEVICE_COOKIE);
     const deviceId = validDeviceId(existingDeviceId)
