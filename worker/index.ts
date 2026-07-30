@@ -1,6 +1,5 @@
 const ACCESS_COOKIE = "pp_access";
 const PRODUCT_CODE = "full_quote_audit_v1";
-const PRODUCT_PRICE_CENTS = 3900;
 const DEFAULT_ACCESS_SECONDS = 60 * 60 * 24 * 30;
 const QUOTE_HANDOFF_KEY = "pencilproof:pending-import";
 const QUOTE_HANDOFF_TYPE = "pencilproof:quote-handoff:v1";
@@ -38,6 +37,14 @@ type StripeCheckoutSession = {
     amount_tax?: number | null;
   } | null;
   url?: string | null;
+};
+
+type StripeCheckoutLineItems = {
+  data?: Array<{
+    price?: { id?: string | null } | null;
+    quantity?: number | null;
+  }>;
+  has_more?: boolean;
 };
 
 type CheckoutErrorCode =
@@ -352,6 +359,15 @@ const retrieveCheckoutSession = async (sessionId: string, env: Env) => {
   return response.json() as Promise<StripeCheckoutSession>;
 };
 
+const retrieveCheckoutLineItems = async (sessionId: string, env: Env) => {
+  const response = await stripeRequest(
+    `/checkout/sessions/${encodeURIComponent(sessionId)}/line_items?limit=2`,
+    env,
+  );
+  if (!response.ok) return null;
+  return response.json() as Promise<StripeCheckoutLineItems>;
+};
+
 const isPaidPencilProofSession = (session: StripeCheckoutSession | null) => {
   const tax = session?.total_details?.amount_tax;
   return Boolean(
@@ -360,17 +376,31 @@ const isPaidPencilProofSession = (session: StripeCheckoutSession | null) => {
     && session.payment_status === "paid"
     && session.mode === "payment"
     && session.managed_payments?.enabled === true
-    && session.amount_subtotal === PRODUCT_PRICE_CENTS
+    && typeof session.amount_subtotal === "number"
+    && Number.isInteger(session.amount_subtotal)
+    && session.amount_subtotal > 0
     && typeof tax === "number"
     && Number.isInteger(tax)
     && tax >= 0
     && session.total_details?.amount_discount === 0
     && session.total_details?.amount_shipping === 0
-    && session.amount_total === PRODUCT_PRICE_CENTS + tax
-    && session.currency?.toLowerCase() === "usd"
+    && session.amount_total === session.amount_subtotal + tax
+    && typeof session.currency === "string"
+    && /^[a-z]{3}$/i.test(session.currency)
     && session.metadata?.pencilproof_product === PRODUCT_CODE
   );
 };
+
+const hasExactPencilProofLineItem = (
+  lineItems: StripeCheckoutLineItems | null,
+  expectedPriceId: string,
+) => Boolean(
+  lineItems
+  && lineItems.has_more === false
+  && lineItems.data?.length === 1
+  && lineItems.data[0]?.quantity === 1
+  && lineItems.data[0]?.price?.id === expectedPriceId
+);
 
 const handleCheckout = async (request: Request, env: Env) => {
   if (request.method !== "POST") {
@@ -410,6 +440,12 @@ const handleSuccess = async (url: URL, env: Env) => {
   const sessionId = url.searchParams.get("session_id") ?? "";
   const session = await retrieveCheckoutSession(sessionId, env);
   if (!isPaidPencilProofSession(session)) {
+    return redirect(`${env.PUBLIC_SITE_ORIGIN}/?payment=unverified#pricing`);
+  }
+  const lineItems = await retrieveCheckoutLineItems(sessionId, env);
+  if (
+    !hasExactPencilProofLineItem(lineItems, env.STRIPE_PRICE_ID.trim())
+  ) {
     return redirect(`${env.PUBLIC_SITE_ORIGIN}/?payment=unverified#pricing`);
   }
 
