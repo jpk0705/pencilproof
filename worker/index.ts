@@ -41,7 +41,7 @@ export interface Env {
   SITE_ORIGIN: string;
   STRIPE_PRICE_ID: string;
   STRIPE_SECRET_KEY: string;
-  STRIPE_WEBHOOK_SECRET: string;
+  STRIPE_WEBHOOK_SECRET?: string;
 }
 
 type AccessPayload = {
@@ -102,6 +102,13 @@ type OrderRedeemResult = {
   allowed: boolean;
   expiresAt?: number;
   reason?: "device_mismatch" | "expired" | "not_found";
+};
+
+type WebhookConfig = {
+  createdAt: number;
+  endpointId: string;
+  secret: string;
+  url: string;
 };
 
 type CheckoutErrorCode =
@@ -260,6 +267,49 @@ const accessCookie = (token: string, maxAge: number) => [
 const orderStub = (sessionId: string, env: Env) =>
   env.ORDERS.get(env.ORDERS.idFromName(sessionId));
 
+const webhookConfigStub = (env: Env) =>
+  orderStub("__pencilproof_webhook_config__", env);
+
+const configuredWebhookSecret = async (env: Env) => {
+  if (
+    typeof env.STRIPE_WEBHOOK_SECRET === "string"
+    && /^whsec_[A-Za-z0-9]+$/.test(env.STRIPE_WEBHOOK_SECRET)
+  ) {
+    return env.STRIPE_WEBHOOK_SECRET;
+  }
+  const response = await webhookConfigStub(env).fetch(
+    new Request("https://order-store.internal/webhook/secret", {
+      method: "POST",
+    }),
+  );
+  if (!response.ok) return null;
+  const body = await response.json() as {
+    ready?: boolean;
+    secret?: string;
+  };
+  return body.ready === true
+      && typeof body.secret === "string"
+      && /^whsec_[A-Za-z0-9]+$/.test(body.secret)
+    ? body.secret
+    : null;
+};
+
+const ensureWebhookEndpoint = async (env: Env) => {
+  if (await configuredWebhookSecret(env)) return true;
+  const response = await webhookConfigStub(env).fetch(
+    new Request("https://order-store.internal/webhook/ensure", {
+      body: JSON.stringify({
+        url: `${env.SITE_ORIGIN}/api/stripe/webhook`,
+      }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    }),
+  );
+  if (!response.ok) return false;
+  const body = await response.json() as { ready?: boolean };
+  return body.ready === true;
+};
+
 const storePaidOrder = async (order: OrderRecord, env: Env) => {
   const response = await orderStub(order.sessionId, env).fetch(
     new Request("https://order-store.internal/paid", {
@@ -292,9 +342,11 @@ const redeemOrder = async (
 
 export class OrderStore {
   private readonly state: DurableObjectStateLike;
+  private readonly env?: Env;
 
-  constructor(state: DurableObjectStateLike) {
+  constructor(state: DurableObjectStateLike, env?: Env) {
     this.state = state;
+    this.env = env;
   }
 
   async fetch(request: Request) {
@@ -303,6 +355,46 @@ export class OrderStore {
     }
 
     const path = new URL(request.url).pathname;
+    if (path === "/webhook/ensure") {
+      const body = await request.json() as { url?: string };
+      const url = body.url ?? "";
+      if (!/^https:\/\/[A-Za-z0-9.-]+\/api\/stripe\/webhook$/.test(url)) {
+        return new Response("Invalid webhook URL", { status: 400 });
+      }
+
+      const existing = await this.state.storage.get<WebhookConfig>(
+        "webhookConfig",
+      );
+      if (
+        existing
+        && existing.url === url
+        && /^we_[A-Za-z0-9]+$/.test(existing.endpointId)
+        && /^whsec_[A-Za-z0-9]+$/.test(existing.secret)
+      ) {
+        return Response.json({ ready: true });
+      }
+      if (!this.env) {
+        return Response.json({ ready: false }, { status: 503 });
+      }
+
+      const created = await createStripeWebhookEndpoint(url, this.env);
+      if (!created) {
+        return Response.json({ ready: false }, { status: 503 });
+      }
+      await this.state.storage.put("webhookConfig", created);
+      return Response.json({ ready: true });
+    }
+
+    if (path === "/webhook/secret") {
+      const config = await this.state.storage.get<WebhookConfig>(
+        "webhookConfig",
+      );
+      if (!config || !/^whsec_[A-Za-z0-9]+$/.test(config.secret)) {
+        return Response.json({ ready: false }, { status: 404 });
+      }
+      return Response.json({ ready: true, secret: config.secret });
+    }
+
     if (path === "/paid") {
       const incoming = await request.json() as OrderRecord;
       if (
@@ -502,6 +594,51 @@ const stripeRequest = async (
   headers.set("Stripe-Version", "2026-04-22.dahlia");
   return fetch(`https://api.stripe.com/v1${path}`, { ...init, headers });
 };
+
+async function createStripeWebhookEndpoint(
+  url: string,
+  env: Env,
+): Promise<WebhookConfig | null> {
+  const parameters = new URLSearchParams({
+    description: "PencilProof paid audit fulfillment",
+    url,
+  });
+  parameters.append("enabled_events[]", "checkout.session.completed");
+  parameters.append(
+    "enabled_events[]",
+    "checkout.session.async_payment_succeeded",
+  );
+  const response = await stripeRequest("/webhook_endpoints", env, {
+    body: parameters,
+    method: "POST",
+  });
+  const endpoint = await response.json() as {
+    error?: { message?: string };
+    id?: string;
+    secret?: string;
+    url?: string;
+  };
+  if (
+    !response.ok
+    || !endpoint.id
+    || !/^we_[A-Za-z0-9]+$/.test(endpoint.id)
+    || !endpoint.secret
+    || !/^whsec_[A-Za-z0-9]+$/.test(endpoint.secret)
+    || endpoint.url !== url
+  ) {
+    console.error("Stripe webhook setup failed", {
+      message: endpoint.error?.message ?? "Invalid webhook response",
+      status: response.status,
+    });
+    return null;
+  }
+  return {
+    createdAt: Math.floor(Date.now() / 1000),
+    endpointId: endpoint.id,
+    secret: endpoint.secret,
+    url,
+  };
+}
 
 const createCheckoutSession = async (env: Env, deviceHash: string) => {
   const stripePriceId = typeof env.STRIPE_PRICE_ID === "string"
@@ -710,10 +847,14 @@ const handleStripeWebhook = async (request: Request, env: Env) => {
   }
 
   const payload = await request.text();
+  const webhookSecret = await configuredWebhookSecret(env);
+  if (!webhookSecret) {
+    return new Response("Webhook is not configured", { status: 503 });
+  }
   const validSignature = await verifyStripeSignature(
     payload,
     request.headers.get("Stripe-Signature") ?? "",
-    env.STRIPE_WEBHOOK_SECRET,
+    webhookSecret,
   );
   if (!validSignature) {
     return new Response("Invalid signature", { status: 400 });
@@ -765,6 +906,10 @@ const handleCheckout = async (request: Request, env: Env) => {
   }
 
   try {
+    const webhookReady = await ensureWebhookEndpoint(env);
+    if (!webhookReady) {
+      console.error("Stripe webhook is not ready");
+    }
     const existingDeviceId = readCookie(request, DEVICE_COOKIE);
     const deviceId = validDeviceId(existingDeviceId)
       ? existingDeviceId
@@ -792,6 +937,19 @@ const handleCheckout = async (request: Request, env: Env) => {
       { status: 502, headers: { "Cache-Control": "no-store" } },
     );
   }
+};
+
+const handleWebhookStatus = async (request: Request, env: Env) => {
+  if (request.method !== "GET") {
+    return new Response("Method not allowed", {
+      status: 405,
+      headers: { Allow: "GET" },
+    });
+  }
+  return Response.json(
+    { ready: Boolean(await configuredWebhookSecret(env)) },
+    { headers: { "Cache-Control": "no-store" } },
+  );
 };
 
 const handleSuccess = async (request: Request, env: Env) => {
@@ -905,6 +1063,9 @@ export const handleRequest = async (request: Request, env: Env) => {
   }
   if (url.pathname === "/api/stripe/webhook") {
     return handleStripeWebhook(request, env);
+  }
+  if (url.pathname === "/api/stripe/webhook/status") {
+    return handleWebhookStatus(request, env);
   }
   if (url.pathname === "/success" || url.pathname === "/success/") {
     return handleSuccess(request, env);
