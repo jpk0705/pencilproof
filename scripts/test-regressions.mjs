@@ -6,6 +6,11 @@ import {
 } from "../lib/deal-pdf.ts";
 import { paymentFor } from "../lib/deal-calculations.ts";
 import {
+  CHECKOUT_URL,
+  QUOTE_HANDOFF_TYPE,
+  createQuoteHandoffEnvelope,
+} from "../lib/checkout.ts";
+import {
   countPreviewReviewAreas,
   countPricedProducts,
   isPreviewImportUsable,
@@ -24,6 +29,19 @@ const closeTo = (actual, expected, tolerance = 0.01) => {
   );
 };
 
+const handoffPayload = {
+  fields: { sellingPrice: 38995, apr: 7.49 },
+  confidence: { sellingPrice: "high", apr: "review" },
+  offerMatrix: null,
+};
+const handoffEnvelope = JSON.parse(
+  createQuoteHandoffEnvelope(handoffPayload),
+);
+assert.equal(CHECKOUT_URL, "https://audit.pencilproof.com/handoff");
+assert.equal(handoffEnvelope.type, QUOTE_HANDOFF_TYPE);
+assert.deepEqual(handoffEnvelope.payload, handoffPayload);
+assert.equal(CHECKOUT_URL.includes("#"), false);
+
 const taxRateAndAmount = parseDealerText([
   "Selling Price $44,635.00",
   "Sales Tax 9.375% $4,137.47",
@@ -37,36 +55,47 @@ const taxRateAndAmount = parseDealerText([
 closeTo(taxRateAndAmount.tax, 4137.47);
 assert.notEqual(taxRateAndAmount.tax, 9.375);
 
-const reconstructedTax = parseDealerText([
-  "Asking Price $44,635.00",
-  "Dealer Discount $4,500.00",
-  "Government Fees $1,033.75",
-  "Vehicle Service Contract $3,453.00",
-  "Appearance Protection $699.00",
-  "Connected Car Plan $299.00",
-  "Total Sales Amount $49,757.22",
+const dalyCityPhotoQuote = parseDealerText([
+  "2018 Ram ProMaster City Tradesman Cargo Van 4D",
+  "Estimated Payment",
+  "387.97",
+  "72 Months @ 5.5900%",
+  "Pricing Breakdown Asking Price 18,500.00",
+  "Discount (-) 500.00",
+  "Sales Price 18,000.00",
+  "Connected Car 1 Year Plan 299.00",
+  "Zurich Shield - Standard 199.00",
+  "Gap Insurance 795.00",
+  "Vehicle Service Contract - (Elite) Platinum Used 36/45000 3,632.00",
+  "DMV License / Title Fees 192.00",
+  "DMV Reg / Transfer Fees 263.00",
+  "Doc Fee 85.00",
+  "Smog Certification Fee 8.25",
+  "Electronic Filing Fee 37.00",
+  "Sales Tax: 9.25% 1,723.55",
+  "TOTAL SALES AMOUNT 25,283.80",
+  "Deposit / Cash Down (-) 1,600.00",
+  "CASH DUE / FINANCE AMOUNT 23,683.80",
 ]);
-closeTo(reconstructedTax.tax, 4137.47);
+closeTo(dalyCityPhotoQuote.sellingPrice, 18500);
+closeTo(dalyCityPhotoQuote.rebate, 500);
+closeTo(dalyCityPhotoQuote.accessories, 498);
+closeTo(dalyCityPhotoQuote.gap, 795);
+closeTo(dalyCityPhotoQuote.serviceContract, 3632);
+closeTo(dalyCityPhotoQuote.quotedPayment, 387.97);
+closeTo(dalyCityPhotoQuote.apr, 5.59);
+assert.equal(dalyCityPhotoQuote.term, 72);
 
-const printedPayment = parseDealerText([
-  "Asking Price $31,000.00",
-  "Discount $1,500.00",
-  "Sales Price $29,500.00",
-  "Government Fees $52.00",
-  "Documentation Fee $85.00",
-  "Appearance $699.00",
-  "Connected Car Plan $299.00",
-  "Shipping $2,200.00",
-  "Cash Down $2,000.00",
-  "Amount Financed $30,835.00",
-  "APR 14.45%",
-  "Term 72 months",
-  "Monthly Payment $642.94",
+const namedProducts = parseDealerText([
+  "Ally VSC $2,495.00",
+  "AmeriPlus GAP $995.00",
+  "Connected Car $299.00",
+  "LoJack $695.00",
+  "Zurich Shield $199.00",
 ]);
-closeTo(printedPayment.sellingPrice, 31000);
-closeTo(printedPayment.rebate, 1500);
-closeTo(printedPayment.quotedPayment, 642.94);
-closeTo(printedPayment.accessories, 3198);
+closeTo(namedProducts.serviceContract, 2495);
+closeTo(namedProducts.gap, 995);
+closeTo(namedProducts.accessories, 1193);
 
 const categorizedDealerAddOns = parseDealerText([
   "Toyota Extra Care Vehicle Service Agreement $2,795.00",
@@ -110,6 +139,37 @@ closeTo(noCategoryDoubleCounting.serviceContract, 2495);
 closeTo(noCategoryDoubleCounting.gap, 995);
 closeTo(noCategoryDoubleCounting.tireWheel, 1199);
 closeTo(noCategoryDoubleCounting.accessories, 699);
+
+const reconstructedTax = parseDealerText([
+  "Asking Price $44,635.00",
+  "Dealer Discount $4,500.00",
+  "Government Fees $1,033.75",
+  "Vehicle Service Contract $3,453.00",
+  "Appearance Protection $699.00",
+  "Connected Car Plan $299.00",
+  "Total Sales Amount $49,757.22",
+]);
+closeTo(reconstructedTax.tax, 4137.47);
+
+const printedPayment = parseDealerText([
+  "Asking Price $31,000.00",
+  "Discount $1,500.00",
+  "Sales Price $29,500.00",
+  "Government Fees $52.00",
+  "Documentation Fee $85.00",
+  "Appearance $699.00",
+  "Connected Car Plan $299.00",
+  "Shipping $2,200.00",
+  "Cash Down $2,000.00",
+  "Amount Financed $30,835.00",
+  "APR 14.45%",
+  "Term 72 months",
+  "Monthly Payment $642.94",
+]);
+closeTo(printedPayment.sellingPrice, 31000);
+closeTo(printedPayment.rebate, 1500);
+closeTo(printedPayment.quotedPayment, 642.94);
+closeTo(printedPayment.accessories, 3198);
 
 const separatedPackedPayment = parseDealerText([
   "Estimated Payment",
