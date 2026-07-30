@@ -31,7 +31,7 @@ class MemoryStorage {
   async setAlarm(_scheduledTime: number) {}
 }
 
-const makeOrderNamespace = (): Env["ORDERS"] => {
+const makeOrderNamespace = (getEnv: () => Env): Env["ORDERS"] => {
   const stores = new Map<string, OrderStore>();
   return {
     idFromName: (name: string) => name,
@@ -40,7 +40,10 @@ const makeOrderNamespace = (): Env["ORDERS"] => {
         const name = String(id);
         let store = stores.get(name);
         if (!store) {
-          store = new OrderStore({ storage: new MemoryStorage() });
+          store = new OrderStore(
+            { storage: new MemoryStorage() },
+            getEnv(),
+          );
           stores.set(name, store);
         }
         return store.fetch(request);
@@ -49,19 +52,23 @@ const makeOrderNamespace = (): Env["ORDERS"] => {
   };
 };
 
-const makeEnv = (): Env => ({
-  ACCESS_MAX_AGE_SECONDS: "2592000",
-  ASSETS: {
-    fetch: async () => new Response("asset", { status: 200 }),
-  },
-  ORDERS: makeOrderNamespace(),
-  PUBLIC_SITE_ORIGIN: "https://pencilproof.com",
-  SESSION_SECRET: "test-session-secret-with-enough-entropy",
-  SITE_ORIGIN: "https://audit.pencilproof.com",
-  STRIPE_PRICE_ID: "price_123TestValid",
-  STRIPE_SECRET_KEY: "rk_test_123TestValid",
-  STRIPE_WEBHOOK_SECRET: TEST_WEBHOOK_SECRET,
-});
+const makeEnv = (): Env => {
+  const env = {
+    ACCESS_MAX_AGE_SECONDS: "2592000",
+    ASSETS: {
+      fetch: async () => new Response("asset", { status: 200 }),
+    },
+    ORDERS: undefined,
+    PUBLIC_SITE_ORIGIN: "https://pencilproof.com",
+    SESSION_SECRET: "test-session-secret-with-enough-entropy",
+    SITE_ORIGIN: "https://audit.pencilproof.com",
+    STRIPE_PRICE_ID: "price_123TestValid",
+    STRIPE_SECRET_KEY: "rk_test_123TestValid",
+    STRIPE_WEBHOOK_SECRET: TEST_WEBHOOK_SECRET,
+  } as unknown as Env;
+  env.ORDERS = makeOrderNamespace(() => env);
+  return env;
+};
 
 const sha256Hex = async (value: string) => {
   const bytes = new Uint8Array(
@@ -240,6 +247,76 @@ test("checkout uses the configured Stripe price", async () => {
   assert.equal(result.url, "https://checkout.stripe.com/c/pay/cs_test_created");
   assert.match(response.headers.get("Set-Cookie") ?? "", /^pp_device=/);
   assert.match(response.headers.get("Set-Cookie") ?? "", /HttpOnly/);
+});
+
+test("checkout configures one Stripe webhook without exposing its secret", async () => {
+  const env = makeEnv();
+  delete env.STRIPE_WEBHOOK_SECRET;
+  const stripePaths: string[] = [];
+  let webhookRequestBody = "";
+
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    stripePaths.push(url.pathname);
+    if (url.pathname === "/v1/webhook_endpoints") {
+      webhookRequestBody = String(init?.body ?? "");
+      return Response.json({
+        id: "we_TestEndpoint123",
+        secret: "whsec_AutomaticallyStored123",
+        url: "https://audit.pencilproof.com/api/stripe/webhook",
+      });
+    }
+    return Response.json({
+      id: "cs_test_created",
+      url: "https://checkout.stripe.com/c/pay/cs_test_created",
+    });
+  };
+
+  const checkoutResponse = await handleRequest(
+    new Request("https://audit.pencilproof.com/api/checkout", {
+      method: "POST",
+      headers: { Origin: "https://audit.pencilproof.com" },
+    }),
+    env,
+  );
+  assert.equal(checkoutResponse.status, 200);
+  assert.deepEqual(stripePaths, [
+    "/v1/webhook_endpoints",
+    "/v1/checkout/sessions",
+  ]);
+
+  const webhookParameters = new URLSearchParams(webhookRequestBody);
+  assert.equal(
+    webhookParameters.get("url"),
+    "https://audit.pencilproof.com/api/stripe/webhook",
+  );
+  assert.deepEqual(
+    webhookParameters.getAll("enabled_events[]"),
+    [
+      "checkout.session.completed",
+      "checkout.session.async_payment_succeeded",
+    ],
+  );
+
+  const statusResponse = await handleRequest(
+    new Request(
+      "https://audit.pencilproof.com/api/stripe/webhook/status",
+    ),
+    env,
+  );
+  const statusBody = await statusResponse.json() as Record<string, unknown>;
+  assert.deepEqual(statusBody, { ready: true });
+  assert.equal("secret" in statusBody, false);
+
+  stripePaths.length = 0;
+  await handleRequest(
+    new Request("https://audit.pencilproof.com/api/checkout", {
+      method: "POST",
+      headers: { Origin: "https://audit.pencilproof.com" },
+    }),
+    env,
+  );
+  assert.deepEqual(stripePaths, ["/v1/checkout/sessions"]);
 });
 
 test("checkout fails safely when the Stripe price binding is absent", async () => {
