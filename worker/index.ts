@@ -378,66 +378,6 @@ const isPaidPencilProofSession = (session: StripeCheckoutSession | null) => {
   );
 };
 
-const handlePriceRecovery = async (request: Request, env: Env) => {
-  if (request.method !== "POST") {
-    return new Response("Method not allowed", {
-      status: 405,
-      headers: { Allow: "POST" },
-    });
-  }
-  const origin = request.headers.get("Origin");
-  if (origin !== env.SITE_ORIGIN) {
-    return new Response("Forbidden", { status: 403 });
-  }
-
-  const response = await stripeRequest(
-    "/checkout/sessions?limit=100&expand[]=data.line_items",
-    env,
-  );
-  if (!response.ok) {
-    return Response.json(
-      { code: "stripe_recovery_rejected" },
-      { status: 502, headers: { "Cache-Control": "no-store" } },
-    );
-  }
-  const payload = await response.json() as {
-    data?: Array<{
-      line_items?: {
-        data?: Array<{
-          description?: string | null;
-          price?: {
-            active?: boolean;
-            id?: string;
-            unit_amount?: number | null;
-          } | null;
-        }>;
-      } | null;
-    }>;
-  };
-  for (const session of payload.data ?? []) {
-    for (const item of session.line_items?.data ?? []) {
-      const price = item.price;
-      if (
-        price?.active === true
-        && price.unit_amount === PRODUCT_PRICE_CENTS
-        && /^price_[A-Za-z0-9]+$/.test(price.id ?? "")
-        && /PencilProof (Deal Review|Full Quote Audit)/i.test(
-          item.description ?? "",
-        )
-      ) {
-        return Response.json(
-          { priceId: price.id },
-          { headers: { "Cache-Control": "no-store" } },
-        );
-      }
-    }
-  }
-  return Response.json(
-    { code: "stripe_price_not_found" },
-    { status: 404, headers: { "Cache-Control": "no-store" } },
-  );
-};
-
 const handleCheckout = async (request: Request, env: Env) => {
   if (request.method !== "POST") {
     return new Response("Method not allowed", {
@@ -512,9 +452,6 @@ export const handleRequest = async (request: Request, env: Env) => {
   if (url.pathname === "/handoff" || url.pathname === "/handoff/") {
     return handoffPage();
   }
-  if (url.pathname === "/api/recover-price") {
-    return handlePriceRecovery(request, env);
-  }
   if (url.pathname === "/api/checkout") {
     return handleCheckout(request, env);
   }
@@ -525,6 +462,13 @@ export const handleRequest = async (request: Request, env: Env) => {
     return redirect(env.PUBLIC_SITE_ORIGIN, {
       "Set-Cookie":
         `${ACCESS_COOKIE}=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax`,
+    });
+  }
+
+  if (url.pathname.startsWith("/api/")) {
+    return new Response("Not found", {
+      status: 404,
+      headers: noStoreHeaders,
     });
   }
 
