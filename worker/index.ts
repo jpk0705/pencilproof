@@ -771,6 +771,7 @@ async function createStripeWebhookEndpoint(
   env: Env,
 ): Promise<WebhookConfig | null> {
   const parameters = new URLSearchParams({
+    allow_promotion_codes: "true",
     description: "PencilProof paid audit fulfillment",
     url,
   });
