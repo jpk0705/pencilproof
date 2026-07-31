@@ -10,7 +10,7 @@
     "prebuild": "node scripts/prepare-ocr-assets.mjs",
     "build": "next build",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types scripts/test-regressions.mjs"
+    "test": "node --experimental-strip-types scripts/test-regressions.mjs && node --experimental-strip-types --test worker/index.test.ts"
   },
   "dependencies": {
     "@tesseract.js-data/eng": "^1.0.0",

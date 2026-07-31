@@ -1,0 +1,53 @@
+// PencilProof secure audit deployment configuration
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "pencilproof-audit",
+  "main": "./worker/index.ts",
+  "compatibility_date": "2026-07-26",
+  "keep_vars": true,
+  "assets": {
+    "directory": "./out",
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
+    "run_worker_first": [
+      "/api/*",
+      "/handoff",
+      "/handoff/*",
+      "/recover",
+      "/recover/*",
+      "/success",
+      "/success/*",
+      "/logout",
+      "/logout/*",
+      "/analyze",
+      "/analyze/*",
+      "/_next/static/chunks/app/analyze/*"
+    ]
+  },
+  "vars": {
+    "ACCESS_MAX_AGE_SECONDS": "2592000",
+    "PUBLIC_SITE_ORIGIN": "https://pencilproof.com",
+    "SITE_ORIGIN": "https://audit.pencilproof.com",
+    "STRIPE_PRICE_ID": "price_1Tu1GEEopq0gcXsNeXF2QMry"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "ORDERS",
+        "class_name": "OrderStore"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "OrderStore"
+      ]
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}
