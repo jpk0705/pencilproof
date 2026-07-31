@@ -870,6 +870,7 @@ const createCheckoutSession = async (env: Env, deviceHash: string) => {
   }
 
   const parameters = new URLSearchParams({
+    allow_promotion_codes: "true",
     "cancel_url": `${env.PUBLIC_SITE_ORIGIN}/#pricing`,
     "line_items[0][quantity]": "1",
     "managed_payments[enabled]": "true",
