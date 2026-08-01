@@ -86,7 +86,9 @@ This is a FINANCE-FIRST parser:
 The document may be a photo, scan, screenshot, or PDF. Read the entire document and preserve cents exactly when visible.`;
 
 const AI_IMPORT_MODELS = [
+  "gemini-2.5-flash",
   "gemini-2.5-flash-lite",
+  "gemini-2.0-flash",
 ] as const;
 
 const decodeGeminiJson = (value: unknown) => {
