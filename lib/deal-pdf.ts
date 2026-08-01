@@ -385,6 +385,16 @@ const priceValues = (line: string, allowZero = false) =>
     raw.includes("$") || raw.includes(",") || hasGroupedDigits(raw) || hasDecimalCents(raw),
   );
 
+// Some dealer exports and OCR engines remove every currency marker and
+// thousands separator. Only accept a plain number when it is on a line that
+// is otherwise numeric, or directly after a field label. This prevents page
+// numbers and years from becoming prices while still handling `Tax 3474`.
+const plainNumericValues = (line: string, allowZero = false) =>
+  usableValues(line, allowZero).filter(({ raw }) => {
+    const remainder = line.replace(raw, "").replace(/[\s:|()\-+/@%]/g, "");
+    return remainder.length === 0;
+  });
+
 const textContainsPrintedAmount = (text: string, amount: number) => {
   const fixed = amount.toFixed(2);
   const [whole, cents] = fixed.split(".");
@@ -395,7 +405,23 @@ const textContainsPrintedAmount = (text: string, amount: number) => {
 const findAmount = (lines: string[], labels: RegExp[], options?: { allowZero?: boolean }) => {
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
-    if (!labels.some((label) => label.test(line))) continue;
+    const matchingLabel = labels.find((label) => label.test(line));
+    if (!matchingLabel) continue;
+
+    // Prefer the first decorated amount after the matched label. The old
+    // implementation chose the last amount on the whole line, which could
+    // silently import a total, a rate, or a second column instead of the
+    // value belonging to the label.
+    const labelMatch = line.match(matchingLabel);
+    const afterLabel = labelMatch?.index === undefined
+      ? line
+      : line.slice(labelMatch.index + labelMatch[0].length);
+    const afterLabelCurrency = currencyValues(afterLabel, options?.allowZero);
+    if (afterLabelCurrency.length) return afterLabelCurrency[0].value;
+    const afterLabelPrice = priceValues(afterLabel, options?.allowZero);
+    if (afterLabelPrice.length) return afterLabelPrice[0].value;
+    const afterLabelPlain = plainNumericValues(afterLabel, options?.allowZero);
+    if (afterLabelPlain.length) return afterLabelPlain[0].value;
 
     const onLineCurrency = currencyValues(line, options?.allowZero);
     if (onLineCurrency.length) return onLineCurrency[onLineCurrency.length - 1].value;
@@ -416,6 +442,8 @@ const findAmount = (lines: string[], labels: RegExp[], options?: { allowZero?: b
       if (!nextLine) break;
       const nextValues = priceValues(nextLine, options?.allowZero);
       if (nextValues.length) return nextValues[0].value;
+      const nextPlainValues = plainNumericValues(nextLine, options?.allowZero);
+      if (nextPlainValues.length) return nextPlainValues[0].value;
       if (/[A-Za-z]{4,}/.test(nextLine) && !/^\s*[$\d(.-]/.test(nextLine)) break;
     }
   }
@@ -494,7 +522,17 @@ const sumDistinctAmounts = (
 
 const findPaymentNearLabel = (lines: string[], labels: RegExp[]) => {
   for (let index = 0; index < lines.length; index += 1) {
-    if (!labels.some((label) => label.test(lines[index]))) continue;
+    const matchingLabel = labels.find((label) => label.test(lines[index]));
+    if (!matchingLabel) continue;
+    const labelMatch = lines[index].match(matchingLabel);
+    const afterLabel = labelMatch?.index === undefined
+      ? lines[index]
+      : lines[index].slice(labelMatch.index + labelMatch[0].length);
+    const directValues = [
+      ...priceValues(afterLabel),
+      ...plainNumericValues(afterLabel),
+    ].filter(({ value }) => value >= 50 && value <= 5000);
+    if (directValues.length) return directValues[0].value;
     for (let distance = 0; distance <= 12; distance += 1) {
       for (const candidateIndex of distance ? [index + distance, index - distance] : [index]) {
         const candidateLine = lines[candidateIndex] ?? "";
@@ -509,6 +547,11 @@ const findPaymentNearLabel = (lines: string[], labels: RegExp[]) => {
           return remainingText.length === 0 || labels.some((label) => label.test(remainingText));
         });
         if (printedPayment) return printedPayment.value;
+
+        const plainPayment = plainNumericValues(candidateLine).find(({ value }) =>
+          value >= 50 && value <= 5000,
+        );
+        if (plainPayment) return plainPayment.value;
 
         const joinedCents = values.find(({ value, raw }) =>
           value >= 50000 && value <= 500000 && raw.includes("$") && !raw.includes(",") && !raw.includes("."),
