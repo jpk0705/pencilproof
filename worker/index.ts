@@ -86,10 +86,30 @@ This is a FINANCE-FIRST parser:
 The document may be a photo, scan, screenshot, or PDF. Read the entire document and preserve cents exactly when visible.`;
 
 const AI_IMPORT_MODELS = [
+  "gemini-3.5-flash",
+  "gemini-3-flash",
   "gemini-2.5-flash",
   "gemini-2.5-flash-lite",
   "gemini-2.0-flash",
 ] as const;
+
+const discoverGeminiModels = async (apiKey: string) => {
+  try {
+    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models", {
+      headers: { "x-goog-api-key": apiKey },
+    });
+    if (!response.ok) return [];
+    const payload = await response.json() as {
+      models?: Array<{ name?: string; supportedGenerationMethods?: string[] }>;
+    };
+    return (payload.models ?? [])
+      .filter((model) => model.supportedGenerationMethods?.includes("generateContent"))
+      .map((model) => model.name?.replace(/^models\//, ""))
+      .filter((model): model is string => Boolean(model));
+  } catch {
+    return [];
+  }
+};
 
 const decodeGeminiJson = (value: unknown) => {
   const text = typeof value === "string" ? value : "";
@@ -133,7 +153,14 @@ const handleAiImport = async (request: Request, env: Env) => {
   // than spending provider quota on every upload.
   let response: Response | undefined;
   let lastProviderBody = "";
-  for (const model of AI_IMPORT_MODELS) {
+  const availableModels = await discoverGeminiModels(env.GEMINI_API_KEY);
+  const discoveredFlashModels = availableModels.filter((model) => /flash/i.test(model));
+  const models = [
+    ...AI_IMPORT_MODELS.filter((model) => availableModels.includes(model)),
+    ...discoveredFlashModels.filter((model) => !AI_IMPORT_MODELS.includes(model as typeof AI_IMPORT_MODELS[number])),
+    ...AI_IMPORT_MODELS.filter((model) => !availableModels.length || !discoveredFlashModels.length),
+  ];
+  for (const model of models) {
     response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
