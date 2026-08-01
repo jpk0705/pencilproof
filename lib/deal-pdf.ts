@@ -1209,6 +1209,60 @@ export const extractDealFromImage = async (
   };
 };
 
+const bytesToBase64 = (bytes: Uint8Array) => {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, Math.min(index + chunkSize, bytes.length)));
+  }
+  return btoa(binary);
+};
+
+/**
+ * QuoteDefender's accuracy advantage comes from server-side document vision
+ * followed by a layout-aware structured extraction prompt. PencilProof keeps
+ * the local OCR path as a fallback, but uses the same stronger architecture
+ * whenever the production AI importer is configured.
+ */
+const extractDealWithServerVision = async (
+  file: File,
+  onProgress?: (update: DealImportProgress) => void,
+): Promise<DealPdfResult> => {
+  if (typeof window === "undefined") throw new Error("AI_IMPORT_UNAVAILABLE");
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  onProgress?.({ progress: 0.08, status: "sending the document to PencilProof vision import" });
+  const response = await fetch("https://audit.pencilproof.com/api/ai-import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      mimeType: file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/png"),
+      base64: bytesToBase64(bytes),
+    }),
+  });
+  if (!response.ok) throw new Error("AI_IMPORT_UNAVAILABLE");
+  const payload = await response.json() as {
+    fields?: Record<string, unknown>;
+    warnings?: string[];
+    fieldConfidence?: DealPdfResult["fieldConfidence"];
+  };
+  const source = (payload.fields ?? {}) as ImportedDealFields;
+  const fields = sanitizeImportedFields(source).fields;
+  if (!Object.keys(fields).length) throw new Error("AI_IMPORT_EMPTY");
+  const reconciled = reconcileQuotedPayment(fields);
+  const warnings = [...(payload.warnings ?? []), ...reconciled.warnings];
+  onProgress?.({ progress: 1, status: "AI document extraction complete" });
+  return {
+    fields: reconciled.fields,
+    fieldConfidence: payload.fieldConfidence ?? confidenceFor(reconciled.fields, "review"),
+    fieldNames: Object.keys(reconciled.fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]),
+    pageCount: file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf") ? 1 : 1,
+    sourceType: file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf") ? "pdf" : "image",
+    usedOcr: true,
+    pagesProcessed: 1,
+    warnings,
+  };
+};
+
 export const extractDealFromFile = async (
   file: File,
   onProgress?: (update: DealImportProgress) => void,
@@ -1218,7 +1272,15 @@ export const extractDealFromFile = async (
   const isJpeg = file.type === "image/jpeg" || /\.jpe?g$/.test(name);
   const isPng = file.type === "image/png" || name.endsWith(".png");
 
-  if (isPdf) return extractDealFromPdf(file, onProgress);
-  if (isJpeg || isPng) return extractDealFromImage(file, onProgress);
+  if (isPdf || isJpeg || isPng) {
+    try {
+      return await extractDealWithServerVision(file, onProgress);
+    } catch {
+      // The public AI endpoint is deliberately optional. Local PDF text and
+      // multi-pass OCR remain available when it is unavailable or times out.
+      if (isPdf) return extractDealFromPdf(file, onProgress);
+      return extractDealFromImage(file, onProgress);
+    }
+  }
   throw new Error("UNSUPPORTED_FILE");
 };
