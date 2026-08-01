@@ -1510,7 +1510,7 @@ const handleAnalytics = async (request: Request, env: Env) => {
     });
   }
   const response = await analyticsStub(env).fetch(
-    new Request(`https://analytics.internal${new URL(request.url).pathname}`, {
+    new Request(`https://analytics.internal${new URL(request.url).pathname.replace("/api/analytics", "")}`, {
       method: request.method,
       headers: request.headers,
       body: request.method === "POST" ? await request.text() : undefined,
