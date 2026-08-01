@@ -41,4 +41,4 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: deploy --config wrangler.jsonc
 
-# Trigger deployment for the merged importer fallback.
+# Deployment trigger: keep Worker deployment attached to main updates.
