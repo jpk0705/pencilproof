@@ -268,7 +268,7 @@ export default function Home() {
         <div className="shell footer-grid">
           <Link className="brand brand-footer" href="/"><span className="brand-mark">P</span><span>PencilProof</span></Link>
           <p>Independent educational quote audit. Not affiliated with any dealership or lender.</p>
-          <div><Link href="/questions">Q&amp;A</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link></div>
+          <div><Link href="/questions">Q&amp;A</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><a href="mailto:support@pencilproof.com">Contact us</a></div>
         </div>
       </footer>
     </main>
