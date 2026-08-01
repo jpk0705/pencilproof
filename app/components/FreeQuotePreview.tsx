@@ -390,50 +390,51 @@ export default function FreeQuotePreview() {
                   </button>
                 ) : null}
               </div>
-              {showManualFallback && manualMode ? (
-                <div className="free-manual-entry" ref={manualPanelRef}>
-                  <div>
-                    <strong>Enter the figures shown on the quote</strong>
-                    <p>Leave anything blank if the dealer did not provide it.</p>
-                  </div>
-                  <div className="free-manual-grid">
-                    {previewFields.map((field) => (
-                      <label
-                        className={field === "vehicle" ? "manual-field-wide" : ""}
-                        key={field}
-                      >
-                        <span>{DEAL_FIELD_LABELS[field]}</span>
-                        <input
-                          aria-label={`Manual ${DEAL_FIELD_LABELS[field]}`}
-                          type={field === "vehicle" ? "text" : "number"}
-                          inputMode={field === "vehicle" ? undefined : "decimal"}
-                          min={field === "vehicle" ? undefined : "0"}
-                          step={field === "term" ? "1" : "0.01"}
-                          value={manualFields[field] ?? ""}
-                          placeholder={
-                            field === "vehicle"
-                              ? "2026 Toyota RAV4 XLE Premium"
-                              : field === "term"
-                                ? "72"
-                                : "0.00"
-                          }
-                          onChange={(event) =>
-                            updateManualField(field, event.target.value)
-                          }
-                        />
-                      </label>
-                    ))}
-                  </div>
-                  {manualError ? <p className="free-manual-error">{manualError}</p> : null}
-                  <button
-                    className="button button-primary"
-                    type="button"
-                    onClick={previewManualEntry}
+            </div>
+          ) : null}
+
+          {showManualFallback && manualMode ? (
+            <div className="free-manual-entry" ref={manualPanelRef}>
+              <div>
+                <strong>Enter the figures shown on the quote</strong>
+                <p>Leave anything blank if the dealer did not provide it.</p>
+              </div>
+              <div className="free-manual-grid">
+                {previewFields.map((field) => (
+                  <label
+                    className={field === "vehicle" ? "manual-field-wide" : ""}
+                    key={field}
                   >
-                    Preview my numbers <span aria-hidden="true">→</span>
-                  </button>
-                </div>
-              ) : null}
+                    <span>{DEAL_FIELD_LABELS[field]}</span>
+                    <input
+                      aria-label={`Manual ${DEAL_FIELD_LABELS[field]}`}
+                      type={field === "vehicle" ? "text" : "number"}
+                      inputMode={field === "vehicle" ? undefined : "decimal"}
+                      min={field === "vehicle" ? undefined : "0"}
+                      step={field === "term" ? "1" : "0.01"}
+                      value={manualFields[field] ?? ""}
+                      placeholder={
+                        field === "vehicle"
+                          ? "2026 Toyota RAV4 XLE Premium"
+                          : field === "term"
+                            ? "72"
+                            : "0.00"
+                      }
+                      onChange={(event) =>
+                        updateManualField(field, event.target.value)
+                      }
+                    />
+                  </label>
+                ))}
+              </div>
+              {manualError ? <p className="free-manual-error">{manualError}</p> : null}
+              <button
+                className="button button-primary"
+                type="button"
+                onClick={previewManualEntry}
+              >
+                Preview my numbers <span aria-hidden="true">→</span>
+              </button>
             </div>
           ) : null}
 
