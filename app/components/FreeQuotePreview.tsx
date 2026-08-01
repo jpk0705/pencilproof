@@ -19,6 +19,7 @@ import {
   shouldOfferManualEntry,
 } from "@/lib/deal-review";
 import VehiclePhoto from "@/app/components/VehiclePhoto";
+import { track } from "@/lib/analytics";
 
 type ScanState =
   | { status: "idle" }
@@ -61,6 +62,10 @@ export default function FreeQuotePreview() {
   const [manualMode, setManualMode] = useState(false);
   const [manualFields, setManualFields] = useState<ImportedDealFields>({ term: 72 });
   const [manualError, setManualError] = useState("");
+  const [feedbackRating, setFeedbackRating] = useState(0);
+  const [feedbackCategory, setFeedbackCategory] = useState("clarity");
+  const [feedbackComment, setFeedbackComment] = useState("");
+  const [feedbackSent, setFeedbackSent] = useState(false);
   const manualPanelRef = useRef<HTMLDivElement>(null);
 
   const showManualFallback = shouldOfferManualEntry(failedImportAttempts);
@@ -82,6 +87,7 @@ export default function FreeQuotePreview() {
   const failImport = (message: string) => {
     setFailedImportAttempts((attempts) => attempts + 1);
     setScan({ status: "error", message });
+    track({ event: "import_failed" });
   };
 
   const updateManualField = (
@@ -170,6 +176,7 @@ export default function FreeQuotePreview() {
         sourceType: "pdf",
       },
     });
+    track({ event: "audit_completed" });
   };
 
   const handleFile = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -194,6 +201,7 @@ export default function FreeQuotePreview() {
     }
 
     setScan({ status: "loading", message: `Reading ${file.name} in your browser…` });
+    track({ event: "scan_started" });
     try {
       const result = await extractDealFromFile(file, ({ progress, status }) => {
         const percent = Math.max(0, Math.min(100, Math.round(progress * 100)));
@@ -211,6 +219,8 @@ export default function FreeQuotePreview() {
       }
       setFailedImportAttempts(0);
       setScan({ status: "ready", result, fileName: file.name });
+      track({ event: "import_success" });
+      track({ event: "audit_completed" });
     } catch {
       failImport(
         "PencilProof could not read this file. Try a brighter, sharper copy before paying.",
@@ -383,7 +393,10 @@ export default function FreeQuotePreview() {
                   <button
                     className="button button-primary"
                     type="button"
-                    onClick={() => setManualMode(true)}
+                    onClick={() => {
+                      setManualMode(true);
+                      track({ event: "manual_fallback_opened" });
+                    }}
                     aria-expanded={manualMode}
                   >
                     {manualMode ? "Manual entry open below" : "Enter numbers manually"}
@@ -558,6 +571,7 @@ export default function FreeQuotePreview() {
                     className="button button-primary"
                     href={CHECKOUT_URL}
                     onClick={() => {
+                      track({ event: "checkout_started" });
                       window.name = createQuoteHandoffEnvelope({
                         fields: scan.result.fields,
                         confidence: scan.result.fieldConfidence,
@@ -573,6 +587,56 @@ export default function FreeQuotePreview() {
                   </button>
                 )}
                 <button type="button" onClick={() => { setScan({ status: "idle" }); setImportReviewed(false); }}>Scan another quote</button>
+              </div>
+
+              <div className="feedback-card">
+                <div>
+                  <span className="kicker">HELP US IMPROVE THE BETA</span>
+                  <strong>Was this preview clear and useful?</strong>
+                  <p>No quote, name, VIN, or payment details are collected in this form.</p>
+                </div>
+                {feedbackSent ? (
+                  <p className="feedback-thanks" role="status">Thanks — your feedback was recorded.</p>
+                ) : (
+                  <form onSubmit={(event) => {
+                    event.preventDefault();
+                    if (!feedbackRating && !feedbackComment.trim()) return;
+                    track({
+                      category: feedbackCategory,
+                      comment: feedbackComment.trim(),
+                      event: "feedback_submitted",
+                      value: feedbackRating,
+                    });
+                    setFeedbackSent(true);
+                  }}>
+                    <div className="feedback-rating" aria-label="Rate the preview">
+                      {[1, 2, 3, 4, 5].map((rating) => (
+                        <button
+                          aria-label={`${rating} out of 5`}
+                          className={rating <= feedbackRating ? "selected" : ""}
+                          key={rating}
+                          onClick={() => setFeedbackRating(rating)}
+                          type="button"
+                        >★</button>
+                      ))}
+                    </div>
+                    <label>
+                      <span>What would you improve?</span>
+                      <select value={feedbackCategory} onChange={(event) => setFeedbackCategory(event.target.value)}>
+                        <option value="clarity">The result was confusing</option>
+                        <option value="import">The numbers were imported incorrectly</option>
+                        <option value="manual">Manual entry needs work</option>
+                        <option value="trust">I had a trust or privacy concern</option>
+                        <option value="other">Something else</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>Optional note</span>
+                      <textarea maxLength={1000} value={feedbackComment} onChange={(event) => setFeedbackComment(event.target.value)} placeholder="Tell us what happened…" />
+                    </label>
+                    <button className="button button-quiet" type="submit">Send feedback</button>
+                  </form>
+                )}
               </div>
             </div>
           ) : null}

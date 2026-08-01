@@ -212,6 +212,19 @@ h1 { max-width: 690px; margin: 0; font-family: Georgia, 'Times New Roman', serif
 .free-import-confirm small { color: var(--muted); font-size: 8px; line-height: 1.45; }
 .free-unlock > button { display: block; margin: 12px auto 0; padding: 0; border: 0; color: var(--muted); background: transparent; font-size: 9px; font-weight: 800; text-decoration: underline; cursor: pointer; }
 .free-unlock > button.button { min-height: 52px; margin: 0; padding: 0 18px; border: 1px solid var(--ink); color: var(--ink); background: var(--accent); font-size: 12px; text-decoration: none; }
+.feedback-card { margin: 16px 23px 0; padding: 18px; border: 1px solid var(--line); border-radius: 8px; background: #fffdf8; }
+.feedback-card > div:first-child > strong { display: block; margin-top: 6px; color: var(--ink); font-family: Georgia, serif; font-size: 18px; font-weight: 500; }
+.feedback-card > div:first-child > p { margin: 6px 0 14px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.feedback-card form { display: grid; gap: 11px; }
+.feedback-rating { display: flex; gap: 3px; }
+.feedback-rating button { padding: 0 3px; border: 0; color: #c6c9c3; background: transparent; font-size: 25px; cursor: pointer; }
+.feedback-rating button.selected { color: #c2782e; }
+.feedback-card label { display: grid; gap: 5px; color: var(--ink); font-size: 10px; font-weight: 800; }
+.feedback-card select, .feedback-card textarea { width: 100%; border: 1px solid #c8c8bd; border-radius: 4px; color: var(--ink); background: #fff; font: inherit; font-size: 12px; }
+.feedback-card select { min-height: 37px; padding: 8px; }
+.feedback-card textarea { min-height: 70px; padding: 9px; resize: vertical; }
+.feedback-card .button { width: auto; justify-self: start; min-height: 38px; padding: 0 14px; color: var(--ink); border: 1px solid var(--ink); font-size: 11px; }
+.feedback-thanks { margin: 10px 0 0; color: var(--green); font-size: 12px; font-weight: 800; }
 .free-scan-note { margin: 0; padding: 13px 23px; color: #78868b; background: #f4f1ea; border-top: 1px solid var(--line); font-size: 8px; line-height: 1.5; text-align: center; }
 
 .section { padding-top: 112px; padding-bottom: 112px; }
