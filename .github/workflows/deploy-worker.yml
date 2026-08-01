@@ -28,9 +28,6 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci
-
       - name: Build static assets
         run: npm run build
 
@@ -43,3 +40,4 @@ jobs:
 
 # Deployment trigger: keep Worker deployment attached to main updates.
 # Deployment trigger: refresh after Gemini model routing fix.
+# Deployment trigger: refresh after enabled-model discovery fix.
