@@ -85,7 +85,12 @@ This is a FINANCE-FIRST parser:
 
 The document may be a photo, scan, screenshot, or PDF. Read the entire document and preserve cents exactly when visible.`;
 
-const AI_IMPORT_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite"] as const;
+const AI_IMPORT_MODELS = [
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+  "gemini-2.0-flash",
+  "gemini-2.0-flash-lite",
+] as const;
 
 const decodeGeminiJson = (value: unknown) => {
   const text = typeof value === "string" ? value : "";
@@ -129,7 +134,7 @@ const handleAiImport = async (request: Request, env: Env) => {
     });
     if (response.ok) break;
     lastProviderBody = await response.text();
-    if (![429, 500, 502, 503].includes(response.status)) break;
+    if (![404, 429, 500, 502, 503].includes(response.status)) break;
   }
   if (!response || !response.ok) {
     // Return only a stable, non-secret diagnostic. The full provider body is
@@ -153,7 +158,11 @@ const handleAiImport = async (request: Request, env: Env) => {
     } catch {
       // Keep UNKNOWN when Google did not return JSON.
     }
-    return Response.json({ error: "AI_IMPORT_PROVIDER_ERROR", providerCode }, { status: 502, headers: noStoreHeaders });
+    return Response.json({
+      error: "AI_IMPORT_PROVIDER_ERROR",
+      providerCode,
+      providerHttpStatus: response?.status ?? null,
+    }, { status: 502, headers: noStoreHeaders });
   }
   const payload = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
   try {
