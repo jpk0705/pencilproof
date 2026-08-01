@@ -1,0 +1,12 @@
+Vehicle: 2026 Toyota RAV4 XLE Premium
+Selling Price $36,100.00
+Manufacturer Rebate $1,000.00
+Sales Tax 9.625% $3,474.63
+Government Fees $725.00
+Documentation Fee $85.00
+Toyota Extra Care Vehicle Service Agreement $2,495.00
+GAP Protection $995.00
+Cash Down $5,000.00
+APR 8.49%
+Term 72 months
+Monthly Payment $739.95

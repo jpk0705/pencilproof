@@ -136,7 +136,123 @@ const confidenceFor = (
     Object.keys(fields).map((field) => [field, confidence]),
   ) as DealPdfResult["fieldConfidence"];
 
-const moneyPattern = /(?:\(\s*)?-?\$?\s*\d[\d,]*(?:\.\d{1,2})?(?:\s*\))?/g;
+const allowedLoanTerms = [24, 30, 36, 39, 42, 48, 54, 60, 63, 66, 72, 75, 78, 84, 96];
+
+const criticalImportFields: (keyof ImportedDealFields)[] = [
+  "sellingPrice",
+  "apr",
+  "term",
+  "quotedPayment",
+];
+
+/**
+ * OCR can produce a perfectly numeric value that is still impossible for a
+ * vehicle worksheet, for example a misplaced decimal or a page number read
+ * as the APR. Remove those values before they reach the calculator. Missing
+ * values remain missing and are shown as "Not found" for the user to verify.
+ */
+export const sanitizeImportedFields = (sourceFields: ImportedDealFields) => {
+  const fields = { ...sourceFields };
+  const limits: Partial<Record<keyof ImportedDealFields, [number, number]>> = {
+    sellingPrice: [1000, 250000],
+    tax: [0, 50000],
+    govFees: [0, 30000],
+    docFee: [0, 1000],
+    serviceContract: [0, 20000],
+    gap: [0, 5000],
+    prepaidMaintenance: [0, 10000],
+    tireWheel: [0, 10000],
+    accessories: [0, 30000],
+    tradeValue: [0, 200000],
+    tradePayoff: [0, 250000],
+    cashDown: [0, 100000],
+    rebate: [0, 50000],
+    apr: [0, 40],
+    outsideApr: [0, 40],
+    term: [24, 96],
+    quotedPayment: [50, 5000],
+  };
+  const rejected: (keyof ImportedDealFields)[] = [];
+
+  (Object.keys(limits) as (keyof ImportedDealFields)[]).forEach((field) => {
+    const value = fields[field];
+    const range = limits[field];
+    if (typeof value !== "number" || !Number.isFinite(value) || !range) return;
+    if (value < range[0] || value > range[1]) {
+      delete fields[field];
+      rejected.push(field);
+    }
+  });
+
+  if (fields.sellingPrice && fields.tax && fields.tax > fields.sellingPrice * 0.3) {
+    delete fields.tax;
+    rejected.push("tax");
+  }
+  if (fields.apr !== undefined && fields.apr > 0 && fields.apr < 0.01) {
+    delete fields.apr;
+    rejected.push("apr");
+  }
+  if (fields.term !== undefined && !allowedLoanTerms.includes(fields.term)) {
+    delete fields.term;
+    rejected.push("term");
+  }
+
+  return { fields, rejected };
+};
+
+const importCandidateScore = (fields: ImportedDealFields) => {
+  let score = Object.keys(fields).length;
+  score += criticalImportFields.filter((field) => fields[field] !== undefined).length * 5;
+  if (fields.sellingPrice && fields.sellingPrice >= 1000) score += 2;
+  if (fields.apr !== undefined && fields.apr >= 0 && fields.apr <= 40) score += 2;
+  if (fields.term !== undefined && [24, 30, 36, 39, 42, 48, 54, 60, 63, 66, 72, 75, 78, 84, 96].includes(fields.term)) score += 2;
+  if (fields.quotedPayment !== undefined && fields.quotedPayment >= 50 && fields.quotedPayment <= 5000) score += 2;
+  return score;
+};
+
+/**
+ * OCR is probabilistic. Merge independent parses by value agreement instead
+ * of allowing the last OCR pass to overwrite a better value.
+ */
+const mergeImportedCandidates = (candidates: ImportedDealFields[]) => {
+  const usable = candidates.filter((candidate) => Object.keys(candidate).length);
+  if (!usable.length) return {};
+  const bestCandidate = [...usable].sort((a, b) => importCandidateScore(b) - importCandidateScore(a))[0];
+  const merged: ImportedDealFields = {};
+
+  (Object.keys(DEAL_FIELD_LABELS) as (keyof ImportedDealFields)[]).forEach((field) => {
+    const values = usable
+      .map((candidate) => candidate[field])
+      .filter((value): value is string | number => value !== undefined && value !== null);
+    if (!values.length) return;
+    if (field === "vehicle") {
+      const textValues = values.filter((value): value is string => typeof value === "string");
+      merged.vehicle = [...textValues].sort((a, b) => b.length - a.length)[0] ?? String(values[0]);
+      return;
+    }
+
+    const numericValues = values.filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+    if (!numericValues.length) return;
+    const clusters: { value: number; count: number }[] = [];
+    numericValues.forEach((value) => {
+      const cluster = clusters.find((entry) => Math.abs(entry.value - value) <= 0.01);
+      if (cluster) cluster.count += 1;
+      else clusters.push({ value, count: 1 });
+    });
+    clusters.sort((a, b) => b.count - a.count || Math.abs(a.value - Number(bestCandidate[field] ?? a.value)) - Math.abs(b.value - Number(bestCandidate[field] ?? b.value)));
+    merged[field] = clusters[0].value;
+  });
+  return merged;
+};
+
+// Dealer exports and OCR frequently split a grouped amount into separate
+// digit groups, for example "$ 31 000", "31 000", or "2 . 9 %". Keep the
+// spaces inside the numeric token so the parser can normalize them instead
+// of treating the groups as separate amounts.
+const moneyPattern = /(?:\(\s*)?-?\$?\s*\d[\d,]*(?:\s+\d{3})*(?:\s*\.\s*\d{1,2})?(?:\s*\))?/g;
+
+const hasGroupedDigits = (raw: string) => /\d\s+\d{3}(?:\s+\d{3})*/.test(raw);
+const hasDecimalCents = (raw: string) => /\.\s*\d{2}\s*\)?$/.test(raw.trim());
 
 const parseMoney = (raw: string) => {
   const negative = raw.includes("(") || raw.trim().startsWith("-");
@@ -262,11 +378,11 @@ const usableValues = (line: string, allowZero = false) =>
   valuesOnLine(line).filter(({ value }) => allowZero || value > 0);
 
 const currencyValues = (line: string, allowZero = false) =>
-  usableValues(line, allowZero).filter(({ raw }) => raw.includes("$") || raw.includes(","));
+  usableValues(line, allowZero).filter(({ raw }) => raw.includes("$") || raw.includes(",") || hasGroupedDigits(raw));
 
 const priceValues = (line: string, allowZero = false) =>
   usableValues(line, allowZero).filter(({ raw }) =>
-    raw.includes("$") || raw.includes(",") || /\.\d{2}\s*\)?$/.test(raw.trim()),
+    raw.includes("$") || raw.includes(",") || hasGroupedDigits(raw) || hasDecimalCents(raw),
   );
 
 const textContainsPrintedAmount = (text: string, amount: number) => {
@@ -310,10 +426,10 @@ const findPercent = (lines: string[], labels: RegExp[]) => {
   for (let index = 0; index < lines.length; index += 1) {
     if (!labels.some((label) => label.test(lines[index]))) continue;
     const nearby = lines.slice(index, index + 2).join(" ");
-    const percent = nearby.match(/(?:\b|\s)(\d{1,2}(?:\.\d{1,3})?)\s*%/);
-    if (percent) return Number(percent[1]);
-    const afterLabel = nearby.match(/(?:APR|annual percentage rate|interest rate)[^\d]{0,20}(\d{1,2}(?:\.\d{1,3})?)/i);
-    if (afterLabel) return Number(afterLabel[1]);
+    const percent = nearby.match(/(?:\b|\s)(\d{1,2}(?:\s*\.\s*\d{1,3})?)\s*%/);
+    if (percent) return Number(percent[1].replace(/\s/g, ""));
+    const afterLabel = nearby.match(/(?:APR|annual percentage rate|interest rate)[^\d]{0,20}(\d{1,2}(?:\s*\.\s*\d{1,3})?)/i);
+    if (afterLabel) return Number(afterLabel[1].replace(/\s/g, ""));
   }
   return undefined;
 };
@@ -323,8 +439,9 @@ const findTerm = (lines: string[]) => {
     const line = lines[index];
     if (!/(?:loan\s+)?term|number of payments|months/i.test(line)) continue;
     const nearby = lines.slice(index, index + 2).join(" ");
-    const months = nearby.match(/\b(24|30|36|39|42|48|54|60|63|66|72|75|78|84|96)\s*(?:months?|mos?\.?|payments?)?\b/i);
-    if (months) return Number(months[1]);
+    const months = nearby.match(/\b(24|30|36|39|42|48|54|60|63|66|72|75|78|84|96)\s*(?:months?|mos?\.?|payments?)?\b/i) ??
+      nearby.match(/\b(\d)\s+(\d)\s*(?:months?|mos?\.?|payments?)\b/i);
+    if (months) return months[2] ? Number(`${months[1]}${months[2]}`) : Number(months[1]);
   }
   return undefined;
 };
@@ -384,7 +501,11 @@ const findPaymentNearLabel = (lines: string[], labels: RegExp[]) => {
         const values = priceValues(candidateLine);
         const printedPayment = values.find(({ value, raw }) => {
           if (value < 50 || value > 5000) return false;
-          const remainingText = candidateLine.replace(raw, "").replace(/[\s:|()[\].,-]/g, "");
+          const remainingText = candidateLine
+            .replace(raw, "")
+            .replace(/[:|()[\].,-]/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
           return remainingText.length === 0 || labels.some((label) => label.test(remainingText));
         });
         if (printedPayment) return printedPayment.value;
@@ -719,7 +840,7 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     }
   }
 
-  return fields;
+  return sanitizeImportedFields(fields).fields;
 };
 
 const pageLines = async (page: PdfPageLike) => {
@@ -889,8 +1010,39 @@ const preprocessDealPhoto = async (file: File) => {
   return new Uint8Array(await blob.arrayBuffer());
 };
 
+const preprocessDealPhotoFullFrame = async (file: File, threshold = false) => {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(2.5, Math.max(1, 2200 / Math.max(bitmap.width, bitmap.height)));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+  const context = canvas.getContext("2d", { alpha: false });
+  if (!context) throw new Error("IMAGE_PREPROCESS_ERROR");
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.filter = threshold ? "grayscale(1) contrast(1.45) brightness(1.08)" : "grayscale(1) contrast(1.3)";
+  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  if (threshold) {
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+    for (let index = 0; index < pixels.data.length; index += 4) {
+      const value = pixels.data[index] >= 170 ? 255 : 0;
+      pixels.data[index] = value;
+      pixels.data[index + 1] = value;
+      pixels.data[index + 2] = value;
+    }
+    context.putImageData(pixels, 0, 0);
+  }
+  bitmap.close();
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((value) => value ? resolve(value) : reject(new Error("IMAGE_PREPROCESS_ERROR")), "image/png");
+  });
+  canvas.width = 1;
+  canvas.height = 1;
+  return new Uint8Array(await blob.arrayBuffer());
+};
+
 const renderPdfPageForOcr = async (page: PdfRenderablePageLike) => {
-  const viewport = page.getViewport({ scale: 2 });
+  const viewport = page.getViewport({ scale: 3 });
   const canvas = document.createElement("canvas");
   canvas.width = Math.ceil(viewport.width);
   canvas.height = Math.ceil(viewport.height);
@@ -899,7 +1051,7 @@ const renderPdfPageForOcr = async (page: PdfRenderablePageLike) => {
 
   await page.render({ canvas, canvasContext, viewport }).promise;
   const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((value) => value ? resolve(value) : reject(new Error("PDF_RENDER_ERROR")), "image/jpeg", 0.9);
+    canvas.toBlob((value) => value ? resolve(value) : reject(new Error("PDF_RENDER_ERROR")), "image/png");
   });
   const image = new Uint8Array(await blob.arrayBuffer());
   canvas.width = 1;
@@ -928,47 +1080,50 @@ export const extractDealFromPdf = async (
 
   const digitalFields = parseDealerText(lines);
   const digitalOfferMatrix = parseOfferMatrix(lines);
-  if (Object.keys(digitalFields).length || digitalOfferMatrix) {
-    const reconciled = reconcileQuotedPayment(digitalFields);
-    const fieldConfidence = confidenceFor(reconciled.fields, "high");
-    if (reconciled.warnings.length && reconciled.fields.quotedPayment) {
-      fieldConfidence.quotedPayment = "review";
+  const digitalNeedsVerification = criticalImportFields.some((field) => digitalFields[field] === undefined) ||
+    Object.keys(digitalFields).length < 8;
+  let fields = digitalFields;
+  let offerMatrix = digitalOfferMatrix;
+  let usedOcr = false;
+  let pagesProcessed = 0;
+  let warnings: string[] = [];
+
+  // A PDF may contain a partial text layer. OCR it when critical values are
+  // missing, rather than accepting a plausible-looking partial import.
+  if (digitalNeedsVerification) {
+    pagesProcessed = Math.min(pdfDocument.numPages, 10);
+    const images: Uint8Array[] = [];
+    for (let pageNumber = 1; pageNumber <= pagesProcessed; pageNumber += 1) {
+      onProgress?.({ progress: (pageNumber - 1) / pagesProcessed, status: `preparing scanned PDF page ${pageNumber} of ${pagesProcessed}` });
+      const page = await pdfDocument.getPage(pageNumber);
+      images.push(await renderPdfPageForOcr(page as unknown as PdfRenderablePageLike));
     }
-    const fieldNames = Object.keys(reconciled.fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]);
-    return {
-      fields: reconciled.fields,
-      fieldConfidence,
-      fieldNames,
-      pageCount: pdfDocument.numPages,
-      sourceType: "pdf",
-      warnings: reconciled.warnings,
-      offerMatrix: digitalOfferMatrix,
-    };
+    const ocrText = await recognizeImages(images, onProgress, "sparse");
+    const ocrFields = parseDealerText(ocrText.split(/\r?\n/));
+    if (ocrText.replace(/\s/g, "").length >= 30) {
+      fields = mergeImportedCandidates([digitalFields, ocrFields]);
+      offerMatrix = chooseBetterOfferMatrix(digitalOfferMatrix, parseOfferMatrix(ocrText.split(/\r?\n/)));
+      usedOcr = true;
+    } else if (!Object.keys(digitalFields).length && !digitalOfferMatrix) {
+      throw new Error("UNREADABLE_IMAGE");
+    }
   }
 
-  const pagesProcessed = Math.min(pdfDocument.numPages, 5);
-  const images: Uint8Array[] = [];
-  for (let pageNumber = 1; pageNumber <= pagesProcessed; pageNumber += 1) {
-    onProgress?.({ progress: (pageNumber - 1) / pagesProcessed, status: `preparing scanned PDF page ${pageNumber} of ${pagesProcessed}` });
-    const page = await pdfDocument.getPage(pageNumber);
-    images.push(await renderPdfPageForOcr(page as unknown as PdfRenderablePageLike));
-  }
-
-  const ocrText = await recognizeImages(images, onProgress);
-  if (ocrText.replace(/\s/g, "").length < 30) throw new Error("UNREADABLE_IMAGE");
-  const combinedLines = [...lines, ...ocrText.split(/\r?\n/)];
-  const reconciled = reconcileQuotedPayment(parseDealerText(combinedLines));
+  const reconciled = reconcileQuotedPayment(fields);
+  warnings = reconciled.warnings;
+  const fieldConfidence = confidenceFor(reconciled.fields, usedOcr ? "review" : "high");
+  if (reconciled.warnings.length && reconciled.fields.quotedPayment) fieldConfidence.quotedPayment = "review";
   const fieldNames = Object.keys(reconciled.fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]);
   return {
     fields: reconciled.fields,
-    fieldConfidence: confidenceFor(reconciled.fields, "review"),
+    fieldConfidence,
     fieldNames,
     pageCount: pdfDocument.numPages,
     sourceType: "pdf",
-    usedOcr: true,
+    usedOcr,
     pagesProcessed,
-    warnings: reconciled.warnings,
-    offerMatrix: parseOfferMatrix(combinedLines),
+    warnings,
+    offerMatrix,
   };
 };
 
@@ -977,33 +1132,25 @@ export const extractDealFromImage = async (
   onProgress?: (update: DealImportProgress) => void,
 ): Promise<DealPdfResult> => {
   onProgress?.({ progress: 0, status: "isolating the dealer worksheet" });
-  const imageData = new Uint8Array(await file.arrayBuffer());
   const preparedImage = await preprocessDealPhoto(file);
-  let text = await recognizeImages([preparedImage], onProgress, "form");
-  if (text.replace(/\s/g, "").length < 30) throw new Error("UNREADABLE_IMAGE");
+  const thresholdImage = await preprocessDealPhotoFullFrame(file, true);
+  const fullFrameImage = await preprocessDealPhotoFullFrame(file);
+  const texts: string[] = [];
+  onProgress?.({ progress: 0, status: "reading the document with multiple layouts" });
+  texts.push(await recognizeImages([preparedImage], onProgress, "form"));
+  onProgress?.({ progress: 0, status: "checking alternate document layout" });
+  texts.push(await recognizeImages([preparedImage], onProgress, "sparse"));
+  onProgress?.({ progress: 0, status: "checking enhanced full frame" });
+  texts.push(await recognizeImages([fullFrameImage], onProgress, "sparse"));
+  onProgress?.({ progress: 0, status: "checking high-contrast text" });
+  texts.push(await recognizeImages([thresholdImage], onProgress, "sparse"));
 
-  let fields = parseDealerText(text.split(/\r?\n/));
-  let offerMatrix = parseOfferMatrix(text.split(/\r?\n/));
-  if (Object.keys(fields).length < 12 || !offerMatrix) {
-    onProgress?.({ progress: 0, status: "trying an alternate image layout" });
-    const alternateText = await recognizeImages([preparedImage], onProgress, "sparse");
-    const alternateFields = parseDealerText(alternateText.split(/\r?\n/));
-    offerMatrix = chooseBetterOfferMatrix(offerMatrix, parseOfferMatrix(alternateText.split(/\r?\n/)));
-    fields = { ...alternateFields, ...fields };
-    if (alternateFields.quotedPayment && textContainsPrintedAmount(alternateText, alternateFields.quotedPayment)) {
-      fields.quotedPayment = alternateFields.quotedPayment;
-    }
-    if (alternateFields.rebate && alternateFields.sellingPrice &&
-      (!fields.sellingPrice || alternateFields.sellingPrice > fields.sellingPrice)) {
-      fields.sellingPrice = alternateFields.sellingPrice;
-    }
-    text = `${text}\n${alternateText}`;
-  }
-  if (!Object.keys(fields).length) {
-    onProgress?.({ progress: 0, status: "trying the full camera frame" });
-    const fullFrameText = await recognizeImages([imageData], onProgress, "sparse");
-    fields = parseDealerText(fullFrameText.split(/\r?\n/));
-  }
+  const readableTexts = texts.filter((text) => text.replace(/\s/g, "").length >= 30);
+  if (!readableTexts.length) throw new Error("UNREADABLE_IMAGE");
+  const candidates = readableTexts.map((text) => parseDealerText(text.split(/\r?\n/)));
+  let fields = mergeImportedCandidates(candidates);
+  let offerMatrix: DealOfferMatrix | undefined;
+  for (const text of readableTexts) offerMatrix = chooseBetterOfferMatrix(offerMatrix, parseOfferMatrix(text.split(/\r?\n/)));
   const reconciled = reconcileQuotedPayment(fields);
   const fieldNames = Object.keys(reconciled.fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]);
   return {

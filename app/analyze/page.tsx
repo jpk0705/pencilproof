@@ -41,6 +41,9 @@ type Deal = {
 type ProductInsight = {
   name: string;
   amount: number;
+  monthlyImpact: number;
+  financedTotal: number;
+  financingCost: number;
   explanation: string;
   question: string;
 };
@@ -55,6 +58,8 @@ type PendingImport = {
   fields: Partial<Deal>;
   confidence: Partial<Record<keyof ImportedDealFields, "high" | "review">>;
   fileName: string;
+  sourceUrl?: string;
+  sourceType?: "pdf" | "image";
 };
 
 const verificationFields: (keyof ImportedDealFields)[] = [
@@ -181,7 +186,12 @@ export default function AnalyzePage() {
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
   const [failedImportAttempts, setFailedImportAttempts] = useState(0);
   const [manualEntryMode, setManualEntryMode] = useState(false);
+  const [importSource, setImportSource] = useState<{ url: string; type: "pdf" | "image" } | null>(null);
   const manualEntryRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => () => {
+    if (importSource?.url) URL.revokeObjectURL(importSource.url);
+  }, [importSource]);
 
   useEffect(() => {
     const saved = sessionStorage.getItem(QUOTE_HANDOFF_KEY);
@@ -259,6 +269,13 @@ export default function AnalyzePage() {
       return;
     }
 
+    const sourceType = isPdf ? "pdf" : "image";
+    const sourceUrl = URL.createObjectURL(file);
+    setImportSource((current) => {
+      if (current?.url) URL.revokeObjectURL(current.url);
+      return { url: sourceUrl, type: sourceType };
+    });
+
     setDealImport({
       status: "loading",
       message: isPdf
@@ -298,6 +315,8 @@ export default function AnalyzePage() {
         fields: importedFields,
         confidence: result.fieldConfidence,
         fileName: file.name,
+        sourceUrl,
+        sourceType: result.sourceType,
       });
       setOfferMatrix(result.offerMatrix ?? null);
       setSelectedOfferId("");
@@ -356,6 +375,8 @@ export default function AnalyzePage() {
           ...(option.apr !== undefined ? { apr: "review" as const } : {}),
         },
         fileName: current?.fileName ?? "payment menu",
+        sourceUrl: current?.sourceUrl,
+        sourceType: current?.sourceType,
       }));
     }
     setDealImport({
@@ -392,6 +413,10 @@ export default function AnalyzePage() {
 
   const clearImport = () => {
     setPendingImport(null);
+    setImportSource((current) => {
+      if (current?.url) URL.revokeObjectURL(current.url);
+      return null;
+    });
     setOfferMatrix(null);
     setSelectedOfferId("");
     setSelectedOfferType(null);
@@ -535,47 +560,43 @@ export default function AnalyzePage() {
       });
     }
 
+    const productInsight = (name: string, amount: number, explanation: string, question: string): ProductInsight => {
+      const monthlyImpact = paymentFor(amount, deal.apr, deal.term);
+      const financedTotal = monthlyImpact * deal.term;
+      return {
+        name,
+        amount,
+        monthlyImpact,
+        financedTotal,
+        financingCost: Math.max(0, financedTotal - amount),
+        explanation,
+        question,
+      };
+    };
     const productInsights: ProductInsight[] = [];
     if (deal.serviceContract > 0) {
-      productInsights.push({
-        name: "Vehicle service contract (VSC)",
-        amount: deal.serviceContract,
-        explanation: "May cover certain mechanical or electrical repairs under a separate contract. Coverage, exclusions, deductible, term, provider, and cancellation rules determine its value.",
-        question: "Can I see the full contract, cash price, deductible, covered systems, exclusions, expiration mileage, and cancellation terms before deciding?",
-      });
+      productInsights.push(productInsight("Vehicle service contract (VSC)", deal.serviceContract, "May cover certain mechanical or electrical repairs under a separate contract. Coverage, exclusions, deductible, term, provider, and cancellation rules determine its value.", "Can I see the full contract, cash price, deductible, covered systems, exclusions, expiration mileage, and cancellation terms before deciding?"));
     }
     if (deal.gap > 0) {
-      productInsights.push({
-        name: "GAP protection",
-        amount: deal.gap,
-        explanation: "May cover some or all of the difference between an insurance settlement and the loan balance after a covered total loss. Benefit limits and exclusions vary.",
-        question: "What is the benefit limit, what is excluded, when does coverage end, and how does this price compare with my insurer or lender?",
-      });
+      productInsights.push(productInsight("GAP protection", deal.gap, "May cover some or all of the difference between an insurance settlement and the loan balance after a covered total loss. Benefit limits and exclusions vary.", "What is the benefit limit, what is excluded, when does coverage end, and how does this price compare with my insurer or lender?"));
     }
     if (deal.prepaidMaintenance > 0) {
-      productInsights.push({
-        name: "Prepaid maintenance (PPM)",
-        amount: deal.prepaidMaintenance,
-        explanation: "Prepays listed scheduled-maintenance services. It is not a repair warranty and may be limited by time, mileage, service locations, or included operations.",
-        question: "Which exact services and intervals are included, where can I use it, and what would those services cost if I paid as I went?",
-      });
+      productInsights.push(productInsight("Prepaid maintenance (PPM)", deal.prepaidMaintenance, "Prepays listed scheduled-maintenance services. It is not a repair warranty and may be limited by time, mileage, service locations, or included operations.", "Which exact services and intervals are included, where can I use it, and what would those services cost if I paid as I went?"));
     }
     if (deal.tireWheel > 0) {
-      productInsights.push({
-        name: "Tire & wheel protection (T&W)",
-        amount: deal.tireWheel,
-        explanation: "May cover eligible tire and wheel damage from road hazards. Cosmetic damage, replacement limits, deductibles, exclusions, and claim procedures vary.",
-        question: "What tire and wheel damage is covered, are cosmetic repairs included, what are the limits and deductible, and can I decline the coverage?",
-      });
+      productInsights.push(productInsight("Tire & wheel protection (T&W)", deal.tireWheel, "May cover eligible tire and wheel damage from road hazards. Cosmetic damage, replacement limits, deductibles, exclusions, and claim procedures vary.", "What tire and wheel damage is covered, are cosmetic repairs included, what are the limits and deductible, and can I decline the coverage?"));
     }
     if (deal.accessories > 0) {
-      productInsights.push({
-        name: "Accessories and other add-ons",
-        amount: deal.accessories,
-        explanation: "Includes appearance, paint/fabric, GPS/theft, etch, nitrogen, physical accessories, and other dealer add-ons. These items increase the amount financed and should be individually priced.",
-        question: "Please itemize every add-on, its installed price, what has already been applied or installed, and whether the vehicle can be purchased without it.",
-      });
+      productInsights.push(productInsight("Accessories and other add-ons", deal.accessories, "Includes appearance, paint/fabric, GPS/theft, etch, nitrogen, physical accessories, and other dealer add-ons. These items increase the amount financed and should be individually priced.", "Please itemize every add-on, its installed price, what has already been applied or installed, and whether the vehicle can be purchased without it."));
     }
+
+    const warningCount = flags.filter((flag) => flag.tone === "warn").length;
+    const reviewCount = warningCount + missingInformation.length;
+    const verdict = reviewCount === 0
+      ? { label: "No immediate red flags", detail: "The entered figures are internally consistent. Verify the contracts and buyer's order before signing." }
+      : { label: `${reviewCount} area${reviewCount === 1 ? "" : "s"} worth reviewing`, detail: warningCount > 0
+        ? `${warningCount} calculation or deal-structure warning${warningCount === 1 ? "" : "s"} found${missingInformation.length ? `, plus ${missingInformation.length} missing item${missingInformation.length === 1 ? "" : "s"}` : ""}.`
+        : `${missingInformation.length} important item${missingInformation.length === 1 ? " is" : "s are"} missing from the entered figures.` };
 
     return {
       addons,
@@ -602,6 +623,8 @@ export default function AnalyzePage() {
       paymentGap,
       flags,
       productInsights,
+      reviewCount,
+      verdict,
     };
   }, [deal]);
 
@@ -725,27 +748,48 @@ export default function AnalyzePage() {
               vehicle={String(pendingImport.fields.vehicle ?? "")}
               compact
             />
-            <div className="verification-grid">
-              {verificationFields.map((field) => {
-                const value = pendingImport.fields[field];
-                const found = value !== undefined;
-                const confidence = found ? pendingImport.confidence[field] ?? "review" : "missing";
-                return (
-                  <label className={`verification-field confidence-${confidence}`} key={field}>
-                    <span>{DEAL_FIELD_LABELS[field]}</span>
-                    <input
-                      aria-label={`Verify ${DEAL_FIELD_LABELS[field]}`}
-                      type={field === "vehicle" ? "text" : "number"}
-                      inputMode={field === "vehicle" ? undefined : "decimal"}
-                      step={field === "term" ? "1" : "0.01"}
-                      value={value ?? ""}
-                      placeholder="Not found"
-                      onChange={(event) => updatePendingField(field, event.target.value)}
-                    />
-                    <small>{confidence === "high" ? "High confidence" : confidence === "review" ? "Needs review" : "Not found"}</small>
-                  </label>
-                );
-              })}
+            <div className="evidence-layout">
+              <div className="document-evidence">
+                <div className="evidence-title"><span>ORIGINAL DOCUMENT</span><small>{pendingImport.fileName}</small></div>
+                {importSource?.url ? (
+                  importSource.type === "pdf" ? (
+                    <iframe title={`Original ${pendingImport.fileName}`} src={importSource.url} />
+                  ) : (
+                    <img src={importSource.url} alt={`Original ${pendingImport.fileName}`} />
+                  )
+                ) : (
+                  <div className="evidence-unavailable">The original file is not available in this session. Verify each value against your copy.</div>
+                )}
+                <p>Keep this document open while checking every imported number. PencilProof does not upload it.</p>
+              </div>
+              <div className="verification-grid">
+                {verificationFields.map((field) => {
+                  const value = pendingImport.fields[field];
+                  const found = value !== undefined;
+                  const confidence = found ? pendingImport.confidence[field] ?? "review" : "missing";
+                  const reason = confidence === "high"
+                    ? "Matched to labeled document text"
+                    : confidence === "review"
+                      ? "OCR or payment math requires visual confirmation"
+                      : "No reliable labeled value found";
+                  return (
+                    <label className={`verification-field confidence-${confidence}`} key={field}>
+                      <span>{DEAL_FIELD_LABELS[field]}</span>
+                      <input
+                        aria-label={`Verify ${DEAL_FIELD_LABELS[field]}`}
+                        type={field === "vehicle" ? "text" : "number"}
+                        inputMode={field === "vehicle" ? undefined : "decimal"}
+                        step={field === "term" ? "1" : "0.01"}
+                        value={value ?? ""}
+                        placeholder="Not found"
+                        onChange={(event) => updatePendingField(field, event.target.value)}
+                      />
+                      <small>{confidence === "high" ? "High confidence" : confidence === "review" ? "Needs review" : "Not found"}</small>
+                      <em>{reason}</em>
+                    </label>
+                  );
+                })}
+              </div>
             </div>
             <div className="verification-actions">
               <button className="button button-primary" type="button" onClick={confirmPendingImport}>Confirm values and run audit <Arrow /></button>
@@ -761,7 +805,7 @@ export default function AnalyzePage() {
             <button type="button" onClick={() => { setSelectedOfferId(""); setSelectedOfferType(null); }}>Choose a finance option instead</button>
           </section>
         ) : null}
-        <p className="pdf-import-note">Best results: use a dealer-generated PDF or a bright, sharp, straight-on image with the full figures visible. Scanned PDFs use OCR on up to the first five pages. OCR can make mistakes, so compare every imported value with the original.</p>
+        <p className="pdf-import-note">Best results: use a dealer-generated PDF or a bright, sharp, straight-on image with the full figures visible. Scanned PDFs use OCR on up to the first ten pages. OCR can make mistakes, so compare every imported value with the original.</p>
       </section>
 
       {!pendingImport && selectedOfferType !== "lease" ? <div className="analyzer-layout shell" id="manual-entry" ref={manualEntryRef}>
@@ -843,6 +887,11 @@ export default function AnalyzePage() {
                 ))}
               </div>
 
+              <div className={`instant-verdict ${analysis.reviewCount ? "instant-verdict-review" : "instant-verdict-good"}`}>
+                <div><span>INSTANT VERDICT</span><strong>{analysis.verdict.label}</strong></div>
+                <p>{analysis.verdict.detail}</p>
+              </div>
+
               <div className="payment-compare">
                 <div><span>WITH PRODUCTS</span><strong>{dollars(analysis.calculatedPayment)}<small>/mo</small></strong><small>dealer APR and entered term</small></div>
                 <div><span>WITHOUT PRODUCTS</span><strong>{dollars(analysis.paymentWithoutProducts)}<small>/mo</small></strong><small>same dealer APR and term</small></div>
@@ -898,6 +947,11 @@ export default function AnalyzePage() {
                 {analysis.productInsights.length ? analysis.productInsights.map((product) => (
                   <article className="product-insight" key={product.name}>
                     <div><h3>{product.name}</h3><strong>{dollars(product.amount)}</strong></div>
+                    <div className="product-cost-grid">
+                      <span>Payment impact <b>{dollarsAndCents(product.monthlyImpact)}/mo</b></span>
+                      <span>Over {deal.term} months <b>{dollarsAndCents(product.financedTotal)}</b></span>
+                      <span>Financing cost <b>{dollarsAndCents(product.financingCost)}</b></span>
+                    </div>
                     <p>{product.explanation}</p>
                     <small><b>Ask:</b> {product.question}</small>
                   </article>
