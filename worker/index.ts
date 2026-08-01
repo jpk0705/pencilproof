@@ -64,7 +64,77 @@ export interface Env {
   STRIPE_PRICE_ID: string;
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET?: string;
+  GEMINI_API_KEY?: string;
 }
+
+const AI_IMPORT_PROMPT = `You are PencilProof's document extraction engine for US automobile dealer buyer's orders, finance worksheets, F&I menus, lease worksheets, and payment quotes.
+
+Return ONLY one JSON object with exactly these keys: vehicle, sellingPrice, tax, govFees, docFee, serviceContract, gap, prepaidMaintenance, tireWheel, accessories, tradeValue, tradePayoff, cashDown, rebate, apr, term, quotedPayment, warnings.
+Use null when a value is not explicitly printed or cannot be tied to a label with high confidence. Never guess, calculate, or copy a nearby total into a component field. Numbers must be numeric, not strings.
+
+This is a FINANCE-FIRST parser:
+- sellingPrice means the base selling/sales price of the vehicle. Do not use MSRP, asking price, total purchase, amount financed, or a price that already includes add-ons when a base sales price is present.
+- tax is the printed sales-tax dollar amount, not the tax rate. govFees is the printed DMV/license/title/registration total or the clearly labeled government-fee component. docFee is documentation/electronic filing/doc processing only.
+- rebate is only a printed rebate/discount/incentive credit. Never treat a dealer discount as a second rebate when the document uses the discount to arrive at selling price. Preserve the document's signed convention and do not double-count it.
+- serviceContract includes VSC, vehicle service contract, extended service agreement, warranty, or protection plan. gap is GAP/negative-equity protection. prepaidMaintenance includes maintenance/service plans. tireWheel includes tire, wheel, road-hazard, dent, windshield, or appearance protection when separately priced. accessories includes connected-car, LoJack, Zurich Shield, paint protection, tint, nitrogen, alarm, theft, aftermarket accessories, and other dealer products not matching the prior categories. If multiple products exist in one category, sum only the itemized product prices and mention each item in warnings.
+- tradeValue is the allowance for the customer's trade. tradePayoff is the amount owed on that trade. cashDown is customer cash/down payment, not trade equity, rebate, or total due at signing. quotedPayment is the labeled monthly payment, never total payments or amount financed.
+- apr is the finance APR percentage. term is the loan term in months. Do not interpret a model number, page number, date, residual percentage, or money factor as APR or term.
+- Prefer a directly labeled value over a nearby subtotal. When a line contains several amounts, choose the amount in the value column immediately associated with that label. Ignore grand totals when an itemized component is available.
+- A lease or purchase section can appear beside another scenario. Identify whether the document is finance or lease. For PencilProof, extract the primary finance/buyer-order scenario when clearly identified. Never mix trade, rebates, or payment values from a separate scenario.
+- If a value is not printed, return null rather than deriving it from payment math. Put short field-specific uncertainty notes in warnings.
+
+The document may be a photo, scan, screenshot, or PDF. Read the entire document and preserve cents exactly when visible.`;
+
+const decodeGeminiJson = (value: unknown) => {
+  const text = typeof value === "string" ? value : "";
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)?.[1] ?? text;
+  const start = fenced.indexOf("{");
+  const end = fenced.lastIndexOf("}");
+  if (start < 0 || end <= start) throw new Error("AI_IMPORT_INVALID_JSON");
+  return JSON.parse(fenced.slice(start, end + 1)) as Record<string, unknown>;
+};
+
+const numberOrNull = (value: unknown) => {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = typeof value === "number" ? value : Number(String(value).replace(/[$,\s]/g, ""));
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const handleAiImport = async (request: Request, env: Env) => {
+  if (request.method !== "POST") return new Response("Method not allowed", { status: 405, headers: { Allow: "POST" } });
+  if (!env.GEMINI_API_KEY) return Response.json({ error: "AI_IMPORT_NOT_CONFIGURED" }, { status: 503, headers: noStoreHeaders });
+  let body: { base64?: string; mimeType?: string };
+  try { body = await request.json() as { base64?: string; mimeType?: string }; } catch { return Response.json({ error: "AI_IMPORT_BAD_REQUEST" }, { status: 400, headers: noStoreHeaders }); }
+  if (!body.base64 || !["application/pdf", "image/jpeg", "image/png"].includes(body.mimeType ?? "")) {
+    return Response.json({ error: "AI_IMPORT_BAD_REQUEST" }, { status: 400, headers: noStoreHeaders });
+  }
+  if (body.base64.length > 22_000_000) return Response.json({ error: "AI_IMPORT_TOO_LARGE" }, { status: 413, headers: noStoreHeaders });
+
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: AI_IMPORT_PROMPT }, { inline_data: { mime_type: body.mimeType, data: body.base64 } }] }],
+      generationConfig: { temperature: 0, responseMimeType: "application/json" },
+    }),
+  });
+  if (!response.ok) return Response.json({ error: "AI_IMPORT_PROVIDER_ERROR" }, { status: 502, headers: noStoreHeaders });
+  const payload = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+  try {
+    const raw = payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("") ?? "";
+    const parsed = decodeGeminiJson(raw);
+    const fields = Object.fromEntries([
+      "vehicle", "sellingPrice", "tax", "govFees", "docFee", "serviceContract", "gap", "prepaidMaintenance", "tireWheel", "accessories", "tradeValue", "tradePayoff", "cashDown", "rebate", "apr", "term", "quotedPayment",
+    ].flatMap((key) => {
+      if (key === "vehicle") return typeof parsed[key] === "string" && parsed[key].trim() ? [[key, parsed[key].trim()]] : [];
+      const value = numberOrNull(parsed[key]);
+      return value === null ? [] : [[key, value]];
+    }));
+    return Response.json({ fields, warnings: Array.isArray(parsed.warnings) ? parsed.warnings.filter((item): item is string => typeof item === "string").slice(0, 12) : [], fieldConfidence: Object.fromEntries(Object.keys(fields).map((key) => [key, "review"])), sourceType: "ai-vision" }, { headers: noStoreHeaders });
+  } catch {
+    return Response.json({ error: "AI_IMPORT_INVALID_RESPONSE" }, { status: 502, headers: noStoreHeaders });
+  }
+};
 
 type AccessPayload = {
   did: string;
@@ -1644,6 +1714,9 @@ export const handleRequest = async (request: Request, env: Env) => {
   }
   if (url.pathname === "/api/checkout") {
     return handleCheckout(request, env);
+  }
+  if (url.pathname === "/api/ai-import") {
+    return handleAiImport(request, env);
   }
   if (url.pathname === "/api/stripe/webhook") {
     return handleStripeWebhook(request, env);
