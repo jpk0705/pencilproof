@@ -42,3 +42,4 @@ jobs:
           command: deploy --config wrangler.jsonc
 
 # Deployment trigger: keep Worker deployment attached to main updates.
+# Deployment trigger: refresh after Gemini model routing fix.
