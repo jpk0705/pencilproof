@@ -277,7 +277,8 @@ export default function AnalyzePage() {
         });
       });
       if (!isPreviewImportUsable(result)) {
-        setFailedImportAttempts((attempts) => attempts + 1);
+        const nextFailedAttempts = failedImportAttempts + 1;
+        setFailedImportAttempts(nextFailedAttempts);
         setDealImport({
           status: "error",
           message: "The file contains readable text, but PencilProof did not find enough recognizable deal information for a reliable import. Try a clearer or more complete copy, or enter the figures manually and double-check the worksheet.",
@@ -399,6 +400,8 @@ export default function AnalyzePage() {
 
   const startManualEntry = () => {
     clearImport();
+    setDeal(blank);
+    setFailedImportAttempts(0);
     setManualEntryMode(true);
   };
 
@@ -655,7 +658,7 @@ export default function AnalyzePage() {
             <div>
               <p>{dealImport.message}</p>
               {dealImport.fields.length ? <div className="pdf-field-list">{dealImport.fields.map((field) => <small key={field}>{field}</small>)}</div> : null}
-              {dealImport.status === "error" && shouldOfferManualEntry(failedImportAttempts) ? (
+              {dealImport.status === "error" && shouldOfferManualEntry(failedImportAttempts + 1) ? (
                 <button className="manual-entry-button" type="button" onClick={startManualEntry}>
                   Enter the numbers manually instead
                 </button>
