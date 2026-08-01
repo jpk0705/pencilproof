@@ -85,6 +85,8 @@ This is a FINANCE-FIRST parser:
 
 The document may be a photo, scan, screenshot, or PDF. Read the entire document and preserve cents exactly when visible.`;
 
+const AI_IMPORT_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite"] as const;
+
 const decodeGeminiJson = (value: unknown) => {
   const text = typeof value === "string" ? value : "";
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)?.[1] ?? text;
@@ -105,29 +107,37 @@ const handleAiImport = async (request: Request, env: Env) => {
   if (!env.GEMINI_API_KEY) return Response.json({ error: "AI_IMPORT_NOT_CONFIGURED" }, { status: 503, headers: noStoreHeaders });
   let body: { base64?: string; mimeType?: string };
   try { body = await request.json() as { base64?: string; mimeType?: string }; } catch { return Response.json({ error: "AI_IMPORT_BAD_REQUEST" }, { status: 400, headers: noStoreHeaders }); }
-  if (!body.base64 || !["application/pdf", "image/jpeg", "image/png"].includes(body.mimeType ?? "")) {
+  if (!body.base64 || !["application/pdf", "image/jpeg", "image/png", "image/webp"].includes(body.mimeType ?? "")) {
     return Response.json({ error: "AI_IMPORT_BAD_REQUEST" }, { status: 400, headers: noStoreHeaders });
   }
   if (body.base64.length > 22_000_000) return Response.json({ error: "AI_IMPORT_TOO_LARGE" }, { status: 413, headers: noStoreHeaders });
 
   // Keep the credential out of the request URL. Google documents the
-  // x-goog-api-key header for Gemini API authentication, and auth keys can
-  // be rejected or behave differently when passed as a query parameter.
-  const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: AI_IMPORT_PROMPT }, { inline_data: { mime_type: body.mimeType, data: body.base64 } }] }],
-      generationConfig: { temperature: 0, responseMimeType: "application/json" },
-    }),
-  });
-  if (!response.ok) {
+  // x-goog-api-key header for Gemini API authentication. Try the regular
+  // model first, then the lower-cost Flash-Lite model when a project-level
+  // quota or transient provider limit blocks the first request.
+  let response: Response | undefined;
+  let lastProviderBody = "";
+  for (const model of AI_IMPORT_MODELS) {
+    response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: AI_IMPORT_PROMPT }, { inline_data: { mime_type: body.mimeType, data: body.base64 } }] }],
+        generationConfig: { temperature: 0, maxOutputTokens: 2048, responseMimeType: "application/json" },
+      }),
+    });
+    if (response.ok) break;
+    lastProviderBody = await response.text();
+    if (![429, 500, 502, 503].includes(response.status)) break;
+  }
+  if (!response || !response.ok) {
     // Return only a stable, non-secret diagnostic. The full provider body is
     // logged for server-side debugging, but never sent to the browser.
-    const providerBody = await response.text();
+    const providerBody = lastProviderBody;
     console.error("Gemini import provider failure", {
-      status: response.status,
-      statusText: response.statusText,
+      status: response?.status,
+      statusText: response?.statusText,
       body: providerBody.slice(0, 1000),
     });
     let providerCode = "UNKNOWN";
@@ -138,8 +148,8 @@ const handleAiImport = async (request: Request, env: Env) => {
       if (providerStatus === "UNAUTHENTICATED" || /api key|authentication|credential/i.test(providerMessage)) providerCode = "AUTHENTICATION";
       else if (providerStatus === "PERMISSION_DENIED" || /permission|disabled|not enabled/i.test(providerMessage)) providerCode = "PERMISSION";
       else if (providerStatus === "RESOURCE_EXHAUSTED" || response.status === 429) providerCode = "QUOTA";
-      else if (response.status === 400) providerCode = "BAD_REQUEST";
-      else if (response.status >= 500) providerCode = "PROVIDER_UNAVAILABLE";
+      else if (response?.status === 400) providerCode = "BAD_REQUEST";
+      else if ((response?.status ?? 0) >= 500) providerCode = "PROVIDER_UNAVAILABLE";
     } catch {
       // Keep UNKNOWN when Google did not return JSON.
     }
