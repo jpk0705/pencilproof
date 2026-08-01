@@ -17,8 +17,9 @@ the dealership.
 - full-term finance charge
 
 Customers purchase one-time access through a Stripe Managed Payments payment
-link, then use the audit tool in the browser. Deal inputs are not uploaded or
-stored by PencilProof.
+link, then use the audit tool in the browser. Deal inputs are processed locally
+first. Ambiguous documents may use the optional server-side vision importer for
+one-time extraction, and are not intentionally stored as user documents.
 
 ## Important limitation
 

@@ -1263,6 +1263,53 @@ const extractDealWithServerVision = async (
   };
 };
 
+const needsVisionReview = (result: DealPdfResult) =>
+  Boolean(
+    result.usedOcr ||
+    result.warnings?.length ||
+    criticalImportFields.some((field) => result.fields[field] === undefined) ||
+    Object.keys(result.fields).length < 8,
+  );
+
+const reconcileLocalAndVision = (
+  local: DealPdfResult,
+  vision: DealPdfResult,
+): DealPdfResult => {
+  const fields = { ...local.fields } as Record<keyof ImportedDealFields, string | number | undefined>;
+  const confidence: DealPdfResult["fieldConfidence"] = { ...local.fieldConfidence };
+
+  // Keep strong digital text evidence. Use vision for missing or OCR-only
+  // values, while retaining the review flag for user confirmation.
+  (Object.keys(DEAL_FIELD_LABELS) as (keyof ImportedDealFields)[]).forEach((field) => {
+    const localValue = local.fields[field];
+    const visionValue = vision.fields[field];
+    if (localValue === undefined && visionValue !== undefined) {
+      fields[field] = visionValue;
+      confidence[field] = "review";
+    } else if (local.usedOcr && visionValue !== undefined && confidence[field] !== "high") {
+      fields[field] = visionValue;
+      confidence[field] = "review";
+    }
+  });
+
+  const sanitized = sanitizeImportedFields(fields as ImportedDealFields).fields;
+  const reconciled = reconcileQuotedPayment(sanitized);
+  const warnings = Array.from(new Set([
+    ...(local.warnings ?? []),
+    ...(vision.warnings ?? []),
+    ...reconciled.warnings,
+  ]));
+  return {
+    ...local,
+    fields: reconciled.fields,
+    fieldConfidence: Object.fromEntries(
+      Object.keys(reconciled.fields).map((field) => [field, confidence[field as keyof ImportedDealFields] ?? "review"]),
+    ) as DealPdfResult["fieldConfidence"],
+    fieldNames: Object.keys(reconciled.fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]),
+    warnings,
+  };
+};
+
 export const extractDealFromFile = async (
   file: File,
   onProgress?: (update: DealImportProgress) => void,
@@ -1271,15 +1318,31 @@ export const extractDealFromFile = async (
   const isPdf = file.type === "application/pdf" || name.endsWith(".pdf");
   const isJpeg = file.type === "image/jpeg" || /\.jpe?g$/.test(name);
   const isPng = file.type === "image/png" || name.endsWith(".png");
+  const isWebp = file.type === "image/webp" || name.endsWith(".webp");
 
-  if (isPdf || isJpeg || isPng) {
+  if (isPdf || isJpeg || isPng || isWebp) {
+    let localResult: DealPdfResult;
     try {
-      return await extractDealWithServerVision(file, onProgress);
+      localResult = isPdf
+        ? await extractDealFromPdf(file, onProgress)
+        : await extractDealFromImage(file, onProgress);
+    } catch (localError) {
+      try {
+        return await extractDealWithServerVision(file, onProgress);
+      } catch {
+        throw localError;
+      }
+    }
+
+    if (!needsVisionReview(localResult)) return localResult;
+
+    try {
+      const visionResult = await extractDealWithServerVision(file, onProgress);
+      return reconcileLocalAndVision(localResult, visionResult);
     } catch {
-      // The public AI endpoint is deliberately optional. Local PDF text and
-      // multi-pass OCR remain available when it is unavailable or times out.
-      if (isPdf) return extractDealFromPdf(file, onProgress);
-      return extractDealFromImage(file, onProgress);
+      // Gemini is optional and may be unavailable or quota-limited. Never
+      // discard a usable local result when the provider does not answer.
+      return localResult;
     }
   }
   throw new Error("UNSUPPORTED_FILE");
