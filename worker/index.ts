@@ -8,6 +8,19 @@ const WEBHOOK_CONFIG_VERSION = 3;
 const ORDER_RETENTION_MILLISECONDS = 1000 * 60 * 60 * 24 * 400;
 const QUOTE_HANDOFF_KEY = "pencilproof:pending-import";
 const QUOTE_HANDOFF_TYPE = "pencilproof:quote-handoff:v1";
+const ANALYTICS_RETENTION_MILLISECONDS = 1000 * 60 * 60 * 24 * 400;
+const ANALYTICS_MAX_FEEDBACK = 500;
+const ANALYTICS_EVENT_NAMES = [
+  "page_view",
+  "scan_started",
+  "import_success",
+  "import_failed",
+  "manual_fallback_opened",
+  "audit_completed",
+  "checkout_started",
+  "payment_completed",
+  "feedback_submitted",
+] as const;
 const STRIPE_WEBHOOK_EVENTS = [
   "checkout.session.completed",
   "checkout.session.async_payment_succeeded",
@@ -44,6 +57,7 @@ export interface Env {
   };
   ACCESS_MAX_AGE_SECONDS?: string;
   ORDERS: DurableObjectNamespaceLike;
+  ANALYTICS: DurableObjectNamespaceLike;
   PUBLIC_SITE_ORIGIN: string;
   SESSION_SECRET: string;
   SITE_ORIGIN: string;
@@ -138,6 +152,39 @@ type OrderRevocation = {
   revokedAt: number;
   sessionId: string;
   stripeEventId: string;
+};
+
+type AnalyticsEventName = typeof ANALYTICS_EVENT_NAMES[number];
+
+type AnalyticsEvent = {
+  category?: string;
+  device?: "mobile" | "desktop" | "tablet";
+  event: AnalyticsEventName;
+  path?: string;
+  sessionId: string;
+  source?: string;
+  value?: number;
+};
+
+type FeedbackRecord = {
+  category: string;
+  comment: string;
+  createdAt: string;
+  rating: number;
+  sessionId: string;
+};
+
+type AnalyticsSummary = {
+  byDay: Record<string, Record<string, number>>;
+  byEvent: Record<string, number>;
+  feedback: {
+    byCategory: Record<string, number>;
+    byRating: Record<string, number>;
+    recent: FeedbackRecord[];
+    total: number;
+  };
+  sessions: number;
+  updatedAt: string;
 };
 
 type WebhookConfig = {
@@ -305,6 +352,35 @@ const accessCookie = (token: string, maxAge: number) => [
 
 const orderStub = (sessionId: string, env: Env) =>
   env.ORDERS.get(env.ORDERS.idFromName(sessionId));
+
+const analyticsStub = (env: Env) =>
+  env.ANALYTICS.get(env.ANALYTICS.idFromName("pencilproof-analytics"));
+
+const recordAnalyticsEvent = async (
+  event: Record<string, unknown>,
+  env: Env,
+) => {
+  try {
+    const response = await analyticsStub(env).fetch(
+      new Request("https://analytics.internal/event", {
+        body: JSON.stringify(event),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      }),
+    );
+    return response.ok;
+  } catch {
+    return false;
+  }
+};
+
+const emptyAnalyticsSummary = (): AnalyticsSummary => ({
+  byDay: {},
+  byEvent: {},
+  feedback: { byCategory: {}, byRating: {}, recent: [], total: 0 },
+  sessions: 0,
+  updatedAt: new Date(0).toISOString(),
+});
 
 const webhookConfigStub = (env: Env) =>
   orderStub("__pencilproof_webhook_config__", env);
@@ -644,6 +720,102 @@ export class OrderStore {
   }
 }
 
+export class AnalyticsStore {
+  private readonly state: DurableObjectStateLike;
+
+  constructor(state: DurableObjectStateLike) {
+    this.state = state;
+  }
+
+  async fetch(request: Request) {
+    const url = new URL(request.url);
+    if (request.method === "POST" && url.pathname === "/event") {
+      const event = await request.json() as Partial<AnalyticsEvent>;
+      if (
+        typeof event.sessionId !== "string"
+        || !/^[A-Za-z0-9_-]{20,80}$/.test(event.sessionId)
+        || typeof event.event !== "string"
+        || !(ANALYTICS_EVENT_NAMES as readonly string[]).includes(event.event)
+      ) {
+        return new Response("Invalid analytics event", { status: 400 });
+      }
+
+      const now = new Date();
+      const day = now.toISOString().slice(0, 10);
+      const summary = await this.state.storage.get<AnalyticsSummary>("summary")
+        ?? emptyAnalyticsSummary();
+      summary.byEvent[event.event] = (summary.byEvent[event.event] ?? 0) + 1;
+      summary.byDay[day] ??= {};
+      summary.byDay[day][event.event] =
+        (summary.byDay[day][event.event] ?? 0) + 1;
+      summary.updatedAt = now.toISOString();
+
+      const sessionKey = `session:${event.sessionId}`;
+      const knownSession = await this.state.storage.get<boolean>(sessionKey);
+      if (!knownSession) {
+        await this.state.storage.put(sessionKey, true);
+        summary.sessions += 1;
+      }
+
+      if (event.event === "feedback_submitted") {
+        const category = typeof event.category === "string"
+          ? event.category.slice(0, 40)
+          : "other";
+        const rating = Number.isInteger(event.value)
+          ? Math.max(1, Math.min(5, Number(event.value)))
+          : 0;
+        summary.feedback.total += 1;
+        summary.feedback.byCategory[category] =
+          (summary.feedback.byCategory[category] ?? 0) + 1;
+        if (rating > 0) {
+          const ratingKey = String(rating);
+          summary.feedback.byRating[ratingKey] =
+            (summary.feedback.byRating[ratingKey] ?? 0) + 1;
+        }
+        const comment = typeof (event as { comment?: unknown }).comment === "string"
+          ? (event as { comment: string }).comment.trim().slice(0, 1000)
+          : "";
+        if (comment) {
+          summary.feedback.recent.unshift({
+            category,
+            comment,
+            createdAt: now.toISOString(),
+            rating,
+            sessionId: event.sessionId,
+          });
+          summary.feedback.recent = summary.feedback.recent.slice(0, ANALYTICS_MAX_FEEDBACK);
+        }
+      }
+
+      await this.state.storage.put("summary", summary);
+      await this.state.storage.setAlarm?.(
+        Date.now() + ANALYTICS_RETENTION_MILLISECONDS,
+      );
+      return Response.json({ recorded: true });
+    }
+
+    if (request.method === "GET" && url.pathname === "/summary") {
+      const summary = await this.state.storage.get<AnalyticsSummary>("summary")
+        ?? emptyAnalyticsSummary();
+      return Response.json({
+        ...summary,
+        feedback: {
+          ...summary.feedback,
+          recent: summary.feedback.recent.map(({ sessionId: _sessionId, ...feedback }) => feedback),
+        },
+      }, {
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+
+    return new Response("Not found", { status: 404 });
+  }
+
+  async alarm() {
+    await this.state.storage.deleteAll();
+  }
+}
+
 const noStoreHeaders = {
   "Cache-Control": "no-store, max-age=0",
   "Content-Security-Policy": [
@@ -726,11 +898,14 @@ const handoffPage = () =>
           status.textContent = "Your quote could not be carried forward. You can still enter the figures manually after checkout.";
         }
 
-        fetch("/api/checkout", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "same-origin"
-        })
+          fetch("/api/checkout", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({
+              analyticsSessionId: localStorage.getItem("pencilproof:analytics-session")
+            })
+          })
           .then(async (response) => {
             const payload = await response.json().catch(() => ({}));
             if (!response.ok) {
@@ -771,6 +946,7 @@ async function createStripeWebhookEndpoint(
   env: Env,
 ): Promise<WebhookConfig | null> {
   const parameters = new URLSearchParams({
+    allow_promotion_codes: "true",
     description: "PencilProof paid audit fulfillment",
     url,
   });
@@ -848,7 +1024,11 @@ async function updateStripeWebhookEndpoint(
   };
 }
 
-const createCheckoutSession = async (env: Env, deviceHash: string) => {
+const createCheckoutSession = async (
+  env: Env,
+  deviceHash: string,
+  analyticsSessionId = "",
+) => {
   const stripePriceId = typeof env.STRIPE_PRICE_ID === "string"
     ? env.STRIPE_PRICE_ID.trim()
     : "";
@@ -874,6 +1054,9 @@ const createCheckoutSession = async (env: Env, deviceHash: string) => {
     "cancel_url": `${env.PUBLIC_SITE_ORIGIN}/#pricing`,
     "line_items[0][quantity]": "1",
     "managed_payments[enabled]": "true",
+    ...( /^[A-Za-z0-9_-]{20,80}$/.test(analyticsSessionId)
+      ? { "metadata[pencilproof_analytics_session]": analyticsSessionId }
+      : {}),
     "metadata[pencilproof_device_hash]": deviceHash,
     "metadata[pencilproof_product]": PRODUCT_CODE,
     mode: "payment",
@@ -1066,7 +1249,7 @@ const verifyAndStorePaidOrder = async (
   const createdAt = Number.isInteger(paidAt) && paidAt > 0
     ? paidAt
     : Math.floor(Date.now() / 1000);
-  return storePaidOrder({
+  const stored = await storePaidOrder({
     accessExpiresAt: createdAt + accessSeconds(env),
     amountTotal: session?.amount_total ?? 0,
     createdAt,
@@ -1077,6 +1260,16 @@ const verifyAndStorePaidOrder = async (
     sessionId,
     stripeEventId,
   }, env);
+  if (stored) {
+    const analyticsSessionId = session?.metadata?.pencilproof_analytics_session;
+    if (/^[A-Za-z0-9_-]{20,80}$/.test(analyticsSessionId ?? "")) {
+      await recordAnalyticsEvent({
+        event: "payment_completed",
+        sessionId: analyticsSessionId,
+      }, env);
+    }
+  }
+  return stored;
 };
 
 const resolvePaymentIntent = async (
@@ -1242,6 +1435,9 @@ const handleCheckout = async (request: Request, env: Env) => {
   }
 
   try {
+    const body = await request.json().catch(() => ({})) as {
+      analyticsSessionId?: string;
+    };
     const webhookReady = await ensureWebhookEndpoint(env);
     if (!webhookReady) {
       throw new CheckoutError(
@@ -1254,7 +1450,11 @@ const handleCheckout = async (request: Request, env: Env) => {
       ? existingDeviceId
       : randomDeviceId();
     const deviceHash = await sha256Hex(deviceId);
-    const session = await createCheckoutSession(env, deviceHash);
+    const session = await createCheckoutSession(
+      env,
+      deviceHash,
+      body.analyticsSessionId ?? "",
+    );
     const headers = new Headers({ "Cache-Control": "no-store" });
     if (deviceId !== existingDeviceId) {
       headers.append("Set-Cookie", deviceCookie(deviceId));
@@ -1289,6 +1489,39 @@ const handleWebhookStatus = async (request: Request, env: Env) => {
     { ready: await webhookIsReady(env) },
     { headers: { "Cache-Control": "no-store" } },
   );
+};
+
+const analyticsCorsHeaders = (env: Env) => ({
+  "Access-Control-Allow-Origin": env.PUBLIC_SITE_ORIGIN,
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+  "Vary": "Origin",
+});
+
+const handleAnalytics = async (request: Request, env: Env) => {
+  const headers = analyticsCorsHeaders(env);
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers });
+  }
+  if (request.method !== "POST" && request.method !== "GET") {
+    return new Response("Method not allowed", {
+      status: 405,
+      headers: { ...headers, Allow: "GET, POST, OPTIONS" },
+    });
+  }
+  const response = await analyticsStub(env).fetch(
+    new Request(`https://analytics.internal${new URL(request.url).pathname}`, {
+      method: request.method,
+      headers: request.headers,
+      body: request.method === "POST" ? await request.text() : undefined,
+    }),
+  );
+  const responseHeaders = new Headers(response.headers);
+  Object.entries(headers).forEach(([key, value]) => responseHeaders.set(key, value));
+  return new Response(response.body, {
+    status: response.status,
+    headers: responseHeaders,
+  });
 };
 
 const handleSuccess = async (request: Request, env: Env) => {
@@ -1417,6 +1650,12 @@ export const handleRequest = async (request: Request, env: Env) => {
   }
   if (url.pathname === "/api/stripe/webhook/status") {
     return handleWebhookStatus(request, env);
+  }
+  if (
+    url.pathname === "/api/analytics/event"
+    || url.pathname === "/api/analytics/summary"
+  ) {
+    return handleAnalytics(request, env);
   }
   if (url.pathname === "/success" || url.pathname === "/success/") {
     return handleSuccess(request, env);

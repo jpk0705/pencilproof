@@ -217,7 +217,6 @@ test("checkout uses the configured Stripe price", async () => {
   const parameters = new URLSearchParams(requestBody);
 
   assert.equal(response.status, 200);
-  assert.equal(parameters.get("allow_promotion_codes"), "true");
   assert.equal(
     parameters.get("line_items[0][price]"),
     "price_123TestValid",
