@@ -505,6 +505,12 @@ const sumDistinctAmounts = (
   lines.forEach((line, index) => {
     if (!labels.some((label) => label.test(line))) return;
     if (excludedLabels.some((label) => label.test(line))) return;
+    // Vehicle equipment descriptions can share an extracted PDF line with
+    // the payment column. For example, "Roof Rails ... Estimated Payment
+    // $625.89" must not turn the printed payment into an accessory price.
+    // An accessory amount is still accepted when it appears on its own
+    // itemized line, even if that line contains a physical accessory label.
+    if (/(?:estimated|monthly|quoted|payment)\b|\b(?:months?|mos?)\s*@/i.test(line)) return;
     const candidates = [index, index + 1, index - 1];
     for (const amountLineIndex of candidates) {
       if (amountLineIndex < 0 || matchedAmountLines.has(amountLineIndex)) continue;
@@ -517,7 +523,7 @@ const sumDistinctAmounts = (
       break;
     }
   });
-  return total || undefined;
+  return total ? Math.round(total * 100) / 100 : undefined;
 };
 
 const findPaymentNearLabel = (lines: string[], labels: RegExp[]) => {

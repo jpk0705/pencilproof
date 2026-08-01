@@ -163,6 +163,25 @@ closeTo(dalyCityPhotoQuote.quotedPayment, 387.97);
 closeTo(dalyCityPhotoQuote.apr, 5.59);
 assert.equal(dalyCityPhotoQuote.term, 72);
 
+const paymentColumnMustNotBecomeAccessory = parseDealerText([
+  "2024 Toyota RAV4 Adventure Sport Utility 4D",
+  "ABS, Alloy Wheels, Backup Camera, Rear Spoiler, Roof Rails, Safety Connect",
+  "Estimated Payment $625.89 84 Months @ 11.5900%",
+  "Asking Price $32,500.00",
+  "Discount (-) $500.00",
+  "Sales Price $32,000.00",
+  "Theft DNA DLP $1.00",
+  "Appearance $699.00",
+  "Connected Car 1 Year Plan $299.00",
+  "Gap Insurance $1,200.00",
+  "Sales Tax 8.625% $2,857.81",
+  "TOTAL SALES AMOUNT $37,900.06",
+  "Deposit / Cash Down (-) $2,000.00",
+  "CASH DUE / FINANCE AMOUNT $35,900.06",
+]);
+closeTo(paymentColumnMustNotBecomeAccessory.accessories, 999);
+closeTo(paymentColumnMustNotBecomeAccessory.quotedPayment, 625.89);
+
 const namedProducts = parseDealerText([
   "Ally VSC $2,495.00",
   "AmeriPlus GAP $995.00",
