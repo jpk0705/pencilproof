@@ -110,15 +110,41 @@ const handleAiImport = async (request: Request, env: Env) => {
   }
   if (body.base64.length > 22_000_000) return Response.json({ error: "AI_IMPORT_TOO_LARGE" }, { status: 413, headers: noStoreHeaders });
 
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY)}`, {
+  // Keep the credential out of the request URL. Google documents the
+  // x-goog-api-key header for Gemini API authentication, and auth keys can
+  // be rejected or behave differently when passed as a query parameter.
+  const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
     body: JSON.stringify({
       contents: [{ role: "user", parts: [{ text: AI_IMPORT_PROMPT }, { inline_data: { mime_type: body.mimeType, data: body.base64 } }] }],
       generationConfig: { temperature: 0, responseMimeType: "application/json" },
     }),
   });
-  if (!response.ok) return Response.json({ error: "AI_IMPORT_PROVIDER_ERROR" }, { status: 502, headers: noStoreHeaders });
+  if (!response.ok) {
+    // Return only a stable, non-secret diagnostic. The full provider body is
+    // logged for server-side debugging, but never sent to the browser.
+    const providerBody = await response.text();
+    console.error("Gemini import provider failure", {
+      status: response.status,
+      statusText: response.statusText,
+      body: providerBody.slice(0, 1000),
+    });
+    let providerCode = "UNKNOWN";
+    try {
+      const parsed = JSON.parse(providerBody) as { error?: { status?: string; code?: number; message?: string } };
+      const providerStatus = parsed.error?.status;
+      const providerMessage = parsed.error?.message ?? "";
+      if (providerStatus === "UNAUTHENTICATED" || /api key|authentication|credential/i.test(providerMessage)) providerCode = "AUTHENTICATION";
+      else if (providerStatus === "PERMISSION_DENIED" || /permission|disabled|not enabled/i.test(providerMessage)) providerCode = "PERMISSION";
+      else if (providerStatus === "RESOURCE_EXHAUSTED" || response.status === 429) providerCode = "QUOTA";
+      else if (response.status === 400) providerCode = "BAD_REQUEST";
+      else if (response.status >= 500) providerCode = "PROVIDER_UNAVAILABLE";
+    } catch {
+      // Keep UNKNOWN when Google did not return JSON.
+    }
+    return Response.json({ error: "AI_IMPORT_PROVIDER_ERROR", providerCode }, { status: 502, headers: noStoreHeaders });
+  }
   const payload = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
   try {
     const raw = payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("") ?? "";
