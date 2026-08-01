@@ -81,6 +81,43 @@ closeTo(OCRGroupedNumbers.apr, 2.9);
 assert.equal(OCRGroupedNumbers.term, 72);
 closeTo(OCRGroupedNumbers.quotedPayment, 642.83);
 
+const plainOcrNumbers = parseDealerText([
+  "Vehicle: 2025 Honda Accord Sport",
+  "Selling Price 31450",
+  "Sales Tax 2751",
+  "Government Fees 612",
+  "Documentation Fee 85",
+  "Vehicle Service Contract 1295",
+  "GAP Protection 895",
+  "Cash Down 2500",
+  "APR 7.49%",
+  "Loan Term 72 months",
+  "Monthly Payment 612",
+]);
+closeTo(plainOcrNumbers.sellingPrice, 31450);
+closeTo(plainOcrNumbers.tax, 2751);
+closeTo(plainOcrNumbers.govFees, 612);
+closeTo(plainOcrNumbers.docFee, 85);
+closeTo(plainOcrNumbers.serviceContract, 1295);
+closeTo(plainOcrNumbers.gap, 895);
+closeTo(plainOcrNumbers.cashDown, 2500);
+closeTo(plainOcrNumbers.quotedPayment, 612);
+
+const labelWithMultipleAmounts = parseDealerText([
+  "Sales Price $38,450.00 MSRP $40,250.00",
+  "Sales Tax 9.25% $3,474.00",
+  "Government Fees $612.00 Total $42,536.00",
+  "Documentation Fee $85.00 Total Fees $697.00",
+  "APR 7.49%",
+  "Loan Term 72 months",
+  "Monthly Payment $736.00 Total Payments $52,992.00",
+]);
+closeTo(labelWithMultipleAmounts.sellingPrice, 38450);
+closeTo(labelWithMultipleAmounts.tax, 3474);
+closeTo(labelWithMultipleAmounts.govFees, 612);
+closeTo(labelWithMultipleAmounts.docFee, 85);
+closeTo(labelWithMultipleAmounts.quotedPayment, 736);
+
 const impossibleOcrValues = sanitizeImportedFields({
   sellingPrice: 31000,
   tax: 95000,
