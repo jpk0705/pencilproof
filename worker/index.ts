@@ -104,15 +104,25 @@ const numberOrNull = (value: unknown) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+const aiImportCorsHeaders = (env: Env) => ({
+  ...noStoreHeaders,
+  "Access-Control-Allow-Origin": env.PUBLIC_SITE_ORIGIN,
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+  "Vary": "Origin",
+});
+
 const handleAiImport = async (request: Request, env: Env) => {
-  if (request.method !== "POST") return new Response("Method not allowed", { status: 405, headers: { Allow: "POST" } });
-  if (!env.GEMINI_API_KEY) return Response.json({ error: "AI_IMPORT_NOT_CONFIGURED" }, { status: 503, headers: noStoreHeaders });
+  const headers = aiImportCorsHeaders(env);
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers });
+  if (request.method !== "POST") return new Response("Method not allowed", { status: 405, headers: { ...headers, Allow: "POST, OPTIONS" } });
+  if (!env.GEMINI_API_KEY) return Response.json({ error: "AI_IMPORT_NOT_CONFIGURED" }, { status: 503, headers });
   let body: { base64?: string; mimeType?: string };
-  try { body = await request.json() as { base64?: string; mimeType?: string }; } catch { return Response.json({ error: "AI_IMPORT_BAD_REQUEST" }, { status: 400, headers: noStoreHeaders }); }
+  try { body = await request.json() as { base64?: string; mimeType?: string }; } catch { return Response.json({ error: "AI_IMPORT_BAD_REQUEST" }, { status: 400, headers }); }
   if (!body.base64 || !["application/pdf", "image/jpeg", "image/png", "image/webp"].includes(body.mimeType ?? "")) {
-    return Response.json({ error: "AI_IMPORT_BAD_REQUEST" }, { status: 400, headers: noStoreHeaders });
+    return Response.json({ error: "AI_IMPORT_BAD_REQUEST" }, { status: 400, headers });
   }
-  if (body.base64.length > 22_000_000) return Response.json({ error: "AI_IMPORT_TOO_LARGE" }, { status: 413, headers: noStoreHeaders });
+  if (body.base64.length > 22_000_000) return Response.json({ error: "AI_IMPORT_TOO_LARGE" }, { status: 413, headers });
 
   // Keep the credential out of the request URL. Google documents the
   // x-goog-api-key header for Gemini API authentication. Try the regular
@@ -160,7 +170,7 @@ const handleAiImport = async (request: Request, env: Env) => {
       error: "AI_IMPORT_PROVIDER_ERROR",
       providerCode,
       providerHttpStatus: response?.status ?? null,
-    }, { status: 502, headers: noStoreHeaders });
+    }, { status: 502, headers });
   }
   const payload = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
   try {
@@ -173,9 +183,9 @@ const handleAiImport = async (request: Request, env: Env) => {
       const value = numberOrNull(parsed[key]);
       return value === null ? [] : [[key, value]];
     }));
-    return Response.json({ fields, warnings: Array.isArray(parsed.warnings) ? parsed.warnings.filter((item): item is string => typeof item === "string").slice(0, 12) : [], fieldConfidence: Object.fromEntries(Object.keys(fields).map((key) => [key, "review"])), sourceType: "ai-vision" }, { headers: noStoreHeaders });
+    return Response.json({ fields, warnings: Array.isArray(parsed.warnings) ? parsed.warnings.filter((item): item is string => typeof item === "string").slice(0, 12) : [], fieldConfidence: Object.fromEntries(Object.keys(fields).map((key) => [key, "review"])), sourceType: "ai-vision" }, { headers });
   } catch {
-    return Response.json({ error: "AI_IMPORT_INVALID_RESPONSE" }, { status: 502, headers: noStoreHeaders });
+    return Response.json({ error: "AI_IMPORT_INVALID_RESPONSE" }, { status: 502, headers });
   }
 };
 
