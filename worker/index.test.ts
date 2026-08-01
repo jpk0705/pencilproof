@@ -224,7 +224,7 @@ test("checkout uses the configured Stripe price", async () => {
   assert.equal(parameters.get("line_items[0][price_data][unit_amount]"), null);
   assert.equal(parameters.get("managed_payments[enabled]"), "true");
   assert.equal(parameters.get("adaptive_pricing[enabled]"), null);
-  assert.equal(parameters.get("allow_promotion_codes"), null);
+  assert.equal(parameters.get("allow_promotion_codes"), "true");
   assert.equal(parameters.get("billing_address_collection"), null);
   assert.equal(parameters.get("customer_creation"), null);
   assert.equal(parameters.get("payment_intent_data[description]"), null);
