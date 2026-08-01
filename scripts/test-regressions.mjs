@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   DEAL_FIELD_LABELS,
   parseDealerText,
   parseOfferMatrix,
   reconcileQuotedPayment,
+  sanitizeImportedFields,
 } from "../lib/deal-pdf.ts";
 import { paymentFor } from "../lib/deal-calculations.ts";
 import {
@@ -57,6 +61,39 @@ const taxRateAndAmount = parseDealerText([
 ]);
 closeTo(taxRateAndAmount.tax, 4137.47);
 assert.notEqual(taxRateAndAmount.tax, 9.375);
+
+const OCRGroupedNumbers = parseDealerText([
+  "Selling Price 31 000",
+  "Sales Tax 9 . 375 % 4 137 . 47",
+  "Government Fees 1 033 . 75",
+  "Doc Fee 85 . 00",
+  "Rebate 1 500",
+  "APR 2 . 9 %",
+  "Term 7 2 months",
+  "Monthly Payment 642 . 83",
+]);
+closeTo(OCRGroupedNumbers.sellingPrice, 31000);
+closeTo(OCRGroupedNumbers.tax, 4137.47);
+closeTo(OCRGroupedNumbers.govFees, 1033.75);
+closeTo(OCRGroupedNumbers.docFee, 85);
+closeTo(OCRGroupedNumbers.rebate, 1500);
+closeTo(OCRGroupedNumbers.apr, 2.9);
+assert.equal(OCRGroupedNumbers.term, 72);
+closeTo(OCRGroupedNumbers.quotedPayment, 642.83);
+
+const impossibleOcrValues = sanitizeImportedFields({
+  sellingPrice: 31000,
+  tax: 95000,
+  apr: 99,
+  term: 720,
+  quotedPayment: 642.83,
+});
+closeTo(impossibleOcrValues.fields.sellingPrice, 31000);
+closeTo(impossibleOcrValues.fields.quotedPayment, 642.83);
+assert.equal(impossibleOcrValues.fields.tax, undefined);
+assert.equal(impossibleOcrValues.fields.apr, undefined);
+assert.equal(impossibleOcrValues.fields.term, undefined);
+assert.deepEqual(impossibleOcrValues.rejected.sort(), ["apr", "tax", "term"]);
 
 const dalyCityPhotoQuote = parseDealerText([
   "2018 Ram ProMaster City Tradesman Cargo Van 4D",
@@ -446,5 +483,24 @@ assert.equal(commonsImage?.title, "2022 Lincoln Navigator Black Label front.jpg"
 assert.equal(commonsImage?.creator, "Anorak Cline");
 assert.equal(commonsImage?.license, "CC BY 2.0");
 assert.equal(commonsImage?.exactYearMatch, true);
+
+const fixtureRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "quote-library");
+const fixtureExpectations = [
+  ["toyota-buyer-order.txt", 36100, 8.49, 72, 739.95],
+  ["honda-payment-worksheet.txt", 35995, 7.99, 72, 692.41],
+  ["lexus-f-and-i-menu.txt", 49800, 6.99, 60, 1012.88],
+  ["gm-deal-worksheet.txt", 52400, 9.99, 72, 1038.56],
+  ["ford-buyer-order.txt", 40135, 12.99, 75, 1041.28],
+  ["independent-daly-city-menu.txt", 18000, 5.59, 72, 387.97],
+];
+for (const [fileName, sellingPrice, apr, term, payment] of fixtureExpectations) {
+  const text = await readFile(join(fixtureRoot, fileName), "utf8");
+  const fixture = parseDealerText(text.split(/\r?\n/));
+  closeTo(fixture.sellingPrice, sellingPrice);
+  closeTo(fixture.apr, apr);
+  assert.equal(fixture.term, term);
+  closeTo(fixture.quotedPayment, payment);
+}
+assert.equal(fixtureExpectations.length, 6);
 
 console.log("PencilProof regression checks passed.");
