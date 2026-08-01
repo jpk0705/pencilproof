@@ -121,7 +121,8 @@ h1 { max-width: 690px; margin: 0; font-family: Georgia, 'Times New Roman', serif
 .free-scan-drop strong { font-family: Georgia, serif; font-size: 27px; font-weight: 500; }
 .free-scan-drop p { max-width: 430px; margin: 10px 0 24px; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .free-scan-drop .button { width: auto; cursor: pointer; }
-.free-scan-drop input, .free-scan-error input { display: none; }
+.free-scan-drop > .button > input,
+.free-scan-error-actions .button > input { display: none; }
 .free-scan-drop small { margin-top: 12px; color: #7c898e; font-size: 9px; }
 .free-scan-progress, .free-scan-error { display: flex; gap: 15px; align-items: flex-start; margin: 24px; padding: 24px; border-radius: 8px; }
 .free-scan-progress { color: #244d65; background: #e8f1f6; }
@@ -137,6 +138,8 @@ h1 { max-width: 690px; margin: 0; font-family: Georgia, 'Times New Roman', serif
 .free-manual-grid label { display: flex; flex-direction: column; gap: 5px; color: var(--ink); }
 .free-manual-grid label > span { font-size: 8px; font-weight: 900; }
 .free-manual-grid input { width: 100%; min-height: 39px; padding: 9px 10px; border: 1px solid #c8a57f; border-radius: 4px; color: var(--ink); background: #fffdf8; font: inherit; font-size: 11px; }
+.free-manual-grid input[type="text"],
+.free-manual-grid input[type="number"] { display: block; visibility: visible; opacity: 1; pointer-events: auto; }
 .free-manual-grid .manual-field-wide { grid-column: 1 / -1; }
 .free-scan-error .free-manual-error { color: #8c241d; font-weight: 800; }
 .free-manual-entry > .button { width: 100%; margin-top: 14px; }
