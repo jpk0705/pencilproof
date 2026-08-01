@@ -1218,6 +1218,44 @@ const bytesToBase64 = (bytes: Uint8Array) => {
   return btoa(binary);
 };
 
+const isPhotoLikeImage = async (file: File) => {
+  if (typeof window === "undefined") return false;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const pixels = bitmap.width * bitmap.height;
+    const photoLike = Math.max(bitmap.width, bitmap.height) < 1400 || pixels < 1_000_000;
+    bitmap.close();
+    return photoLike;
+  } catch {
+    return false;
+  }
+};
+
+// Small phone screenshots and compressed social-media images lose the character
+// detail that both Tesseract and vision models need. Upscale before the server
+// request, while keeping the original untouched for the user's evidence view.
+const prepareVisionImage = async (file: File) => {
+  if (typeof window === "undefined") return { bytes: new Uint8Array(await file.arrayBuffer()), mimeType: file.type };
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(5, Math.max(2, 1800 / Math.max(bitmap.width, bitmap.height)));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+  const context = canvas.getContext("2d", { alpha: false });
+  if (!context) throw new Error("IMAGE_PREPROCESS_ERROR");
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.filter = "grayscale(1) contrast(1.12) brightness(1.03)";
+  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((value) => value ? resolve(value) : reject(new Error("IMAGE_PREPROCESS_ERROR")), "image/jpeg", 0.94);
+  });
+  canvas.width = 1;
+  canvas.height = 1;
+  return { bytes: new Uint8Array(await blob.arrayBuffer()), mimeType: "image/jpeg" };
+};
+
 /**
  * QuoteDefender's accuracy advantage comes from server-side document vision
  * followed by a layout-aware structured extraction prompt. PencilProof keeps
@@ -1227,24 +1265,30 @@ const bytesToBase64 = (bytes: Uint8Array) => {
 const extractDealWithServerVision = async (
   file: File,
   onProgress?: (update: DealImportProgress) => void,
+  upload?: { bytes: Uint8Array; mimeType: string },
 ): Promise<DealPdfResult> => {
   if (typeof window === "undefined") throw new Error("AI_IMPORT_UNAVAILABLE");
-  const bytes = new Uint8Array(await file.arrayBuffer());
+  const prepared = upload ?? { bytes: new Uint8Array(await file.arrayBuffer()), mimeType: file.type || "image/png" };
   onProgress?.({ progress: 0.08, status: "sending the document to PencilProof vision import" });
   const response = await fetch("https://audit.pencilproof.com/api/ai-import", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      mimeType: file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/png"),
-      base64: bytesToBase64(bytes),
+      mimeType: prepared.mimeType || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/png"),
+      base64: bytesToBase64(prepared.bytes),
     }),
   });
-  if (!response.ok) throw new Error("AI_IMPORT_UNAVAILABLE");
   const payload = await response.json() as {
     fields?: Record<string, unknown>;
     warnings?: string[];
     fieldConfidence?: DealPdfResult["fieldConfidence"];
+    error?: string;
+    providerCode?: string;
   };
+  if (!response.ok) {
+    const code = payload.providerCode ? `_${payload.providerCode}` : "";
+    throw new Error(payload.error === "AI_IMPORT_PROVIDER_ERROR" ? `AI_IMPORT_PROVIDER${code}` : (payload.error ?? "AI_IMPORT_UNAVAILABLE"));
+  }
   const source = (payload.fields ?? {}) as ImportedDealFields;
   const fields = sanitizeImportedFields(source).fields;
   if (!Object.keys(fields).length) throw new Error("AI_IMPORT_EMPTY");
@@ -1321,6 +1365,17 @@ export const extractDealFromFile = async (
   const isWebp = file.type === "image/webp" || name.endsWith(".webp");
 
   if (isPdf || isJpeg || isPng || isWebp) {
+    if (!isPdf && await isPhotoLikeImage(file)) {
+      onProgress?.({ progress: 0.02, status: "enhancing the image for vision import" });
+      try {
+        const upload = await prepareVisionImage(file);
+        return await extractDealWithServerVision(file, onProgress, upload);
+      } catch (visionError) {
+        // For a tiny photo, local OCR is not a trustworthy fallback. Preserve
+        // the server diagnostic so the user can retry or use manual entry.
+        throw visionError;
+      }
+    }
     let localResult: DealPdfResult;
     try {
       localResult = isPdf
