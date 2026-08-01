@@ -623,7 +623,7 @@ export default function AnalyzePage() {
     <main className="analyzer-page">
       <nav className="site-nav analyzer-nav" aria-label="Main navigation">
         <Link className="brand" href="/"><span className="brand-mark">P</span><span>PencilProof</span></Link>
-        <span className="privacy-chip">Your deal inputs stay in this browser</span>
+        <span className="privacy-chip">Your deal inputs stay in this browser · <a href="mailto:support@pencilproof.com">Contact support</a></span>
       </nav>
 
       <header className="analyzer-header shell">
