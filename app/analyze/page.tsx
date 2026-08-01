@@ -260,8 +260,9 @@ export default function AnalyzePage() {
     const isPdf = file.type === "application/pdf" || lowerName.endsWith(".pdf");
     const isJpeg = file.type === "image/jpeg" || /\.jpe?g$/.test(lowerName);
     const isPng = file.type === "image/png" || lowerName.endsWith(".png");
-    if (!isPdf && !isJpeg && !isPng) {
-      setDealImport({ status: "error", message: "Choose a PDF, JPG, JPEG, or PNG file from the dealership.", fields: [] });
+    const isWebp = file.type === "image/webp" || lowerName.endsWith(".webp");
+    if (!isPdf && !isJpeg && !isPng && !isWebp) {
+      setDealImport({ status: "error", message: "Choose a PDF, JPG, JPEG, PNG, or WebP file from the dealership.", fields: [] });
       return;
     }
     if (file.size > 15 * 1024 * 1024) {
@@ -343,7 +344,7 @@ export default function AnalyzePage() {
         status: "error",
         message: unreadableImage
           ? "PencilProof could not find enough readable text in that image or scanned PDF. Try a brighter, sharper copy or enter the figures manually."
-          : "PencilProof could not read this file. It may be password-protected, blurry, or use an unsupported format. Your file was not uploaded; enter the figures manually.",
+          : "PencilProof could not read this file. It may be password-protected, blurry, or use an unsupported format. Check the original quote and enter the figures manually.",
         fields: [],
       });
     }
@@ -760,7 +761,7 @@ export default function AnalyzePage() {
                 ) : (
                   <div className="evidence-unavailable">The original file is not available in this session. Verify each value against your copy.</div>
                 )}
-                <p>Keep this document open while checking every imported number. PencilProof does not upload it.</p>
+                <p>Keep this document open while checking every imported number. Clear, complete copies stay local unless the local result needs the optional vision fallback.</p>
               </div>
               <div className="verification-grid">
                 {verificationFields.map((field) => {

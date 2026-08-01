@@ -86,10 +86,7 @@ This is a FINANCE-FIRST parser:
 The document may be a photo, scan, screenshot, or PDF. Read the entire document and preserve cents exactly when visible.`;
 
 const AI_IMPORT_MODELS = [
-  "gemini-2.5-flash",
   "gemini-2.5-flash-lite",
-  "gemini-2.0-flash",
-  "gemini-2.0-flash-lite",
 ] as const;
 
 const decodeGeminiJson = (value: unknown) => {
@@ -119,8 +116,9 @@ const handleAiImport = async (request: Request, env: Env) => {
 
   // Keep the credential out of the request URL. Google documents the
   // x-goog-api-key header for Gemini API authentication. Try the regular
-  // model first, then the lower-cost Flash-Lite model when a project-level
-  // quota or transient provider limit blocks the first request.
+  // Use the lower-cost Flash-Lite model only. Local extraction runs first in
+  // the browser, so this path is reserved for ambiguous documents rather
+  // than spending provider quota on every upload.
   let response: Response | undefined;
   let lastProviderBody = "";
   for (const model of AI_IMPORT_MODELS) {
