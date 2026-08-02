@@ -50,3 +50,4 @@ jobs:
 # Deployment trigger: refresh after OCR asset fallback fix.
 # Deployment trigger: refresh after complete OCR asset fallback fix.
 # Deployment trigger: refresh after dependency-install fix.
+# Deployment trigger: refresh after PR #29 invalid-model fallback fix.\n
