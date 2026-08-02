@@ -1246,10 +1246,10 @@ const createCheckoutSession = async (
   const stripeSecretKey = typeof env.STRIPE_SECRET_KEY === "string"
     ? env.STRIPE_SECRET_KEY.trim()
     : "";
-  if (!/^(?:rk|sk)_(test|live)_[A-Za-z0-9_-]+$/.test(stripeSecretKey)) {
+  if (!stripeSecretKey) {
     throw new CheckoutError(
       "stripe_secret_key_invalid",
-      "Stripe restricted key is not configured",
+      "Stripe secret key is not configured",
     );
   }
 
