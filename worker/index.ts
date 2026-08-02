@@ -1242,7 +1242,7 @@ const createCheckoutSession = async (
 
   if (
     typeof env.STRIPE_SECRET_KEY !== "string"
-    || !/^rk_(test|live)_[A-Za-z0-9]+$/.test(env.STRIPE_SECRET_KEY)
+    || !/^(?:rk|sk)_(test|live)_[A-Za-z0-9]+$/.test(env.STRIPE_SECRET_KEY)
   ) {
     throw new CheckoutError(
       "stripe_secret_key_invalid",
