@@ -41,3 +41,4 @@ jobs:
 # Deployment trigger: keep Worker deployment attached to main updates.
 # Deployment trigger: refresh after Gemini model routing fix.
 # Deployment trigger: refresh after enabled-model discovery fix.
+# Deployment trigger: refresh after payment-option preservation fix.
