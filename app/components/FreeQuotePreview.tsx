@@ -9,6 +9,7 @@ import {
   DEAL_FIELD_LABELS,
   extractDealFromFile,
   type DealPdfResult,
+  type DealOfferOption,
   type ImportedDealFields,
 } from "@/lib/deal-pdf";
 import { paymentFor } from "@/lib/deal-calculations";
@@ -57,6 +58,7 @@ const money = (value: number, cents = false) =>
 
 export default function FreeQuotePreview() {
   const [scan, setScan] = useState<ScanState>({ status: "idle" });
+  const [selectedOfferId, setSelectedOfferId] = useState("");
   const [importReviewed, setImportReviewed] = useState(false);
   const [failedImportAttempts, setFailedImportAttempts] = useState(0);
   const [manualMode, setManualMode] = useState(false);
@@ -155,6 +157,41 @@ export default function FreeQuotePreview() {
     });
   };
 
+  const chooseOffer = (option: DealOfferOption) => {
+    setSelectedOfferId(option.id);
+    setImportReviewed(false);
+    setScan((current) => {
+      if (current.status !== "ready" || option.type !== "finance") return current;
+      return {
+        ...current,
+        result: {
+          ...current.result,
+          fields: {
+            ...current.result.fields,
+            cashDown: option.cashDown,
+            term: option.term,
+            quotedPayment: option.payment,
+            ...(option.apr !== undefined ? { apr: option.apr } : {}),
+          },
+          fieldNames: Array.from(new Set([
+            ...current.result.fieldNames,
+            DEAL_FIELD_LABELS.cashDown,
+            DEAL_FIELD_LABELS.term,
+            DEAL_FIELD_LABELS.quotedPayment,
+            ...(option.apr !== undefined ? [DEAL_FIELD_LABELS.apr] : []),
+          ])),
+          fieldConfidence: {
+            ...current.result.fieldConfidence,
+            cashDown: "review",
+            term: "review",
+            quotedPayment: "review",
+            ...(option.apr !== undefined ? { apr: "review" as const } : {}),
+          },
+        },
+      };
+    });
+  };
+
   const previewManualEntry = () => {
     const fields = Object.fromEntries(
       Object.entries(manualFields).filter(
@@ -198,6 +235,7 @@ export default function FreeQuotePreview() {
     event.target.value = "";
     if (!file) return;
     setImportReviewed(false);
+    setSelectedOfferId("");
 
     const lowerName = file.name.toLowerCase();
     const supported =
@@ -319,6 +357,10 @@ export default function FreeQuotePreview() {
       reviewAreas,
     };
   }, [scan]);
+
+  const selectedOffer = scan.status === "ready"
+    ? scan.result.offerMatrix?.options.find((option) => option.id === selectedOfferId)
+    : undefined;
 
   return (
     <section className="section free-scan-section" id="free-scan">
@@ -474,6 +516,48 @@ export default function FreeQuotePreview() {
                 <div><strong>{scan.result.offerMatrix?.options.length ?? 0}</strong><span>payment choices</span></div>
               </div>
 
+              {scan.result.offerMatrix ? (
+                <div className="offer-matrix free-offer-matrix" aria-labelledby="free-offer-matrix-title">
+                  <div className="offer-matrix-heading">
+                    <div>
+                      <p className="eyebrow">MULTIPLE OPTIONS DETECTED</p>
+                      <h3 id="free-offer-matrix-title">Choose the payment option you plan to use</h3>
+                    </div>
+                    <span>{scan.result.offerMatrix.options.length} choices</span>
+                  </div>
+                  {(["finance", "lease"] as const).map((type) => {
+                    const options = scan.result.offerMatrix?.options.filter((option) => option.type === type) ?? [];
+                    if (!options.length) return null;
+                    return (
+                      <section className="offer-group" key={type} aria-label={`${type} options`}>
+                        <div className="offer-group-title">
+                          <h4>{type === "finance" ? "Finance alternatives" : "Lease estimates"}</h4>
+                          <p>{type === "finance" ? "Select one row. This choice will be sent into your Full Quote Audit." : "Lease rows are shown for comparison only."}</p>
+                        </div>
+                        <div className="offer-options-grid">
+                          {options.map((option) => (
+                            <button
+                              type="button"
+                              key={option.id}
+                              className={`offer-card ${selectedOfferId === option.id ? "offer-card-selected" : ""}`}
+                              onClick={() => chooseOffer(option)}
+                              aria-pressed={selectedOfferId === option.id}
+                            >
+                              <strong>{money(option.payment, true)}<small>/mo</small></strong>
+                              <span>{option.term} months</span>
+                              <span>{money(option.cashDown)} down</span>
+                              {option.rebate !== undefined ? <em>{money(option.rebate)} rebate shown</em> : null}
+                              <b>{selectedOfferId === option.id ? "Selected" : "Choose"}</b>
+                            </button>
+                          ))}
+                        </div>
+                      </section>
+                    );
+                  })}
+                  <p className="offer-matrix-warning">{scan.result.offerMatrix.warnings.join(" ")} Select the exact row you are considering. PencilProof will use its down payment, term, and printed payment for the audit.</p>
+                </div>
+              ) : null}
+
               <VehiclePhoto
                 vehicle={String(preview.fields.vehicle ?? "")}
                 compact
@@ -580,7 +664,7 @@ export default function FreeQuotePreview() {
                     <small>I understand that missing fields must be entered manually and every value must be confirmed again before the audit.</small>
                   </span>
                 </label>
-                {importReviewed ? (
+                {importReviewed && (!scan.result.offerMatrix || selectedOffer) ? (
                   <a
                     className="button button-primary"
                     href={CHECKOUT_URL}
@@ -590,6 +674,7 @@ export default function FreeQuotePreview() {
                         fields: scan.result.fields,
                         confidence: scan.result.fieldConfidence,
                         offerMatrix: scan.result.offerMatrix ?? null,
+                        selectedOfferId: selectedOfferId || null,
                       });
                     }}
                   >
@@ -597,7 +682,7 @@ export default function FreeQuotePreview() {
                   </a>
                 ) : (
                   <button className="button button-primary" type="button" disabled>
-                    Review the imported values to continue
+                    {scan.result.offerMatrix && !selectedOffer ? "Choose a payment option to continue" : "Review the imported values to continue"}
                   </button>
                 )}
                 <button
