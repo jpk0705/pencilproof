@@ -1290,6 +1290,7 @@ const extractDealWithServerVision = async (
     fields?: Record<string, unknown>;
     warnings?: string[];
     fieldConfidence?: DealPdfResult["fieldConfidence"];
+    offerMatrix?: DealOfferMatrix;
     error?: string;
     providerCode?: string;
   };
@@ -1302,6 +1303,12 @@ const extractDealWithServerVision = async (
   if (!Object.keys(fields).length) throw new Error("AI_IMPORT_EMPTY");
   const reconciled = reconcileQuotedPayment(fields);
   const warnings = [...(payload.warnings ?? []), ...reconciled.warnings];
+  const offerMatrix = payload.offerMatrix?.options?.length
+    ? {
+      options: payload.offerMatrix.options,
+      warnings: payload.offerMatrix.warnings ?? [],
+    }
+    : undefined;
   onProgress?.({ progress: 1, status: "AI document extraction complete" });
   return {
     fields: reconciled.fields,
@@ -1312,6 +1319,7 @@ const extractDealWithServerVision = async (
     usedOcr: true,
     pagesProcessed: 1,
     warnings,
+    offerMatrix,
   };
 };
 
