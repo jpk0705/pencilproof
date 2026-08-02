@@ -45,3 +45,4 @@ jobs:
 # Deployment trigger: refresh after verified PR #28 merge.
 # Deployment trigger: refresh after build reliability fix.
 # Deployment trigger: refresh after OCR asset fallback fix.
+# Deployment trigger: refresh after complete OCR asset fallback fix.
