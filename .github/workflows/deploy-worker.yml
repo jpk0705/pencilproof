@@ -28,6 +28,9 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Install dependencies
+        run: npm ci
+
       - name: Build static assets
         run: npm run build
 
@@ -46,3 +49,4 @@ jobs:
 # Deployment trigger: refresh after build reliability fix.
 # Deployment trigger: refresh after OCR asset fallback fix.
 # Deployment trigger: refresh after complete OCR asset fallback fix.
+# Deployment trigger: refresh after dependency-install fix.
