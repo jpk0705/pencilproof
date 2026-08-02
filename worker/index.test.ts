@@ -373,7 +373,7 @@ test("an existing webhook endpoint is upgraded with revocation events", async ()
   );
 });
 
-test("checkout fails closed when webhook reconciliation is unavailable", async () => {
+test("checkout continues when webhook reconciliation is unavailable", async () => {
   const env = makeEnv();
   delete env.STRIPE_WEBHOOK_SECRET;
   const stripePaths: string[] = [];
@@ -393,7 +393,10 @@ test("checkout fails closed when webhook reconciliation is unavailable", async (
         { status: 403 },
       );
     }
-    throw new Error(`Unexpected Stripe path: ${url.pathname}`);
+    return Response.json({
+      id: "cs_test_created",
+      url: "https://checkout.stripe.com/c/pay/cs_test_created",
+    });
   };
 
   const response = await handleRequest(
@@ -408,13 +411,20 @@ test("checkout fails closed when webhook reconciliation is unavailable", async (
     error: string;
   };
 
-  assert.equal(response.status, 502);
-  assert.equal(result.code, "webhook_unavailable");
-  assert.equal(result.error, "Checkout is temporarily unavailable.");
+  assert.equal(response.status, 200);
+  assert.equal(result.code, undefined);
+  assert.equal(result.error, undefined);
   assert.deepEqual(stripePaths, [
     "/v1/webhook_endpoints",
     "/v1/events",
+    "/v1/checkout/sessions",
   ]);
+
+  const statusResponse = await handleRequest(
+    new Request("https://audit.pencilproof.com/api/stripe/webhook/status"),
+    env,
+  );
+  assert.deepEqual(await statusResponse.json(), { ready: true });
 });
 
 test("checkout fails safely when the Stripe price binding is absent", async () => {
