@@ -126,6 +126,12 @@ closeTo(plainOcrNumbers.gap, 895);
 closeTo(plainOcrNumbers.cashDown, 2500);
 closeTo(plainOcrNumbers.quotedPayment, 612);
 
+const gwcServiceContract = parseDealerText([
+  "GWC 36/100000** $5,300.00",
+]);
+closeTo(gwcServiceContract.serviceContract, 5300);
+assert.equal(gwcServiceContract.accessories, undefined);
+
 const labelWithMultipleAmounts = parseDealerText([
   "Sales Price $38,450.00 MSRP $40,250.00",
   "Sales Tax 9.25% $3,474.00",
