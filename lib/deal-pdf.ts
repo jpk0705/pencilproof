@@ -505,6 +505,12 @@ const sumDistinctAmounts = (
   lines.forEach((line, index) => {
     if (!labels.some((label) => label.test(line))) return;
     if (excludedLabels.some((label) => label.test(line))) return;
+    // Vehicle equipment descriptions can share an extracted PDF line with
+    // the payment column. For example, "Roof Rails ... Estimated Payment
+    // $625.89" must not turn the printed payment into an accessory price.
+    // An accessory amount is still accepted when it appears on its own
+    // itemized line, even if that line contains a physical accessory label.
+    if (/(?:estimated|monthly|quoted|payment)\b|\b(?:months?|mos?)\s*@/i.test(line)) return;
     const candidates = [index, index + 1, index - 1];
     for (const amountLineIndex of candidates) {
       if (amountLineIndex < 0 || matchedAmountLines.has(amountLineIndex)) continue;
@@ -517,7 +523,7 @@ const sumDistinctAmounts = (
       break;
     }
   });
-  return total || undefined;
+  return total ? Math.round(total * 100) / 100 : undefined;
 };
 
 const findPaymentNearLabel = (lines: string[], labels: RegExp[]) => {
@@ -952,398 +958,4 @@ const recognizeImages = async (
 
 const preprocessDealPhoto = async (file: File) => {
   const bitmap = await createImageBitmap(file);
-  const detectionScale = Math.min(1, 520 / Math.max(bitmap.width, bitmap.height));
-  const detectionWidth = Math.max(1, Math.round(bitmap.width * detectionScale));
-  const detectionHeight = Math.max(1, Math.round(bitmap.height * detectionScale));
-  const detectionCanvas = document.createElement("canvas");
-  detectionCanvas.width = detectionWidth;
-  detectionCanvas.height = detectionHeight;
-  const detectionContext = detectionCanvas.getContext("2d", { alpha: false });
-  if (!detectionContext) throw new Error("IMAGE_PREPROCESS_ERROR");
-  detectionContext.drawImage(bitmap, 0, 0, detectionWidth, detectionHeight);
-
-  const pixels = detectionContext.getImageData(0, 0, detectionWidth, detectionHeight).data;
-  const bright = new Uint8Array(detectionWidth * detectionHeight);
-  for (let index = 0; index < bright.length; index += 1) {
-    const pixelIndex = index * 4;
-    const red = pixels[pixelIndex];
-    const green = pixels[pixelIndex + 1];
-    const blue = pixels[pixelIndex + 2];
-    const luma = red * 0.299 + green * 0.587 + blue * 0.114;
-    const spread = Math.max(red, green, blue) - Math.min(red, green, blue);
-    bright[index] = luma >= 145 && spread <= 95 ? 1 : 0;
-  }
-
-  const visited = new Uint8Array(bright.length);
-  const queue = new Int32Array(bright.length);
-  let best = { area: 0, minX: 0, minY: 0, maxX: detectionWidth - 1, maxY: detectionHeight - 1 };
-  for (let start = 0; start < bright.length; start += 1) {
-    if (!bright[start] || visited[start]) continue;
-    let head = 0;
-    let tail = 0;
-    let area = 0;
-    let minX = detectionWidth;
-    let minY = detectionHeight;
-    let maxX = 0;
-    let maxY = 0;
-    queue[tail++] = start;
-    visited[start] = 1;
-    while (head < tail) {
-      const current = queue[head++];
-      const x = current % detectionWidth;
-      const y = Math.floor(current / detectionWidth);
-      area += 1;
-      minX = Math.min(minX, x);
-      maxX = Math.max(maxX, x);
-      minY = Math.min(minY, y);
-      maxY = Math.max(maxY, y);
-      const neighbors = [current - 1, current + 1, current - detectionWidth, current + detectionWidth];
-      for (const neighbor of neighbors) {
-        if (neighbor < 0 || neighbor >= bright.length || visited[neighbor] || !bright[neighbor]) continue;
-        const neighborX = neighbor % detectionWidth;
-        if (Math.abs(neighborX - x) > 1) continue;
-        visited[neighbor] = 1;
-        queue[tail++] = neighbor;
-      }
-    }
-    if (area > best.area) best = { area, minX, minY, maxX, maxY };
-  }
-
-  const detectedWidth = best.maxX - best.minX + 1;
-  const detectedHeight = best.maxY - best.minY + 1;
-  const detectedBoxArea = detectedWidth * detectedHeight;
-  const frameArea = detectionWidth * detectionHeight;
-  const useCrop = best.area >= frameArea * 0.08 && detectedBoxArea <= frameArea * 0.92 &&
-    detectedWidth >= detectionWidth * 0.28 && detectedHeight >= detectionHeight * 0.28;
-  const padding = useCrop ? Math.round(Math.max(detectedWidth, detectedHeight) * 0.025) : 0;
-  const cropX = useCrop ? Math.max(0, best.minX - padding) : 0;
-  const cropY = useCrop ? Math.max(0, best.minY - padding) : 0;
-  const cropRight = useCrop ? Math.min(detectionWidth, best.maxX + padding + 1) : detectionWidth;
-  const cropBottom = useCrop ? Math.min(detectionHeight, best.maxY + padding + 1) : detectionHeight;
-  const sourceX = Math.round(cropX / detectionScale);
-  const sourceY = Math.round(cropY / detectionScale);
-  const sourceWidth = Math.min(bitmap.width - sourceX, Math.round((cropRight - cropX) / detectionScale));
-  const sourceHeight = Math.min(bitmap.height - sourceY, Math.round((cropBottom - cropY) / detectionScale));
-  const outputScale = Math.min(2.5, Math.max(1, 1400 / Math.max(1, sourceWidth)));
-  const outputCanvas = document.createElement("canvas");
-  outputCanvas.width = Math.max(1, Math.round(sourceWidth * outputScale));
-  outputCanvas.height = Math.max(1, Math.round(sourceHeight * outputScale));
-  const outputContext = outputCanvas.getContext("2d", { alpha: false });
-  if (!outputContext) throw new Error("IMAGE_PREPROCESS_ERROR");
-  outputContext.filter = "grayscale(1) contrast(1.2)";
-  outputContext.drawImage(
-    bitmap,
-    sourceX,
-    sourceY,
-    sourceWidth,
-    sourceHeight,
-    0,
-    0,
-    outputCanvas.width,
-    outputCanvas.height,
-  );
-  bitmap.close();
-  detectionCanvas.width = 1;
-  detectionCanvas.height = 1;
-  const blob = await new Promise<Blob>((resolve, reject) => {
-    outputCanvas.toBlob((value) => value ? resolve(value) : reject(new Error("IMAGE_PREPROCESS_ERROR")), "image/jpeg", 0.92);
-  });
-  outputCanvas.width = 1;
-  outputCanvas.height = 1;
-  return new Uint8Array(await blob.arrayBuffer());
-};
-
-const preprocessDealPhotoFullFrame = async (file: File, threshold = false) => {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(2.5, Math.max(1, 2200 / Math.max(bitmap.width, bitmap.height)));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-  const context = canvas.getContext("2d", { alpha: false });
-  if (!context) throw new Error("IMAGE_PREPROCESS_ERROR");
-  context.imageSmoothingEnabled = true;
-  context.imageSmoothingQuality = "high";
-  context.filter = threshold ? "grayscale(1) contrast(1.45) brightness(1.08)" : "grayscale(1) contrast(1.3)";
-  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  if (threshold) {
-    const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
-    for (let index = 0; index < pixels.data.length; index += 4) {
-      const value = pixels.data[index] >= 170 ? 255 : 0;
-      pixels.data[index] = value;
-      pixels.data[index + 1] = value;
-      pixels.data[index + 2] = value;
-    }
-    context.putImageData(pixels, 0, 0);
-  }
-  bitmap.close();
-  const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((value) => value ? resolve(value) : reject(new Error("IMAGE_PREPROCESS_ERROR")), "image/png");
-  });
-  canvas.width = 1;
-  canvas.height = 1;
-  return new Uint8Array(await blob.arrayBuffer());
-};
-
-const renderPdfPageForOcr = async (page: PdfRenderablePageLike) => {
-  const viewport = page.getViewport({ scale: 3 });
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.ceil(viewport.width);
-  canvas.height = Math.ceil(viewport.height);
-  const canvasContext = canvas.getContext("2d", { alpha: false });
-  if (!canvasContext) throw new Error("PDF_RENDER_ERROR");
-
-  await page.render({ canvas, canvasContext, viewport }).promise;
-  const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((value) => value ? resolve(value) : reject(new Error("PDF_RENDER_ERROR")), "image/png");
-  });
-  const image = new Uint8Array(await blob.arrayBuffer());
-  canvas.width = 1;
-  canvas.height = 1;
-  return image;
-};
-
-export const extractDealFromPdf = async (
-  file: File,
-  onProgress?: (update: DealImportProgress) => void,
-): Promise<DealPdfResult> => {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-    "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
-    import.meta.url,
-  ).toString();
-
-  const data = new Uint8Array(await file.arrayBuffer());
-  const pdfDocument = await pdfjs.getDocument({ data }).promise;
-  const lines: string[] = [];
-
-  for (let pageNumber = 1; pageNumber <= pdfDocument.numPages; pageNumber += 1) {
-    const page = await pdfDocument.getPage(pageNumber);
-    lines.push(...await pageLines(page));
-  }
-
-  const digitalFields = parseDealerText(lines);
-  const digitalOfferMatrix = parseOfferMatrix(lines);
-  const digitalNeedsVerification = criticalImportFields.some((field) => digitalFields[field] === undefined) ||
-    Object.keys(digitalFields).length < 8;
-  let fields = digitalFields;
-  let offerMatrix = digitalOfferMatrix;
-  let usedOcr = false;
-  let pagesProcessed = 0;
-  let warnings: string[] = [];
-
-  // A PDF may contain a partial text layer. OCR it when critical values are
-  // missing, rather than accepting a plausible-looking partial import.
-  if (digitalNeedsVerification) {
-    pagesProcessed = Math.min(pdfDocument.numPages, 10);
-    const images: Uint8Array[] = [];
-    for (let pageNumber = 1; pageNumber <= pagesProcessed; pageNumber += 1) {
-      onProgress?.({ progress: (pageNumber - 1) / pagesProcessed, status: `preparing scanned PDF page ${pageNumber} of ${pagesProcessed}` });
-      const page = await pdfDocument.getPage(pageNumber);
-      images.push(await renderPdfPageForOcr(page as unknown as PdfRenderablePageLike));
-    }
-    const ocrText = await recognizeImages(images, onProgress, "sparse");
-    const ocrFields = parseDealerText(ocrText.split(/\r?\n/));
-    if (ocrText.replace(/\s/g, "").length >= 30) {
-      fields = mergeImportedCandidates([digitalFields, ocrFields]);
-      offerMatrix = chooseBetterOfferMatrix(digitalOfferMatrix, parseOfferMatrix(ocrText.split(/\r?\n/)));
-      usedOcr = true;
-    } else if (!Object.keys(digitalFields).length && !digitalOfferMatrix) {
-      throw new Error("UNREADABLE_IMAGE");
-    }
-  }
-
-  const reconciled = reconcileQuotedPayment(fields);
-  warnings = reconciled.warnings;
-  const fieldConfidence = confidenceFor(reconciled.fields, usedOcr ? "review" : "high");
-  if (reconciled.warnings.length && reconciled.fields.quotedPayment) fieldConfidence.quotedPayment = "review";
-  const fieldNames = Object.keys(reconciled.fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]);
-  return {
-    fields: reconciled.fields,
-    fieldConfidence,
-    fieldNames,
-    pageCount: pdfDocument.numPages,
-    sourceType: "pdf",
-    usedOcr,
-    pagesProcessed,
-    warnings,
-    offerMatrix,
-  };
-};
-
-export const extractDealFromImage = async (
-  file: File,
-  onProgress?: (update: DealImportProgress) => void,
-): Promise<DealPdfResult> => {
-  onProgress?.({ progress: 0, status: "isolating the dealer worksheet" });
-  const preparedImage = await preprocessDealPhoto(file);
-  const thresholdImage = await preprocessDealPhotoFullFrame(file, true);
-  const fullFrameImage = await preprocessDealPhotoFullFrame(file);
-  const texts: string[] = [];
-  onProgress?.({ progress: 0, status: "reading the document with multiple layouts" });
-  texts.push(await recognizeImages([preparedImage], onProgress, "form"));
-  onProgress?.({ progress: 0, status: "checking alternate document layout" });
-  texts.push(await recognizeImages([preparedImage], onProgress, "sparse"));
-  onProgress?.({ progress: 0, status: "checking enhanced full frame" });
-  texts.push(await recognizeImages([fullFrameImage], onProgress, "sparse"));
-  onProgress?.({ progress: 0, status: "checking high-contrast text" });
-  texts.push(await recognizeImages([thresholdImage], onProgress, "sparse"));
-
-  const readableTexts = texts.filter((text) => text.replace(/\s/g, "").length >= 30);
-  if (!readableTexts.length) throw new Error("UNREADABLE_IMAGE");
-  const candidates = readableTexts.map((text) => parseDealerText(text.split(/\r?\n/)));
-  let fields = mergeImportedCandidates(candidates);
-  let offerMatrix: DealOfferMatrix | undefined;
-  for (const text of readableTexts) offerMatrix = chooseBetterOfferMatrix(offerMatrix, parseOfferMatrix(text.split(/\r?\n/)));
-  const reconciled = reconcileQuotedPayment(fields);
-  const fieldNames = Object.keys(reconciled.fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]);
-  return {
-    fields: reconciled.fields,
-    fieldConfidence: confidenceFor(reconciled.fields, "review"),
-    fieldNames,
-    pageCount: 1,
-    sourceType: "image",
-    usedOcr: true,
-    pagesProcessed: 1,
-    warnings: reconciled.warnings,
-    offerMatrix,
-  };
-};
-
-const bytesToBase64 = (bytes: Uint8Array) => {
-  let binary = "";
-  const chunkSize = 0x8000;
-  for (let index = 0; index < bytes.length; index += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(index, Math.min(index + chunkSize, bytes.length)));
-  }
-  return btoa(binary);
-};
-
-/**
- * QuoteDefender's accuracy advantage comes from server-side document vision
- * followed by a layout-aware structured extraction prompt. PencilProof keeps
- * the local OCR path as a fallback, but uses the same stronger architecture
- * whenever the production AI importer is configured.
- */
-const extractDealWithServerVision = async (
-  file: File,
-  onProgress?: (update: DealImportProgress) => void,
-): Promise<DealPdfResult> => {
-  if (typeof window === "undefined") throw new Error("AI_IMPORT_UNAVAILABLE");
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  onProgress?.({ progress: 0.08, status: "sending the document to PencilProof vision import" });
-  const response = await fetch("https://audit.pencilproof.com/api/ai-import", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      mimeType: file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/png"),
-      base64: bytesToBase64(bytes),
-    }),
-  });
-  if (!response.ok) throw new Error("AI_IMPORT_UNAVAILABLE");
-  const payload = await response.json() as {
-    fields?: Record<string, unknown>;
-    warnings?: string[];
-    fieldConfidence?: DealPdfResult["fieldConfidence"];
-  };
-  const source = (payload.fields ?? {}) as ImportedDealFields;
-  const fields = sanitizeImportedFields(source).fields;
-  if (!Object.keys(fields).length) throw new Error("AI_IMPORT_EMPTY");
-  const reconciled = reconcileQuotedPayment(fields);
-  const warnings = [...(payload.warnings ?? []), ...reconciled.warnings];
-  onProgress?.({ progress: 1, status: "AI document extraction complete" });
-  return {
-    fields: reconciled.fields,
-    fieldConfidence: payload.fieldConfidence ?? confidenceFor(reconciled.fields, "review"),
-    fieldNames: Object.keys(reconciled.fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]),
-    pageCount: file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf") ? 1 : 1,
-    sourceType: file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf") ? "pdf" : "image",
-    usedOcr: true,
-    pagesProcessed: 1,
-    warnings,
-  };
-};
-
-const needsVisionReview = (result: DealPdfResult) =>
-  Boolean(
-    result.usedOcr ||
-    result.warnings?.length ||
-    criticalImportFields.some((field) => result.fields[field] === undefined) ||
-    Object.keys(result.fields).length < 8,
-  );
-
-const reconcileLocalAndVision = (
-  local: DealPdfResult,
-  vision: DealPdfResult,
-): DealPdfResult => {
-  const fields = { ...local.fields } as Record<keyof ImportedDealFields, string | number | undefined>;
-  const confidence: DealPdfResult["fieldConfidence"] = { ...local.fieldConfidence };
-
-  // Keep strong digital text evidence. Use vision for missing or OCR-only
-  // values, while retaining the review flag for user confirmation.
-  (Object.keys(DEAL_FIELD_LABELS) as (keyof ImportedDealFields)[]).forEach((field) => {
-    const localValue = local.fields[field];
-    const visionValue = vision.fields[field];
-    if (localValue === undefined && visionValue !== undefined) {
-      fields[field] = visionValue;
-      confidence[field] = "review";
-    } else if (local.usedOcr && visionValue !== undefined && confidence[field] !== "high") {
-      fields[field] = visionValue;
-      confidence[field] = "review";
-    }
-  });
-
-  const sanitized = sanitizeImportedFields(fields as ImportedDealFields).fields;
-  const reconciled = reconcileQuotedPayment(sanitized);
-  const warnings = Array.from(new Set([
-    ...(local.warnings ?? []),
-    ...(vision.warnings ?? []),
-    ...reconciled.warnings,
-  ]));
-  return {
-    ...local,
-    fields: reconciled.fields,
-    fieldConfidence: Object.fromEntries(
-      Object.keys(reconciled.fields).map((field) => [field, confidence[field as keyof ImportedDealFields] ?? "review"]),
-    ) as DealPdfResult["fieldConfidence"],
-    fieldNames: Object.keys(reconciled.fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]),
-    warnings,
-  };
-};
-
-export const extractDealFromFile = async (
-  file: File,
-  onProgress?: (update: DealImportProgress) => void,
-): Promise<DealPdfResult> => {
-  const name = file.name.toLowerCase();
-  const isPdf = file.type === "application/pdf" || name.endsWith(".pdf");
-  const isJpeg = file.type === "image/jpeg" || /\.jpe?g$/.test(name);
-  const isPng = file.type === "image/png" || name.endsWith(".png");
-  const isWebp = file.type === "image/webp" || name.endsWith(".webp");
-
-  if (isPdf || isJpeg || isPng || isWebp) {
-    let localResult: DealPdfResult;
-    try {
-      localResult = isPdf
-        ? await extractDealFromPdf(file, onProgress)
-        : await extractDealFromImage(file, onProgress);
-    } catch (localError) {
-      try {
-        return await extractDealWithServerVision(file, onProgress);
-      } catch {
-        throw localError;
-      }
-    }
-
-    if (!needsVisionReview(localResult)) return localResult;
-
-    try {
-      const visionResult = await extractDealWithServerVision(file, onProgress);
-      return reconcileLocalAndVision(localResult, visionResult);
-    } catch {
-      // Gemini is optional and may be unavailable or quota-limited. Never
-      // discard a usable local result when the provider does not answer.
-      return localResult;
-    }
-  }
-  throw new Error("UNSUPPORTED_FILE");
-};
+  const detectionScale = Math.ßŞw¶‰ËkºwµçAMÑÉ¥¹œ¹™É½µ¡…É½‘” ¸¸¹‰åÑ•Ì¹ÍÕ‰…ÉÉ…ä¡¥¹‘•à°5…Ñ ¹µ¥¸¡¥¹‘•à€¬¡Õ¹­M¥é”°‰åÑ•Ì¹±•¹Ñ ¤¤¤ì(€ô(€É•ÑÕÉ¸‰Ñ½„¡‰¥¹…Éä¤ì)ôì()½¹ÍĞ¥ÍA¡½Ñ½1¥­•%µ…”€ô…Íå¹Œ€¡™¥±”è¥±”¤€ôøì(€¥˜€¡ÑåÁ•½˜İ¥¹‘½Ü€ôôô€‰Õ¹‘•™¥¹•ˆ¤É•ÑÕÉ¸™…±Í”ì(€ÑÉäì(€€€½¹ÍĞ‰¥Ñµ…À€ô…İ…¥ĞÉ•…Ñ•%µ…•	¥Ñµ…À¡™¥±”¤ì(€€€½¹ÍĞÁ¥á•±Ì€ô‰¥Ñµ…À¹İ¥‘Ñ €¨‰¥Ñµ…À¹¡•¥¡Ğì(€€€½¹ÍĞÁ¡½Ñ½1¥­”€ô5…Ñ ¹µ…à¡‰¥Ñµ…À¹İ¥‘Ñ °‰¥Ñµ…À¹¡•¥¡Ğ¤€ğ€ÄĞÀÀñğÁ¥á•±Ì€ğ€Å|ÀÀÁ|ÀÀÀì(€€€‰¥Ñµ…À¹±½Í” ¤ì(€€€É•ÑÕÉ¸Á¡½Ñ½1¥­”ì(€ô…Ñ ì(€€€É•ÑÕÉ¸™…±Í”ì(€ô)ôì((¼¼Mµ…±°Á¡½¹”ÍÉ••¹Í¡½ÑÌ…¹½µÁÉ•ÍÍ•Í½¥…°µµ•‘¥„¥µ…•Ì±½Í”Ñ¡”¡…É…Ñ•È(¼¼‘•Ñ…¥°Ñ¡…Ğ‰½Ñ Q•ÍÍ•É…Ğ…¹Ù¥Í¥½¸µ½‘•±Ì¹••¸UÁÍ…±”‰•™½É”Ñ¡”Í•ÉÙ•È(¼¼É•ÅÕ•ÍĞ°İ¡¥±”­••Á¥¹œÑ¡”½É¥¥¹…°Õ¹Ñ½Õ¡•™½ÈÑ¡”ÕÍ•ÈÌ•Ù¥‘•¹”Ù¥•Ü¸)½¹ÍĞÁÉ•Á…É•Y¥Í¥½¹%µ…”€ô…Íå¹Œ€¡™¥±”è¥±”¤€ôøì(€¥˜€¡ÑåÁ•½˜İ¥¹‘½Ü€ôôô€‰Õ¹‘•™¥¹•ˆ¤É•ÑÕÉ¸ì‰åÑ•Ìè¹•ÜU¥¹ĞáÉÉ…ä¡…İ…¥Ğ™¥±”¹…ÉÉ…å	Õ™™•È ¤¤°µ¥µ•QåÁ”è™¥±”¹ÑåÁ”ôì(€½¹ÍĞ‰¥Ñµ…À€ô…İ…¥ĞÉ•…Ñ•%µ…•	¥Ñµ…À¡™¥±”¤ì(€½¹ÍĞÍ…±”€ô5…Ñ ¹µ¥¸ Ô°5…Ñ ¹µ…à È°€ÄàÀÀ€¼5…Ñ ¹µ…à¡‰¥Ñµ…À¹İ¥‘Ñ °‰¥Ñµ…À¹¡•¥¡Ğ¤¤¤ì(€½¹ÍĞ…¹Ù…Ì€ô‘½Õµ•¹Ğ¹É•…Ñ•±•µ•¹Ğ ‰…¹Ù…Ìˆ¤ì(€…¹Ù…Ì¹İ¥‘Ñ €ô5…Ñ ¹µ…à Ä°5…Ñ ¹É½Õ¹¡‰¥Ñµ…À¹İ¥‘Ñ €¨Í…±”¤¤ì(€…¹Ù…Ì¹¡•¥¡Ğ€ô5…Ñ ¹µ…à Ä°5…Ñ ¹É½Õ¹¡‰¥Ñµ…À¹¡•¥¡Ğ€¨Í…±”¤¤ì(€½¹ÍĞ½¹Ñ•áĞ€ô…¹Ù…Ì¹•Ñ½¹Ñ•áĞ ˆÉˆ°ì…±Á¡„è™…±Í”ô¤ì(€¥˜€ …½¹Ñ•áĞ¤Ñ¡É½Ü¹•ÜÉÉ½È ‰%5}AIAI=MM}II=Hˆ¤ì(€½¹Ñ•áĞ¹¥µ…•Mµ½½Ñ¡¥¹¹…‰±•€ôÑÉÕ”ì(€½¹Ñ•áĞ¹¥µ…•Mµ½½Ñ¡¥¹EÕ…±¥Ñä€ô€‰¡¥ ˆì(€½¹Ñ•áĞ¹™¥±Ñ•È€ô€‰É…åÍ…±” Ä¤½¹ÑÉ…ÍĞ Ä¸ÄÈ¤‰É¥¡Ñ¹•ÍÌ Ä¸ÀÌ¤ˆì(€½¹Ñ•áĞ¹‘É…İ%µ…”¡‰¥Ñµ…À°€À°€À°…¹Ù…Ì¹İ¥‘Ñ °…¹Ù…Ì¹¡•¥¡Ğ¤ì(€‰¥Ñµ…À¹±½Í” ¤ì(€½¹ÍĞ‰±½ˆ€ô…İ…¥Ğ¹•ÜAÉ½µ¥Í”ñ	±½ˆø ¡É•Í½±Ù”°É•©•Ğ¤€ôøì(€€€…¹Ù…Ì¹Ñ½	±½ˆ ¡Ù…±Õ”¤€ôøÙ…±Õ”€üÉ•Í½±Ù”¡Ù…±Õ”¤€èÉ•©•Ğ¡¹•ÜÉÉ½È ‰%5}AIAI=MM}II=Hˆ¤¤°€‰¥µ…”½©Á•œˆ°€À¸äĞ¤ì(€ô¤ì(€…¹Ù…Ì¹İ¥‘Ñ €ô€Äì(€…¹Ù…Ì¹¡•¥¡Ğ€ô€Äì(€É•ÑÕÉ¸ì‰åÑ•Ìè¹•ÜU¥¹ĞáÉÉ…ä¡…İ…¥Ğ‰±½ˆ¹…ÉÉ…å	Õ™™•È ¤¤°µ¥µ•QåÁ”è€‰¥µ…”½©Á•œˆôì)ôì((¼¨¨(€¨EÕ½Ñ••™•¹‘•ÈÌ…ÕÉ…ä…‘Ù…¹Ñ…”½µ•Ì™É½´Í•ÉÙ•ÈµÍ¥‘”‘½Õµ•¹ĞÙ¥Í¥½¸(€¨™½±±½İ•‰ä„±…å½ÕĞµ…İ…É”ÍÑÉÕÑÕÉ••áÑÉ…Ñ¥½¸ÁÉ½µÁĞ¸A•¹¥±AÉ½½˜­••ÁÌ(€¨Ñ¡”±½…°=HÁ…Ñ …Ì„™…±±‰…¬°‰ÕĞÕÍ•ÌÑ¡”Í…µ”ÍÑÉ½¹•È…É¡¥Ñ•ÑÕÉ”(€¨İ¡•¹•Ù•ÈÑ¡”ÁÉ½‘ÕÑ¥½¸$¥µÁ½ÉÑ•È¥Ì½¹™¥ÕÉ•¸(€¨¼)½¹ÍĞ•áÑÉ…Ñ•…±]¥Ñ¡M•ÉÙ•ÉY¥Í¥½¸€ô…Íå¹Œ€ (€™¥±”è¥±”°(€½¹AÉ½É•ÍÌüè€¡ÕÁ‘…Ñ”è•…±%µÁ½ÉÑAÉ½É•ÍÌ¤€ôøÙ½¥°(€ÕÁ±½…üèì‰åÑ•ÌèU¥¹ĞáÉÉ…äìµ¥µ•QåÁ”èÍÑÉ¥¹œô°(¤èAÉ½µ¥Í”ñ•…±A‘™I•ÍÕ±Ğø€ôøì(€¥˜€¡ÑåÁ•½˜İ¥¹‘½Ü€ôôô€‰Õ¹‘•™¥¹•ˆ¤Ñ¡É½Ü¹•ÜÉÉ½È ‰%}%5A=IQ}U9Y%1	1ˆ¤ì(€½¹ÍĞÁÉ•Á…É•€ôÕÁ±½…€üüì‰åÑ•Ìè¹•ÜU¥¹ĞáÉÉ…ä¡…İ…¥Ğ™¥±”¹…ÉÉ…å	Õ™™•È ¤¤°µ¥µ•QåÁ”è™¥±”¹ÑåÁ”ñğ€‰¥µ…”½Á¹œˆôì(€½¹AÉ½É•ÍÌü¸¡ìÁÉ½É•ÍÌè€À¸Àà°ÍÑ…ÑÕÌè€‰Í•¹‘¥¹œÑ¡”‘½Õµ•¹ĞÑ¼A•¹¥±AÉ½½˜Ù¥Í¥½¸¥µÁ½ÉĞˆô¤ì(€½¹ÍĞÉ•ÍÁ½¹Í”€ô…İ…¥Ğ™•Ñ  ‰¡ÑÑÁÌè¼½…Õ‘¥Ğ¹Á•¹¥±ÁÉ½½˜¹½´½…Á¤½…¤µ¥µÁ½ÉĞˆ°ì(€€€µ•Ñ¡½è€‰A=MPˆ°(€€€¡•…‘•ÉÌèì€‰½¹Ñ•¹ĞµQåÁ”ˆè€‰…ÁÁ±¥…Ñ¥½¸½©Í½¸ˆô°(€€€‰½‘äè)M=8¹ÍÑÉ¥¹¥™ä¡ì(€€€€€µ¥µ•QåÁ”èÁÉ•Á…É•¹µ¥µ•QåÁ”ñğ€¡™¥±”¹¹…µ”¹Ñ½1½İ•É…Í” ¤¹•¹‘Í]¥Ñ  ˆ¹Á‘˜ˆ¤€ü€‰…ÁÁ±¥…Ñ¥½¸½Á‘˜ˆ€è€‰¥µ…”½Á¹œˆ¤°(€€€€€‰…Í”ØĞè‰åÑ•ÍQ½	…Í”ØĞ¡ÁÉ•Á…É•¹‰åÑ•Ì¤°(€€€ô¤°(€ô¤ì(€½¹ÍĞÁ…å±½…€ô…İ…¥ĞÉ•ÍÁ½¹Í”¹©Í½¸ ¤…Ìì(€€€™¥•±‘ÌüèI•½ÉñÍÑÉ¥¹œ°Õ¹­¹½İ¸øì(€€€İ…É¹¥¹ÌüèÍÑÉ¥¹mtì(€€€™¥•±‘½¹™¥‘•¹”üè•…±A‘™I•ÍÕ±Ñl‰™¥•±‘½¹™¥‘•¹”‰tì(€€€•ÉÉ½ÈüèÍÑÉ¥¹œì(€€€ÁÉ½Ù¥‘•É½‘”üèÍÑÉ¥¹œì(€ôì(€¥˜€ …É•ÍÁ½¹Í”¹½¬¤ì(€€€½¹ÍĞ½‘”€ôÁ…å±½…¹ÁÉ½Ù¥‘•É½‘”€ü|‘íÁ…å±½…¹ÁÉ½Ù¥‘•É½‘•õ€€è€ˆˆì(€€€Ñ¡É½Ü¹•ÜÉÉ½È¡Á…å±½…¹•ÉÉ½È€ôôô€‰%}%5A=IQ}AI=Y%I}II=Hˆ€ü%}%5A=IQ}AI=Y%H‘í½‘•õ€€è€¡Á…å±½…¹•ÉÉ½È€üü€‰%}%5A=IQ}U9Y%1	1ˆ¤¤ì(€ô(€½¹ÍĞÍ½ÕÉ”€ô€¡Á…å±½…¹™¥•±‘Ì€üüíô¤…Ì%µÁ½ÉÑ•‘•…±¥•±‘Ìì(€½¹ÍĞ™¥•±‘Ì€ôÍ…¹¥Ñ¥é•%µÁ½ÉÑ•‘¥•±‘Ì¡Í½ÕÉ”¤¹™¥•±‘Ìì(€¥˜€ …=‰©•Ğ¹­•åÌ¡™¥•±‘Ì¤¹±•¹Ñ ¤Ñ¡É½Ü¹•ÜÉÉ½È ‰%}%5A=IQ}5AQdˆ¤ì(€½¹ÍĞÉ•½¹¥±•€ôÉ•½¹¥±•EÕ½Ñ•‘A…åµ•¹Ğ¡™¥•±‘Ì¤ì(€½¹ÍĞİ…É¹¥¹Ì€ôl¸¸¸¡Á…å±½…¹İ…É¹¥¹Ì€üümt¤°€¸¸¹É•½¹¥±•¹İ…É¹¥¹Ítì(€½¹AÉ½É•ÍÌü¸¡ìÁÉ½É•ÍÌè€Ä°ÍÑ…ÑÕÌè€‰$‘½Õµ•¹Ğ•áÑÉ…Ñ¥½¸½µÁ±•Ñ”ˆô¤ì(€É•ÑÕÉ¸ì(€€€™¥•±‘ÌèÉ•½¹¥±•¹™¥•±‘Ì°(€€€™¥•±‘½¹™¥‘•¹”èÁ…å±½…¹™¥•±‘½¹™¥‘•¹”€üü½¹™¥‘•¹•½È¡É•½¹¥±•¹™¥•±‘Ì°€‰É•Ù¥•Üˆ¤°(€€€™¥•±‘9…µ•Ìè=‰©•Ğ¹­•åÌ¡É•½¹¥±•¹™¥•±‘Ì¤¹µ…À ¡™¥•±¤€ôø1}%1}1	1Mm™¥•±…Ì­•å½˜%µÁ½ÉÑ•‘•…±¥•±‘Ít¤°(€€€Á…•½Õ¹Ğè™¥±”¹ÑåÁ”€ôôô€‰…ÁÁ±¥…Ñ¥½¸½Á‘˜ˆñğ™¥±”¹¹…µ”¹Ñ½1½İ•É…Í” ¤¹•¹‘Í]¥Ñ  ˆ¹Á‘˜ˆ¤€ü€Ä€è€Ä°(€€€Í½ÕÉ•QåÁ”è™¥±”¹ÑåÁ”€ôôô€‰…ÁÁ±¥…Ñ¥½¸½Á‘˜ˆñğ™¥±”¹¹…µ”¹Ñ½1½İ•É…Í” ¤¹•¹‘Í]¥Ñ  ˆ¹Á‘˜ˆ¤€ü€‰Á‘˜ˆ€è€‰¥µ…”ˆ°(€€€ÕÍ•‘=ÈèÑÉÕ”°(€€€Á…•ÍAÉ½•ÍÍ•è€Ä°(€€€İ…É¹¥¹Ì°(€ôì)ôì((¼¨¨(€¨ÅÕ½Ñ”‘½•Ì¹½Ğ¹••Ù¥Í¥½¸µ•É•±ä‰•…ÕÍ”½ÁÑ¥½¹…°…Ñ•½É¥•Ì…É”…‰Í•¹Ğ¸(€¨I•‰…Ñ”°YM°AA4°P™\°…•ÍÍ½É¥•Ì°…¹ÑÉ…‘”™¥•±‘Ì…É”±•¥Ñ¥µ…Ñ•±ä(€¨µ¥ÍÍ¥¹œ½¸µ…¹ä‘•…±•Èİ½É­Í¡••ÑÌ¸Í…±…Ñ”½¹±äİ¡•¸±½…°•áÑÉ…Ñ¥½¸‘¥(€¨¹½ĞÁÉ½‘Õ”•¹½Õ ¹Õµ•É¥Œ‘•…°‘…Ñ„Ñ¼‰”„ÕÍ…‰±”ÅÕ½Ñ”ÁÉ•Ù¥•Ü¸(€¨¼)•áÁ½ÉĞ½¹ÍĞ¥Í1½…±±åI•…‘…‰±•%µÁ½ÉĞ€ô€¡É•ÍÕ±ĞèA¥¬ñ•…±A‘™I•ÍÕ±Ğ°€‰™¥•±‘Ìˆğ€‰™¥•±‘9…µ•Ìˆğ€‰½™™•É5…ÑÉ¥àˆø¤€ôøì(€¥˜€¡É•ÍÕ±Ğ¹½™™•É5…ÑÉ¥àü¹½ÁÑ¥½¹Ì¹±•¹Ñ ¤É•ÑÕÉ¸ÑÉÕ”ì(€½¹ÍĞ¹Õµ•É¥¥•±‘½Õ¹Ğ€ô=‰©•Ğ¹•¹ÑÉ¥•Ì¡É•ÍÕ±Ğ¹™¥•±‘Ì¤¹™¥±Ñ•È (€€€€¡m™¥•±°Ù…±Õ•t¤€ôø(€€€€€™¥•±€„ôô€‰Ù•¡¥±”ˆ€˜˜(€€€€€ÑåÁ•½˜Ù…±Õ”€ôôô€‰¹Õµ‰•Èˆ€˜˜(€€€€€9Õµ‰•È¹¥Í¥¹¥Ñ”¡Ù…±Õ”¤°(€€¤¹±•¹Ñ ì(€½¹ÍĞ¡…Í•…±¹¡½È€ô	½½±•…¸ (€€€É•ÍÕ±Ğ¹™¥•±‘Ì¹Í•±±¥¹AÉ¥”ñğ(€€€É•ÍÕ±Ğ¹™¥•±‘Ì¹ÅÕ½Ñ•‘A…åµ•¹Ğ°(€€¤ì(€É•ÑÕÉ¸É•ÍÕ±Ğ¹™¥•±‘9…µ•Ì¹±•¹Ñ €øô€Ì€˜˜¹Õµ•É¥¥•±‘½Õ¹Ğ€øô€Ì€˜˜¡…Í•…±¹¡½Èì)ôì()½¹ÍĞÉ•½¹¥±•1½…±¹‘Y¥Í¥½¸€ô€ (€±½…°è•…±A‘™I•ÍÕ±Ğ°(€Ù¥Í¥½¸è•…±A‘™I•ÍÕ±Ğ°(¤è•…±A‘™I•ÍÕ±Ğ€ôøì(€½¹ÍĞ™¥•±‘Ì€ôì€¸¸¹±½…°¹™¥•±‘Ìô…ÌI•½Éñ­•å½˜%µÁ½ÉÑ•‘•…±¥•±‘Ì°ÍÑÉ¥¹œğ¹Õµ‰•ÈğÕ¹‘•™¥¹•øì(€½¹ÍĞ½¹™¥‘•¹”è•…±A‘™I•ÍÕ±Ñl‰™¥•±‘½¹™¥‘•¹”‰t€ôì€¸¸¹±½…°¹™¥•±‘½¹™¥‘•¹”ôì((€€¼¼-••ÀÍÑÉ½¹œ‘¥¥Ñ…°Ñ•áĞ•Ù¥‘•¹”¸UÍ”Ù¥Í¥½¸™½Èµ¥ÍÍ¥¹œ½È=Hµ½¹±ä(€€¼¼Ù…±Õ•Ì°İ¡¥±”É•Ñ…¥¹¥¹œÑ¡”É•Ù¥•Ü™±…œ™½ÈÕÍ•È½¹™¥Éµ…Ñ¥½¸¸(€€¡=‰©•Ğ¹­•åÌ¡1}%1}1	1L¤…Ì€¡­•å½˜%µÁ½ÉÑ•‘•…±¥•±‘Ì¥mt¤¹™½É…  ¡™¥•±¤€ôøì(€€€½¹ÍĞ±½…±Y…±Õ”€ô±½…°¹™¥•±‘Ím™¥•±‘tì(€€€½¹ÍĞÙ¥Í¥½¹Y…±Õ”€ôÙ¥Í¥½¸¹™¥•±‘Ím™¥•±‘tì(€€€¥˜€¡±½…±Y…±Õ”€ôôôÕ¹‘•™¥¹•€˜˜Ù¥Í¥½¹Y…±Õ”€„ôôÕ¹‘•™¥¹•¤ì(€€€€€™¥•±‘Ím™¥•±‘t€ôÙ¥Í¥½¹Y…±Õ”ì(€€€€€½¹™¥‘•¹•m™¥•±‘t€ô€‰É•Ù¥•Üˆì(€€€ô•±Í”¥˜€¡±½…°¹ÕÍ•‘=È€˜˜Ù¥Í¥½¹Y…±Õ”€„ôôÕ¹‘•™¥¹•€˜˜½¹™¥‘•¹•m™¥•±‘t€„ôô€‰¡¥ ˆ¤ì(€€€€€™¥•±‘Ím™¥•±‘t€ôÙ¥Í¥½¹Y…±Õ”ì(€€€€€½¹™¥‘•¹•m™¥•±‘t€ô€‰É•Ù¥•Üˆì(€€€ô(€ô¤ì((€½¹ÍĞÍ…¹¥Ñ¥é•€ôÍ…¹¥Ñ¥é•%µÁ½ÉÑ•‘¥•±‘Ì¡™¥•±‘Ì…Ì%µÁ½ÉÑ•‘•…±¥•±‘Ì¤¹™¥•±‘Ìì(€½¹ÍĞÉ•½¹¥±•€ôÉ•½¹¥±•EÕ½Ñ•‘A…åµ•¹Ğ¡Í…¹¥Ñ¥é•¤ì(€½¹ÍĞİ…É¹¥¹Ì€ôÉÉ…ä¹™É½´¡¹•ÜM•Ğ¡l(€€€€¸¸¸¡±½…°¹İ…É¹¥¹Ì€üümt¤°(€€€€¸¸¸¡Ù¥Í¥½¸¹İ…É¹¥¹Ì€üümt¤°(€€€€¸¸¹É•½¹¥±•¹İ…É¹¥¹Ì°(€t¤¤ì(€É•ÑÕÉ¸ì(€€€€¸¸¹±½…°°(€€€™¥•±‘ÌèÉ•½¹¥±•¹™¥•±‘Ì°(€€€™¥•±‘½¹™¥‘•¹”è=‰©•Ğ¹™É½µ¹ÑÉ¥•Ì (€€€€€=‰©•Ğ¹­•åÌ¡É•½¹¥±•¹™¥•±‘Ì¤¹µ…À ¡™¥•±¤€ôøm™¥•±°½¹™¥‘•¹•m™¥•±…Ì­•å½˜%µÁ½ÉÑ•‘•…±¥•±‘Ít€üü€‰É•Ù¥•Ü‰t¤°(€€€€¤…Ì•…±A‘™I•ÍÕ±Ñl‰™¥•±‘½¹™¥‘•¹”‰t°(€€€™¥•±‘9…µ•Ìè=‰©•Ğ¹­•åÌ¡É•½¹¥±•¹™¥•±‘Ì¤¹µ…À ¡™¥•±¤€ôø1}%1}1	1Mm™¥•±…Ì­•å½˜%µÁ½ÉÑ•‘•…±¥•±‘Ít¤°(€€€İ…É¹¥¹Ì°(€ôì)ôì()•áÁ½ÉĞ½¹ÍĞ•áÑÉ…Ñ•…±É½µ¥±”€ô…Íå¹Œ€ (€™¥±”è¥±”°(€½¹AÉ½É•ÍÌüè€¡ÕÁ‘…Ñ”è•…±%µÁ½ÉÑAÉ½É•ÍÌ¤€ôøÙ½¥°(¤èAÉ½µ¥Í”ñ•…±A‘™I•ÍÕ±Ğø€ôøì(€½¹ÍĞ¹…µ”€ô™¥±”¹¹…µ”¹Ñ½1½İ•É…Í” ¤ì(€½¹ÍĞ¥ÍA‘˜€ô™¥±”¹ÑåÁ”€ôôô€‰…ÁÁ±¥…Ñ¥½¸½Á‘˜ˆñğ¹…µ”¹•¹‘Í]¥Ñ  ˆ¹Á‘˜ˆ¤ì(€½¹ÍĞ¥Í)Á•œ€ô™¥±”¹ÑåÁ”€ôôô€‰¥µ…”½©Á•œˆñğ€½p¹©Á”ıœ¼¹Ñ•ÍĞ¡¹…µ”¤ì(€½¹ÍĞ¥ÍA¹œ€ô™¥±”¹ÑåÁ”€ôôô€‰¥µ…”½Á¹œˆñğ¹…µ”¹•¹‘Í]¥Ñ  ˆ¹Á¹œˆ¤ì(€½¹ÍĞ¥Í]•‰À€ô™¥±”¹ÑåÁ”€ôôô€‰¥µ…”½İ•‰Àˆñğ¹…µ”¹•¹‘Í]¥Ñ  ˆ¹İ•‰Àˆ¤ì((€¥˜€¡¥ÍA‘˜ñğ¥Í)Á•œñğ¥ÍA¹œñğ¥Í]•‰À¤ì(€€€¥˜€ …¥ÍA‘˜€˜˜…İ…¥Ğ¥ÍA¡½Ñ½1¥­•%µ…”¡™¥±”¤¤ì(€€€€€½¹AÉ½É•ÍÌü¸¡ìÁÉ½É•ÍÌè€À¸ÀÈ°ÍÑ…ÑÕÌè€‰•¹¡…¹¥¹œÑ¡”¥µ…”™½ÈÙ¥Í¥½¸¥µÁ½ÉĞˆô¤ì(€€€€€ÑÉäì(€€€€€€€½¹ÍĞÕÁ±½…€ô…İ…¥ĞÁÉ•Á…É•Y¥Í¥½¹%µ…”¡™¥±”¤ì(€€€€€€€É•ÑÕÉ¸…İ…¥Ğ•áÑÉ…Ñ•…±]¥Ñ¡M•ÉÙ•ÉY¥Í¥½¸¡™¥±”°½¹AÉ½É•ÍÌ°ÕÁ±½…¤ì(€€€€€ô…Ñ €¡Ù¥Í¥½¹ÉÉ½È¤ì(€€€€€€€€¼¼½È„Ñ¥¹äÁ¡½Ñ¼°±½…°=H¥Ì¹½Ğ„ÑÉÕÍÑİ½ÉÑ¡ä™…±±‰…¬¸AÉ•Í•ÉÙ”(€€€€€€€€¼¼Ñ¡”Í•ÉÙ•È‘¥…¹½ÍÑ¥ŒÍ¼Ñ¡”ÕÍ•È…¸É•ÑÉä½ÈÕÍ”µ…¹Õ…°•¹ÑÉä¸(€€€€€€€Ñ¡É½ÜÙ¥Í¥½¹ÉÉ½Èì(€€€€€ô(€€€ô(€€€±•Ğ±½…±I•ÍÕ±Ğè•…±A‘™I•ÍÕ±Ğì(€€€ÑÉäì(€€€€€±½…±I•ÍÕ±Ğ€ô¥ÍA‘˜(€€€€€€€€ü…İ…¥Ğ•áÑÉ…Ñ•…±É½µA‘˜¡™¥±”°½¹AÉ½É•ÍÌ¤(€€€€€€€€è…İ…¥Ğ•áÑÉ…Ñ•…±É½µ%µ…”¡™¥±”°½¹AÉ½É•ÍÌ¤ì(€€€ô…Ñ €¡±½…±ÉÉ½È¤ì(€€€€€ÑÉäì(€€€€€€€É•ÑÕÉ¸…İ…¥Ğ•áÑÉ…Ñ•…±]¥Ñ¡M•ÉÙ•ÉY¥Í¥½¸¡™¥±”°½¹AÉ½É•ÍÌ¤ì(€€€€€ô…Ñ ì(€€€€€€€Ñ¡É½Ü±½…±ÉÉ½Èì(€€€€€ô(€€€ô((€€€€¼¼5¥ÍÍ¥¹œ½ÁÑ¥½¹…°™¥•±‘Ì…É”¹½Éµ…°¸=¹”±½…°=H¡…ÌÁÉ½‘Õ•„(€€€€¼¼ÕÍ…‰±”ÅÕ½Ñ”°ÁÉ•Í•ÉÙ”¥Ğ…¹‘¼¹½ĞÍÁ•¹•µ¥¹¤ÅÕ½Ñ„½È±•ĞÙ¥Í¥½¸(€€€€¼¼½Ù•ÉİÉ¥Ñ”½ÉÉ•Ğ±½…°Ù…±Õ•Ì¸(€€€¥˜€¡¥Í1½…±±åI•…‘…‰±•%µÁ½ÉĞ¡±½…±I•ÍÕ±Ğ¤¤É•ÑÕÉ¸±½…±I•ÍÕ±Ğì((€€€ÑÉäì(€€€€€½¹ÍĞÙ¥Í¥½¹I•ÍÕ±Ğ€ô…İ…¥Ğ•áÑÉ…Ñ•…±]¥Ñ¡M•ÉÙ•ÉY¥Í¥½¸¡™¥±”°½¹AÉ½É•ÍÌ¤ì(€€€€€É•ÑÕÉ¸É•½¹¥±•1½…±¹‘Y¥Í¥½¸¡±½…±I•ÍÕ±Ğ°Ù¥Í¥½¹I•ÍÕ±Ğ¤ì(€€€ô…Ñ ì(€€€€€€¼¼•µ¥¹¤¥Ì½ÁÑ¥½¹…°…¹µ…ä‰”Õ¹…Ù…¥±…‰±”½ÈÅÕ½Ñ„µ±¥µ¥Ñ•¸9•Ù•È(€€€€€€¼¼‘¥Í…É„ÕÍ…‰±”±½…°É•ÍÕ±Ğİ¡•¸Ñ¡”ÁÉ½Ù¥‘•È‘½•Ì¹½Ğ…¹Íİ•È¸(€€€€€É•ÑÕÉ¸±½…±I•ÍÕ±Ğì(€€€ô(€ô(€Ñ¡É½Ü¹•ÜÉÉ½È ‰U9MUAA=IQ}%1ˆ¤ì)ôì(

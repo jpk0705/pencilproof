@@ -8,6 +8,7 @@ import {
   parseOfferMatrix,
   reconcileQuotedPayment,
   sanitizeImportedFields,
+  isLocallyReadableImport,
 } from "../lib/deal-pdf.ts";
 import { paymentFor } from "../lib/deal-calculations.ts";
 import {
@@ -35,6 +36,28 @@ const closeTo = (actual, expected, tolerance = 0.01) => {
 };
 
 assert.equal(DEAL_FIELD_LABELS.rebate, "Rebate");
+
+// Missing optional categories must not trigger Gemini when local extraction
+// already produced a usable quote. Those categories are legitimately absent
+// from many dealer worksheets.
+assert.equal(isLocallyReadableImport({
+  fields: {
+    sellingPrice: 37966,
+    tax: 3100,
+    govFees: 725,
+    apr: 4.49,
+    term: 60,
+    quotedPayment: 744.53,
+    // No rebate, VSC, PPM, T&W, accessories, trade allowance, or payoff.
+  },
+  fieldNames: ["Selling price", "Sales tax", "Government / registration fees", "Dealer APR", "Loan term", "Quoted monthly payment"],
+  offerMatrix: undefined,
+}), true);
+assert.equal(isLocallyReadableImport({
+  fields: { sellingPrice: 37966 },
+  fieldNames: ["Selling price"],
+  offerMatrix: undefined,
+}), false);
 
 const handoffPayload = {
   fields: { sellingPrice: 38995, apr: 7.49 },
@@ -162,6 +185,25 @@ closeTo(dalyCityPhotoQuote.serviceContract, 3632);
 closeTo(dalyCityPhotoQuote.quotedPayment, 387.97);
 closeTo(dalyCityPhotoQuote.apr, 5.59);
 assert.equal(dalyCityPhotoQuote.term, 72);
+
+const paymentColumnMustNotBecomeAccessory = parseDealerText([
+  "2024 Toyota RAV4 Adventure Sport Utility 4D",
+  "ABS, Alloy Wheels, Backup Camera, Rear Spoiler, Roof Rails, Safety Connect",
+  "Estimated Payment $625.89 84 Months @ 11.5900%",
+  "Asking Price $32,500.00",
+  "Discount (-) $500.00",
+  "Sales Price $32,000.00",
+  "Theft DNA DLP $1.00",
+  "Appearance $699.00",
+  "Connected Car 1 Year Plan $299.00",
+  "Gap Insurance $1,200.00",
+  "Sales Tax 8.625% $2,857.81",
+  "TOTAL SALES AMOUNT $37,900.06",
+  "Deposit / Cash Down (-) $2,000.00",
+  "CASH DUE / FINANCE AMOUNT $35,900.06",
+]);
+closeTo(paymentColumnMustNotBecomeAccessory.accessories, 999);
+closeTo(paymentColumnMustNotBecomeAccessory.quotedPayment, 625.89);
 
 const namedProducts = parseDealerText([
   "Ally VSC $2,495.00",
