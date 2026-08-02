@@ -1313,13 +1313,26 @@ const extractDealWithServerVision = async (
   };
 };
 
-const needsVisionReview = (result: DealPdfResult) =>
-  Boolean(
-    result.usedOcr ||
-    result.warnings?.length ||
-    criticalImportFields.some((field) => result.fields[field] === undefined) ||
-    Object.keys(result.fields).length < 8,
+/**
+ * A quote does not need vision merely because optional categories are absent.
+ * Rebate, VSC, PPM, T&W, accessories, and trade fields are legitimately
+ * missing on many dealer worksheets. Escalate only when local extraction did
+ * not produce enough numeric deal data to be a usable quote preview.
+ */
+export const isLocallyReadableImport = (result: Pick<DealPdfResult, "fields" | "fieldNames" | "offerMatrix">) => {
+  if (result.offerMatrix?.options.length) return true;
+  const numericFieldCount = Object.entries(result.fields).filter(
+    ([field, value]) =>
+      field !== "vehicle" &&
+      typeof value === "number" &&
+      Number.isFinite(value),
+  ).length;
+  const hasDealAnchor = Boolean(
+    result.fields.sellingPrice ||
+    result.fields.quotedPayment,
   );
+  return result.fieldNames.length >= 3 && numericFieldCount >= 3 && hasDealAnchor;
+};
 
 const reconcileLocalAndVision = (
   local: DealPdfResult,
@@ -1395,7 +1408,10 @@ export const extractDealFromFile = async (
       }
     }
 
-    if (!needsVisionReview(localResult)) return localResult;
+    // Missing optional fields are normal. Once local OCR has produced a
+    // usable quote, preserve it and do not spend Gemini quota or let vision
+    // overwrite correct local values.
+    if (isLocallyReadableImport(localResult)) return localResult;
 
     try {
       const visionResult = await extractDealWithServerVision(file, onProgress);

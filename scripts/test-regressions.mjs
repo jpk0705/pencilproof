@@ -8,6 +8,7 @@ import {
   parseOfferMatrix,
   reconcileQuotedPayment,
   sanitizeImportedFields,
+  isLocallyReadableImport,
 } from "../lib/deal-pdf.ts";
 import { paymentFor } from "../lib/deal-calculations.ts";
 import {
@@ -35,6 +36,28 @@ const closeTo = (actual, expected, tolerance = 0.01) => {
 };
 
 assert.equal(DEAL_FIELD_LABELS.rebate, "Rebate");
+
+// Missing optional categories must not trigger Gemini when local extraction
+// already produced a usable quote. Those categories are legitimately absent
+// from many dealer worksheets.
+assert.equal(isLocallyReadableImport({
+  fields: {
+    sellingPrice: 37966,
+    tax: 3100,
+    govFees: 725,
+    apr: 4.49,
+    term: 60,
+    quotedPayment: 744.53,
+    // No rebate, VSC, PPM, T&W, accessories, trade allowance, or payoff.
+  },
+  fieldNames: ["Selling price", "Sales tax", "Government / registration fees", "Dealer APR", "Loan term", "Quoted monthly payment"],
+  offerMatrix: undefined,
+}), true);
+assert.equal(isLocallyReadableImport({
+  fields: { sellingPrice: 37966 },
+  fieldNames: ["Selling price"],
+  offerMatrix: undefined,
+}), false);
 
 const handoffPayload = {
   fields: { sellingPrice: 38995, apr: 7.49 },
