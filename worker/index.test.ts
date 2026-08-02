@@ -294,6 +294,7 @@ test("checkout configures one Stripe webhook without exposing its secret", async
     webhookParameters.get("url"),
     "https://audit.pencilproof.com/api/stripe/webhook",
   );
+  assert.equal(webhookParameters.get("allow_promotion_codes"), null);
   assert.deepEqual(
     webhookParameters.getAll("enabled_events[]"),
     [
