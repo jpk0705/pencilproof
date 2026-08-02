@@ -11,6 +11,7 @@ export function SiteNav() {
       <div className="nav-links">
         <Link href="/who-it-helps">Who it helps</Link>
         <Link href="/how-it-works">How it works</Link>
+        <Link href="/what-it-checks">What it checks</Link>
         <Link href="/questions">Q&amp;A</Link>
         <Link href="/pricing">Pricing</Link>
         <Link className="nav-cta" href="/#free-scan">Scan my quote free</Link>
@@ -31,6 +32,7 @@ export function SiteFooter() {
         <div>
           <Link href="/who-it-helps">Who it helps</Link>
           <Link href="/how-it-works">How it works</Link>
+          <Link href="/what-it-checks">What it checks</Link>
           <Link href="/questions">Q&amp;A</Link>
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>
