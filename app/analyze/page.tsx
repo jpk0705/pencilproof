@@ -202,6 +202,7 @@ export default function AnalyzePage() {
         confidence?: PendingImport["confidence"];
         fileName?: string;
         offerMatrix?: DealOfferMatrix | null;
+        selectedOfferId?: string | null;
       };
       if (!handoff.fields || !Object.keys(handoff.fields).length) return;
       const importedFields = { ...handoff.fields } as Partial<Deal> & { protection?: number };
@@ -215,6 +216,16 @@ export default function AnalyzePage() {
         delete importedFields.quotedPayment;
         delete importedFields.apr;
         delete importedFields.rebate;
+
+        const selectedOffer = handoff.selectedOfferId
+          ? handoff.offerMatrix.options.find((option) => option.id === handoff.selectedOfferId)
+          : undefined;
+        if (selectedOffer?.type === "finance") {
+          importedFields.cashDown = selectedOffer.cashDown;
+          importedFields.term = selectedOffer.term;
+          importedFields.quotedPayment = selectedOffer.payment;
+          if (selectedOffer.apr !== undefined) importedFields.apr = selectedOffer.apr;
+        }
       }
       setPendingImport({
         fields: importedFields,
@@ -222,6 +233,11 @@ export default function AnalyzePage() {
         fileName: handoff.fileName ?? "your free quote scan",
       });
       setOfferMatrix(handoff.offerMatrix ?? null);
+      const selectedHandoffOffer = handoff.offerMatrix && handoff.selectedOfferId
+        ? handoff.offerMatrix.options.find((option) => option.id === handoff.selectedOfferId)
+        : undefined;
+      setSelectedOfferId(selectedHandoffOffer?.id ?? "");
+      setSelectedOfferType(selectedHandoffOffer?.type ?? null);
       setDealImport({
         status: handoff.offerMatrix ? "warning" : "success",
         message: handoff.offerMatrix
