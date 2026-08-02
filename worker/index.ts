@@ -584,6 +584,17 @@ const emptyAnalyticsSummary = (): AnalyticsSummary => ({
 const webhookConfigStub = (env: Env) =>
   orderStub("__pencilproof_webhook_config__", env);
 
+const isValidWebhookConfig = (
+  config: WebhookConfig | undefined,
+  url?: string,
+) => Boolean(
+  config
+  && (!url || config.url === url)
+  && /^we_[A-Za-z0-9]+$/.test(config.endpointId)
+  && /^whsec_[A-Za-z0-9]+$/.test(config.secret)
+  && config.version === WEBHOOK_CONFIG_VERSION
+);
+
 const webhookIsReady = async (env: Env) => {
   if (
     typeof env.STRIPE_WEBHOOK_SECRET === "string"
@@ -740,12 +751,7 @@ export class OrderStore {
         && /^we_[A-Za-z0-9]+$/.test(existing.endpointId)
         && /^whsec_[A-Za-z0-9]+$/.test(existing.secret)
       );
-      if (
-        existingIsValid
-        && existing?.version === WEBHOOK_CONFIG_VERSION
-        && Number.isInteger(existing.reconciledAt)
-        && (existing.reconciledAt ?? 0) > 0
-      ) {
+      if (existingIsValid && isValidWebhookConfig(existing)) {
         return Response.json({ ready: true });
       }
       if (!this.env) {
@@ -760,16 +766,20 @@ export class OrderStore {
       if (!configured) {
         return Response.json({ ready: false }, { status: 503 });
       }
-      await this.state.storage.put("webhookConfig", configured);
-
-      const reconciled = await reconcileRecentRevocations(this.env);
-      if (!reconciled) {
-        return Response.json({ ready: false }, { status: 503 });
-      }
-      await this.state.storage.put("webhookConfig", {
+      const storedConfig = {
         ...configured,
-        reconciledAt: Math.floor(Date.now() / 1000),
-      });
+        reconciledAt: configured.reconciledAt ?? 0,
+      };
+      await this.state.storage.put("webhookConfig", storedConfig);
+
+      // Historical revocation reconciliation is best effort. It must not block
+      // a new customer from creating a checkout session.
+      if (await reconcileRecentRevocations(this.env)) {
+        await this.state.storage.put("webhookConfig", {
+          ...storedConfig,
+          reconciledAt: Math.floor(Date.now() / 1000),
+        });
+      }
       return Response.json({ ready: true });
     }
 
@@ -777,14 +787,7 @@ export class OrderStore {
       const config = await this.state.storage.get<WebhookConfig>(
         "webhookConfig",
       );
-      const ready = Boolean(
-        config
-        && /^we_[A-Za-z0-9]+$/.test(config.endpointId)
-        && /^whsec_[A-Za-z0-9]+$/.test(config.secret)
-        && config.version === WEBHOOK_CONFIG_VERSION
-        && Number.isInteger(config.reconciledAt)
-        && (config.reconciledAt ?? 0) > 0
-      );
+      const ready = isValidWebhookConfig(config);
       return Response.json({ ready });
     }
 
