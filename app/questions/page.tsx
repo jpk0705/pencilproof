@@ -1,6 +1,5 @@
-import Link from "next/link";
 import type { Metadata } from "next";
-import { CHECKOUT_URL } from "@/lib/checkout";
+import { SiteFooter, SiteNav } from "@/app/components/SiteChrome";
 
 export const metadata: Metadata = {
   title: "Questions & Answers | PencilProof",
@@ -30,7 +29,7 @@ const questions = [
   },
   {
     question: "Can it compare a quote with several payment choices?",
-    answer: "Yes. When PencilProof recognizes an option matrix, it shows the detected finance and lease rows so you can select the one you are considering. Always compare imported values with the original document.",
+    answer: "Yes. When PencilProof recognizes an option matrix, it shows the detected finance rows so you can select the one you are considering. Always compare imported values with the original document.",
   },
   {
     question: "Does a desired APR mean I am approved?",
@@ -42,7 +41,7 @@ const questions = [
   },
   {
     question: "Is this a dealership desking or lender-approval system?",
-    answer: "No. PencilProof models the figures you enter or import. It cannot authorize a discount, access lender programs, approve credit, or replace the dealership's official buyer's order or lease worksheet.",
+    answer: "No. PencilProof models the figures you enter or import. It cannot authorize a discount, access lender programs, approve credit, or replace the dealership's official buyer's order or written quote.",
   },
   {
     question: "Does PencilProof negotiate or provide advice?",
@@ -61,23 +60,13 @@ const questions = [
 export default function QuestionsPage() {
   return (
     <main className="questions-page">
-      <nav className="site-nav" aria-label="Main navigation">
-        <Link className="brand" href="/" aria-label="PencilProof home">
-          <span className="brand-mark">P</span>
-          <span>PencilProof</span>
-        </Link>
-        <div className="nav-links">
-          <Link href="/">Home</Link>
-          <Link href="/#pricing">Pricing</Link>
-          <a className="nav-cta" href={CHECKOUT_URL}>Full Quote Audit · $39</a>
-        </div>
-      </nav>
+      <SiteNav />
 
       <section className="section shell faq-section">
         <div className="section-intro compact">
           <p className="kicker">STRAIGHT ANSWERS</p>
-          <h1>Know what you&apos;re buying.</h1>
-          <p>Clear answers about what PencilProof does, how quote imports work, and what to verify before you pay or sign.</p>
+          <h1>Know what you&apos;re buying before you sign.</h1>
+          <p>Clear answers about quote imports, payment math, privacy, the Full Quote Audit, and what still needs to be verified with the dealership.</p>
         </div>
         <div className="faq-grid">
           {questions.map(({ question, answer }) => (
@@ -89,13 +78,7 @@ export default function QuestionsPage() {
         </div>
       </section>
 
-      <footer>
-        <div className="shell footer-grid">
-          <Link className="brand brand-footer" href="/"><span className="brand-mark">P</span><span>PencilProof</span></Link>
-          <p>Independent educational quote audit. Not affiliated with any dealership or lender.</p>
-          <div><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link></div>
-        </div>
-      </footer>
+      <SiteFooter />
     </main>
   );
 }
