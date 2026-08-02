@@ -1138,7 +1138,10 @@ const stripeRequest = async (
   init: RequestInit = {},
 ) => {
   const headers = new Headers(init.headers);
-  headers.set("Authorization", `Bearer ${env.STRIPE_SECRET_KEY}`);
+  const stripeSecretKey = typeof env.STRIPE_SECRET_KEY === "string"
+    ? env.STRIPE_SECRET_KEY.trim()
+    : "";
+  headers.set("Authorization", `Bearer ${stripeSecretKey}`);
   headers.set("Stripe-Version", "2026-04-22.dahlia");
   return fetch(`https://api.stripe.com/v1${path}`, { ...init, headers });
 };
@@ -1240,10 +1243,10 @@ const createCheckoutSession = async (
     );
   }
 
-  if (
-    typeof env.STRIPE_SECRET_KEY !== "string"
-    || !/^(?:rk|sk)_(test|live)_[A-Za-z0-9]+$/.test(env.STRIPE_SECRET_KEY)
-  ) {
+  const stripeSecretKey = typeof env.STRIPE_SECRET_KEY === "string"
+    ? env.STRIPE_SECRET_KEY.trim()
+    : "";
+  if (!/^(?:rk|sk)_(test|live)_[A-Za-z0-9_-]+$/.test(stripeSecretKey)) {
     throw new CheckoutError(
       "stripe_secret_key_invalid",
       "Stripe restricted key is not configured",
