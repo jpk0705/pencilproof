@@ -1639,13 +1639,14 @@ const handleCheckout = async (request: Request, env: Env) => {
     const body = await request.json().catch(() => ({})) as {
       analyticsSessionId?: string;
     };
-    const webhookReady = await ensureWebhookEndpoint(env);
-    if (!webhookReady) {
-      throw new CheckoutError(
-        "webhook_unavailable",
-        "Stripe webhook is not ready",
-      );
-    }
+    // Webhook provisioning is best effort. It must not prevent a customer
+    // from creating a Stripe Checkout Session. The success route can verify
+    // the completed session directly if webhook setup is temporarily down.
+    await ensureWebhookEndpoint(env).catch((error) => {
+      console.error("Stripe webhook setup deferred", {
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+    });
     const existingDeviceId = readCookie(request, DEVICE_COOKIE);
     const deviceId = validDeviceId(existingDeviceId)
       ? existingDeviceId
