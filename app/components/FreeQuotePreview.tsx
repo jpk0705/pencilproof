@@ -67,6 +67,8 @@ export default function FreeQuotePreview() {
   const [feedbackComment, setFeedbackComment] = useState("");
   const [feedbackSent, setFeedbackSent] = useState(false);
   const manualPanelRef = useRef<HTMLDivElement>(null);
+  const uploadPanelRef = useRef<HTMLDivElement>(null);
+  const shouldScrollToUploadRef = useRef(false);
 
   const showManualFallback = shouldOfferManualEntry(failedImportAttempts);
 
@@ -83,6 +85,18 @@ export default function FreeQuotePreview() {
     });
     return () => cancelAnimationFrame(frame);
   }, [manualMode]);
+
+  useEffect(() => {
+    if (scan.status !== "idle" || !shouldScrollToUploadRef.current) return;
+    shouldScrollToUploadRef.current = false;
+    const frame = requestAnimationFrame(() => {
+      uploadPanelRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [scan.status]);
 
   const failImport = (message: string) => {
     setFailedImportAttempts((attempts) => attempts + 1);
@@ -343,7 +357,7 @@ export default function FreeQuotePreview() {
           </div>
 
           {scan.status === "idle" ? (
-            <div className="free-scan-drop">
+            <div className="free-scan-drop" ref={uploadPanelRef}>
               <strong>Start with the written quote</strong>
               <p>Use a dealer-generated PDF or a bright, sharp photo with the full page visible.</p>
               <label className="button button-primary">
@@ -586,7 +600,18 @@ export default function FreeQuotePreview() {
                     Review the imported values to continue
                   </button>
                 )}
-                <button type="button" onClick={() => { setScan({ status: "idle" }); setImportReviewed(false); }}>Scan another quote</button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    shouldScrollToUploadRef.current = true;
+                    setScan({ status: "idle" });
+                    setImportReviewed(false);
+                    setManualMode(false);
+                    setManualError("");
+                  }}
+                >
+                  Scan another quote
+                </button>
               </div>
 
               <div className="feedback-card">
