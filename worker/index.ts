@@ -188,7 +188,7 @@ const handleAiImport = async (request: Request, env: Env) => {
       }
     }
     lastProviderBody = await response.text();
-    if (![404, 429, 500, 502, 503].includes(response.status)) break;
+    // A 400 can mean that a discovered model does not accept this multimodal\n    // request/configuration. Continue to the next compatible model rather\n    // than turning one model-specific rejection into a total import failure.\n    if (![400, 404, 429, 500, 502, 503].includes(response.status)) break;
   }
   if (!response || !response.ok || !parsedProviderResponse) {
     // Return only a stable, non-secret diagnostic. The full provider body is
