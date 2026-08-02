@@ -732,3 +732,112 @@ footer { border-top: 1px solid var(--line); padding: 34px 0; }
 }
 
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; }.button { transition: none; }.vehicle-photo-loading > div::after { animation: none; } }
+
+/* Final marketing polish: a calmer rhythm, stronger hierarchy, and no
+   accidental wrapping in navigation or footer links. */
+:where(a, button, input, select, textarea):focus-visible {
+  outline: 3px solid rgba(140, 207, 42, .72);
+  outline-offset: 3px;
+}
+
+h1, h2, h3 { text-wrap: balance; }
+p { text-wrap: pretty; }
+
+.shell,
+.site-nav { width: min(1280px, calc(100% - 64px)); }
+
+.site-nav {
+  min-height: 82px;
+  height: auto;
+  padding: 18px 0;
+  gap: 28px;
+}
+
+.nav-links {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px 21px;
+  font-size: 13px;
+}
+
+.nav-links > a:not(.nav-cta),
+.footer-grid a { white-space: nowrap; }
+
+.nav-links > a:not(.nav-cta) { padding: 7px 0; }
+.nav-cta { padding: 11px 16px; }
+
+.hero { min-height: 650px; gap: 64px; padding-top: 54px; padding-bottom: 68px; }
+.hero-copy { min-width: 0; }
+.hero-lede { max-width: 610px; }
+
+.section { padding-top: 88px; padding-bottom: 88px; }
+.page-hero { padding-top: 76px; padding-bottom: 66px; }
+.page-hero-copy h1 { line-height: 1.01; }
+
+.route-guide-section { padding-top: 78px; padding-bottom: 82px; }
+.route-guide-intro { gap: 48px 64px; }
+.route-guide-intro .kicker { margin-bottom: -18px; }
+.route-guide-grid { margin-top: 40px; gap: 14px; }
+.route-guide-card {
+  min-height: 264px;
+  padding: 24px;
+  border-radius: 10px;
+}
+.route-guide-card h3 { margin-top: 34px; font-size: 23px; }
+.route-guide-card p { line-height: 1.55; }
+.route-guide-card strong { padding-top: 18px; }
+
+.audience-grid article { min-height: 250px; padding: 25px; }
+.audience-grid h3 { margin-top: 34px; }
+.founder-layout { gap: 72px; }
+.steps { margin-top: 48px; }
+.steps article { min-height: 240px; padding: 30px; }
+.steps h3 { margin-top: 34px; }
+.product-grid { margin-top: 46px; }
+.product-grid article { min-height: 255px; padding: 24px; }
+.product-grid h3 { margin-top: 36px; }
+.sample-section { gap: 64px; }
+.faq-grid { gap: 30px 28px; }
+.offer-grid { gap: 72px; }
+
+footer { padding: 29px 0 31px; }
+.footer-grid {
+  grid-template-columns: minmax(180px, .7fr) minmax(280px, 1fr) minmax(420px, 1.4fr);
+  gap: 30px;
+}
+.footer-grid p { margin: 0; line-height: 1.45; }
+.footer-grid div { flex-wrap: wrap; row-gap: 12px; column-gap: 18px; }
+
+@media (max-width: 1120px) {
+  .site-nav { align-items: flex-start; }
+  .nav-links { max-width: 670px; }
+  .footer-grid { grid-template-columns: 180px 1fr; }
+  .footer-grid p { grid-column: 1 / -1; grid-row: 2; }
+  .footer-grid div { grid-column: 2; grid-row: 1; }
+}
+
+@media (max-width: 940px) {
+  .hero { min-height: auto; padding-top: 48px; }
+  .route-guide-section { padding-top: 68px; }
+  .route-guide-intro { gap: 28px; }
+  .route-guide-intro .kicker { margin-bottom: -8px; }
+  .footer-grid { grid-template-columns: 1fr; gap: 18px; }
+  .footer-grid p,
+  .footer-grid div { grid-column: auto; grid-row: auto; }
+  .footer-grid p { order: 3; }
+  .footer-grid div { justify-content: flex-start; }
+}
+
+@media (max-width: 680px) {
+  .shell,
+  .site-nav { width: min(100% - 36px, 1280px); }
+  .site-nav { min-height: 70px; padding: 15px 0; }
+  .nav-links { flex-wrap: nowrap; }
+  .nav-links > a:not(.nav-cta) { display: none; }
+  .nav-cta { padding: 9px 11px; }
+  .route-guide-section { padding-top: 58px; padding-bottom: 64px; }
+  .route-guide-grid { margin-top: 32px; }
+  .route-guide-card { min-height: 218px; }
+  .route-guide-card h3 { margin-top: 28px; }
+  .footer-grid div { justify-content: center; }
+}
