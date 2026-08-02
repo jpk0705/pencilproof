@@ -638,6 +638,8 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     /\bAPP\s+Major Guard\b/i,
     /\bMajor Guard\b/i,
     /\b(?:Toyota Extra Care|Ford Protect|Mopar Vehicle Protection|GM Protection Plan)\b/i,
+    // GWC is commonly printed as a provider name followed by term/mileage and price.
+    /\bGWC\b/i,
     /\b(?:XtraRide|AUL|CNA National|Portfolio|Protective)\b.*\b(?:service|vehicle|warranty|coverage|contract)\b/i,
     /\b(?:Fidelity|JM&A|Zurich|Safe[- ]?Guard)\b.*\b(?:VSC|service contract|vehicle protection|mechanical breakdown)\b/i,
   ];
