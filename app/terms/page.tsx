@@ -1,10 +1,9 @@
-import Link from "next/link";
-import { CHECKOUT_URL } from "@/lib/checkout";
+import { SiteNav } from "@/app/components/SiteChrome";
 
 export default function TermsPage() {
   return (
     <main className="legal-page">
-      <nav className="site-nav" aria-label="Main navigation"><Link className="brand" href="/"><span className="brand-mark">P</span><span>PencilProof</span></Link><a className="nav-cta" href={CHECKOUT_URL}>Full Quote Audit · $39</a></nav>
+      <SiteNav />
       <article className="legal-copy shell">
         <p className="kicker">TERMS</p><h1>Understand the limits before using the audit.</h1><p className="legal-date">Effective July 16, 2026</p>
         <h2>Educational tool only</h2><p>PencilProof provides automated mathematical estimates and general educational information based on the figures you enter or import. It does not provide legal, tax, lending, investment, mechanical, or financial advice.</p>

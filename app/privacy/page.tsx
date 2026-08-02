@@ -1,10 +1,9 @@
-import Link from "next/link";
-import { CHECKOUT_URL } from "@/lib/checkout";
+import { SiteNav } from "@/app/components/SiteChrome";
 
 export default function PrivacyPage() {
   return (
     <main className="legal-page">
-      <nav className="site-nav" aria-label="Main navigation"><Link className="brand" href="/"><span className="brand-mark">P</span><span>PencilProof</span></Link><a className="nav-cta" href={CHECKOUT_URL}>Full Quote Audit · $39</a></nav>
+      <SiteNav />
       <article className="legal-copy shell">
         <p className="kicker">PRIVACY</p><h1>Plain-language privacy notice.</h1><p className="legal-date">Effective July 25, 2026</p>
         <h2>The short version</h2><p>The quote-audit tool and document importer run in your web browser first. The financial figures you enter or import are used on your device to calculate the displayed results. If local extraction cannot confidently read a document, the selected file may be sent to PencilProof&apos;s secured vision importer for one-time extraction and is not intentionally stored as a user document.</p>
