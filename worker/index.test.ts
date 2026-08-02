@@ -475,6 +475,24 @@ test("checkout safely identifies an invalid Stripe secret binding", async () => 
   assert.equal(result.error, "Checkout is temporarily unavailable.");
 });
 
+test("checkout accepts a standard Stripe secret key binding", async () => {
+  const env = makeEnv();
+  env.STRIPE_SECRET_KEY = "sk_test_123TestValid";
+  globalThis.fetch = async () => Response.json({
+    id: "cs_test_created",
+    url: "https://checkout.stripe.com/c/pay/cs_test_created",
+  });
+
+  const response = await handleRequest(
+    new Request("https://audit.pencilproof.com/api/checkout", {
+      method: "POST",
+      headers: { Origin: "https://audit.pencilproof.com" },
+    }),
+    env,
+  );
+  assert.equal(response.status, 200);
+});
+
 test("Stripe webhook signatures are authenticated and time bounded", async () => {
   const payload = JSON.stringify({ id: "evt_test" });
   const now = 1_000;
