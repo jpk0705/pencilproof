@@ -154,6 +154,7 @@ const handleAiImport = async (request: Request, env: Env) => {
   // than spending provider quota on every upload.
   let response: Response | undefined;
   let lastProviderBody = "";
+  let parsedProviderResponse: Record<string, unknown> | undefined;
   const availableModels = await discoverGeminiModels(env.GEMINI_API_KEY);
   const discoveredFlashModels = availableModels.filter((model) => /flash/i.test(model));
   const models = [
@@ -170,11 +171,26 @@ const handleAiImport = async (request: Request, env: Env) => {
         generationConfig: { temperature: 0, maxOutputTokens: 2048, responseMimeType: "application/json" },
       }),
     });
-    if (response.ok) break;
+    if (response.ok) {
+      // A provider HTTP 200 is not sufficient. Some Gemini model variants can
+      // return an empty candidate or non-JSON text for an image request. Do
+      // not stop model fallback at that point, because the next compatible
+      // vision model may return the structured extraction we need.
+      try {
+        const payload = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+        const raw = payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("") ?? "";
+        parsedProviderResponse = decodeGeminiJson(raw);
+        break;
+      } catch {
+        parsedProviderResponse = undefined;
+        lastProviderBody = "MODEL_RETURNED_INVALID_JSON";
+        continue;
+      }
+    }
     lastProviderBody = await response.text();
     if (![404, 429, 500, 502, 503].includes(response.status)) break;
   }
-  if (!response || !response.ok) {
+  if (!response || !response.ok || !parsedProviderResponse) {
     // Return only a stable, non-secret diagnostic. The full provider body is
     // logged for server-side debugging, but never sent to the browser.
     const providerBody = lastProviderBody;
@@ -202,10 +218,8 @@ const handleAiImport = async (request: Request, env: Env) => {
       providerHttpStatus: response?.status ?? null,
     }, { status: 502, headers });
   }
-  const payload = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
   try {
-    const raw = payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("") ?? "";
-    const parsed = decodeGeminiJson(raw);
+    const parsed = parsedProviderResponse;
     const fields = Object.fromEntries([
       "vehicle", "sellingPrice", "tax", "govFees", "docFee", "serviceContract", "gap", "prepaidMaintenance", "tireWheel", "accessories", "tradeValue", "tradePayoff", "cashDown", "rebate", "apr", "term", "quotedPayment",
     ].flatMap((key) => {
