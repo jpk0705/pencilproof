@@ -456,7 +456,7 @@ test("checkout fails safely when the Stripe price binding is absent", async () =
 
 test("checkout safely identifies an invalid Stripe secret binding", async () => {
   const env = makeEnv();
-  env.STRIPE_SECRET_KEY = "price_not_a_secret_key";
+  env.STRIPE_SECRET_KEY = "";
 
   const response = await handleRequest(
     new Request("https://audit.pencilproof.com/api/checkout", {
@@ -477,7 +477,7 @@ test("checkout safely identifies an invalid Stripe secret binding", async () => 
 
 test("checkout accepts a standard Stripe secret key binding", async () => {
   const env = makeEnv();
-  env.STRIPE_SECRET_KEY = "";
+  env.STRIPE_SECRET_KEY = "sk_test_123TestValid";
   globalThis.fetch = async () => Response.json({
     id: "cs_test_created",
     url: "https://checkout.stripe.com/c/pay/cs_test_created",
