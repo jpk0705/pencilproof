@@ -61,7 +61,7 @@ export default function WhoItHelpsPage() {
         <div className="section-intro compact">
           <p className="kicker">THE SIMPLE NEXT STEP</p>
           <h2>Start with the quote, not the pressure.</h2>
-          <p>Upload a PDF or photo for free. PencilProof shows what it can detect before you decide whether a Full Quote Audit is useful.</p>
+          <p>Upload a PDF or image for free. PencilProof shows what it can detect before you decide whether a Full Quote Audit is useful.</p>
           <AuditCta />
         </div>
       </section>

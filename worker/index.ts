@@ -142,7 +142,8 @@ const handleAiImport = async (request: Request, env: Env) => {
   if (!env.GEMINI_API_KEY) return Response.json({ error: "AI_IMPORT_NOT_CONFIGURED" }, { status: 503, headers });
   let body: { base64?: string; mimeType?: string };
   try { body = await request.json() as { base64?: string; mimeType?: string }; } catch { return Response.json({ error: "AI_IMPORT_BAD_REQUEST" }, { status: 400, headers }); }
-  if (!body.base64 || !["application/pdf", "image/jpeg", "image/png", "image/webp"].includes(body.mimeType ?? "")) {
+  const mimeType = body.mimeType?.toLowerCase() ?? "";
+  if (!body.base64 || (mimeType !== "application/pdf" && !mimeType.startsWith("image/"))) {
     return Response.json({ error: "AI_IMPORT_BAD_REQUEST" }, { status: 400, headers });
   }
   if (body.base64.length > 22_000_000) return Response.json({ error: "AI_IMPORT_TOO_LARGE" }, { status: 413, headers });
@@ -167,7 +168,7 @@ const handleAiImport = async (request: Request, env: Env) => {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
       body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: AI_IMPORT_PROMPT }, { inline_data: { mime_type: body.mimeType, data: body.base64 } }] }],
+        contents: [{ role: "user", parts: [{ text: AI_IMPORT_PROMPT }, { inline_data: { mime_type: mimeType, data: body.base64 } }] }],
         generationConfig: { temperature: 0, maxOutputTokens: 2048, responseMimeType: "application/json" },
       }),
     });

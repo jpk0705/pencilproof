@@ -9,6 +9,8 @@ import {
   reconcileQuotedPayment,
   sanitizeImportedFields,
   isLocallyReadableImport,
+  isDealImportFile,
+  isDealImportPdf,
 } from "../lib/deal-pdf.ts";
 import { paymentFor } from "../lib/deal-calculations.ts";
 import {
@@ -36,6 +38,14 @@ const closeTo = (actual, expected, tolerance = 0.01) => {
 };
 
 assert.equal(DEAL_FIELD_LABELS.rebate, "Rebate");
+
+for (const name of ["quote.webp", "quote.gif", "quote.avif", "quote.heic", "quote.tiff", "quote.bmp"]) {
+  assert.equal(isDealImportFile({ name, type: "" }), true, `${name} should be accepted as an image`);
+}
+assert.equal(isDealImportFile({ name: "quote-from-phone", type: "image/heic" }), true);
+assert.equal(isDealImportFile({ name: "quote.pdf", type: "application/pdf" }), true);
+assert.equal(isDealImportPdf({ name: "quote.pdf", type: "" }), true);
+assert.equal(isDealImportFile({ name: "notes.txt", type: "text/plain" }), false);
 
 // Missing optional categories must not trigger Gemini when local extraction
 // already produced a usable quote. Those categories are legitimately absent

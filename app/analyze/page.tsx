@@ -3,8 +3,11 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import {
+  DEAL_IMPORT_ACCEPT,
   DEAL_FIELD_LABELS,
   extractDealFromFile,
+  isDealImportFile,
+  isDealImportPdf,
   type DealOfferMatrix,
   type DealOfferOption,
   type ImportedDealFields,
@@ -272,13 +275,9 @@ export default function AnalyzePage() {
     setDeal((current) => ({ ...current, [field]: value === "" ? 0 : Number(value) }));
 
   const importDealFile = async (file: File) => {
-    const lowerName = file.name.toLowerCase();
-    const isPdf = file.type === "application/pdf" || lowerName.endsWith(".pdf");
-    const isJpeg = file.type === "image/jpeg" || /\.jpe?g$/.test(lowerName);
-    const isPng = file.type === "image/png" || lowerName.endsWith(".png");
-    const isWebp = file.type === "image/webp" || lowerName.endsWith(".webp");
-    if (!isPdf && !isJpeg && !isPng && !isWebp) {
-      setDealImport({ status: "error", message: "Choose a PDF, JPG, JPEG, PNG, or WebP file from the dealership.", fields: [] });
+    const isPdf = isDealImportPdf(file);
+    if (!isDealImportFile(file)) {
+      setDealImport({ status: "error", message: "Choose a PDF or image file from the dealership.", fields: [] });
       return;
     }
     if (file.size > 15 * 1024 * 1024) {
@@ -689,10 +688,10 @@ export default function AnalyzePage() {
           <div>
             <p className="pdf-kicker">START WITH THE WRITTEN NUMBERS</p>
             <h2 id="pdf-import-title">Upload what the dealer gave you</h2>
-            <p>Choose a digital or scanned PDF, JPG, JPEG, PNG, or WebP. PencilProof reads it locally first. Small or unclear images may be enlarged and sent through PencilProof&apos;s secured vision importer for better label and number matching.</p>
+            <p>Choose a digital or scanned PDF, or any image format your device can open. PencilProof reads it locally first. Small or unclear images may be enlarged and sent through PencilProof&apos;s secured vision importer for better label and number matching.</p>
           </div>
           <label className={`pdf-upload-button ${dealImport.status === "loading" ? "pdf-upload-loading" : ""}`}>
-            <input type="file" accept="application/pdf,image/jpeg,image/png,image/webp,.pdf,.jpg,.jpeg,.png,.webp" disabled={dealImport.status === "loading"} onChange={handleDealFileChange} />
+            <input type="file" accept={DEAL_IMPORT_ACCEPT} disabled={dealImport.status === "loading"} onChange={handleDealFileChange} />
             {dealImport.status === "loading" ? "Reading file…" : "Choose PDF or image"}
           </label>
         </div>

@@ -21,7 +21,7 @@ const questions = [
   },
   {
     question: "Can PencilProof read every document?",
-    answer: "No. It can autofill recognizable text from many digital or scanned PDFs and clear JPG/JPEG/PNG images. Blurry, cropped, handwritten, password-protected, or unusually formatted documents may require manual entry.",
+    answer: "No. It can autofill recognizable text from many digital or scanned PDFs and clear image files. Blurry, cropped, handwritten, password-protected, or unusually formatted documents may require manual entry.",
   },
   {
     question: "What if an imported number is wrong?",

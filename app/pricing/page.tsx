@@ -30,7 +30,7 @@ export default function PricingPage() {
           <div className="price-card">
             <div className="price-line"><span>Full Quote Audit</span><strong>$39</strong></div>
             <ul>
-              <li>Private PDF and photo autofill</li>
+              <li>Private PDF and image autofill</li>
               <li>Required import confirmation before the audit</li>
               <li>Multi-option finance menu detection</li>
               <li>Payment with and without products</li>
