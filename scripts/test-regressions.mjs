@@ -264,6 +264,12 @@ closeTo(photoStyleDealerAddOns.prepaidMaintenance, 899);
 closeTo(photoStyleDealerAddOns.tireWheel, 1199);
 closeTo(photoStyleDealerAddOns.accessories, 687);
 
+const manufacturerMaintenance = parseDealerText([
+  "Mitsubishi Maintenance** $2,191.00",
+]);
+closeTo(manufacturerMaintenance.prepaidMaintenance, 2191);
+assert.equal(manufacturerMaintenance.accessories, undefined);
+
 const noCategoryDoubleCounting = parseDealerText([
   "Vehicle Service Contract Protection Plan $2,495.00",
   "GAP Protection Plan $995.00",
