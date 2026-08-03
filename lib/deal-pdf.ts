@@ -709,6 +709,10 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     /\bmaintenance (?:plan|package|agreement)\b/i,
     /\bscheduled maintenance (?:plan|program|coverage)\b/i,
     /\bmaintenance care\b/i,
+    // Manufacturer menus often shorten the product to a brand name plus
+    // "Maintenance", for example "Mitsubishi Maintenance**". Some exports
+    // print only "Maintenance" beside the product amount.
+    /\bmaintenance\b(?=\s*\**\s*(?:\$|\d))/i,
     /\b(?:ToyotaCare Plus|Audi Care|BMW Ultimate Care)\b/i,
     /\b(?:Honda Care|Mercedes-Benz|Mopar)\b.*\bmaintenance\b/i,
   ];
