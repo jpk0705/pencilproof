@@ -6,8 +6,10 @@ import {
   createQuoteHandoffEnvelope,
 } from "@/lib/checkout";
 import {
+  DEAL_IMPORT_ACCEPT,
   DEAL_FIELD_LABELS,
   extractDealFromFile,
+  isDealImportFile,
   type DealPdfResult,
   type DealOfferOption,
   type ImportedDealFields,
@@ -237,14 +239,8 @@ export default function FreeQuotePreview() {
     setImportReviewed(false);
     setSelectedOfferId("");
 
-    const lowerName = file.name.toLowerCase();
-    const supported =
-      file.type === "application/pdf" ||
-      file.type === "image/jpeg" ||
-      file.type === "image/png" ||
-      /\.(pdf|jpe?g|png)$/.test(lowerName);
-    if (!supported) {
-      setScan({ status: "error", message: "Choose a dealer PDF, JPG, JPEG, or PNG file." });
+    if (!isDealImportFile(file)) {
+      setScan({ status: "error", message: "Choose a dealer PDF or image file." });
       return;
     }
     if (file.size > 15 * 1024 * 1024) {
@@ -401,16 +397,16 @@ export default function FreeQuotePreview() {
           {scan.status === "idle" ? (
             <div className="free-scan-drop" ref={uploadPanelRef}>
               <strong>Start with the written quote</strong>
-              <p>Use a dealer-generated PDF or a bright, sharp photo with the full page visible.</p>
+              <p>Use a dealer-generated PDF or a bright, sharp image with the full page visible.</p>
               <label className="button button-primary">
                 Upload PDF or image
                 <input
                   type="file"
-                  accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png"
+                  accept={DEAL_IMPORT_ACCEPT}
                   onChange={handleFile}
                 />
               </label>
-              <small>PDF, JPG, JPEG, or PNG · up to 15 MB</small>
+              <small>PDF or any image format · up to 15 MB</small>
             </div>
           ) : null}
 
@@ -441,7 +437,7 @@ export default function FreeQuotePreview() {
                   {showManualFallback ? "Try another file" : "Choose another file"}
                   <input
                     type="file"
-                    accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png"
+                    accept={DEAL_IMPORT_ACCEPT}
                     onChange={handleFile}
                   />
                 </label>

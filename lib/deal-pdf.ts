@@ -52,6 +52,51 @@ export type DealPdfResult = {
   offerMatrix?: DealOfferMatrix;
 };
 
+const IMAGE_FILE_EXTENSIONS = /\.(avif|bmp|gif|heic|heif|ico|jpe?g|jfif|jxl|png|svg|tif?f|webp)$/i;
+const IMAGE_MIME_TYPES_BY_EXTENSION: Record<string, string> = {
+  avif: "image/avif",
+  bmp: "image/bmp",
+  gif: "image/gif",
+  heic: "image/heic",
+  heif: "image/heif",
+  ico: "image/x-icon",
+  jfif: "image/jpeg",
+  jpe: "image/jpeg",
+  jpeg: "image/jpeg",
+  jpg: "image/jpeg",
+  jxl: "image/jxl",
+  png: "image/png",
+  svg: "image/svg+xml",
+  tif: "image/tiff",
+  tiff: "image/tiff",
+  webp: "image/webp",
+  pdf: "application/pdf",
+};
+
+/**
+ * The browser file picker can report a blank MIME type for files copied from
+ * some phones, messaging apps, and cloud drives. Keep the extension fallback
+ * so those files are not rejected before the decoder gets a chance to read
+ * them. Image decoding and OCR still determine whether the file is usable.
+ */
+export const isDealImportFile = (file: Pick<File, "name" | "type">) => {
+  const name = file.name.toLowerCase();
+  const mimeType = file.type.toLowerCase();
+  return mimeType === "application/pdf" || name.endsWith(".pdf") ||
+    mimeType.startsWith("image/") || IMAGE_FILE_EXTENSIONS.test(name);
+};
+
+export const isDealImportPdf = (file: Pick<File, "name" | "type">) =>
+  file.type.toLowerCase() === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+
+const mimeTypeForDealImport = (file: Pick<File, "name" | "type">) => {
+  if (file.type) return file.type.toLowerCase();
+  const extension = file.name.toLowerCase().split(".").pop() ?? "";
+  return IMAGE_MIME_TYPES_BY_EXTENSION[extension] ?? "image/png";
+};
+
+export const DEAL_IMPORT_ACCEPT = "application/pdf,image/*,.pdf";
+
 export type DealOfferOption = {
   id: string;
   type: "finance" | "lease";
@@ -1276,7 +1321,7 @@ const extractDealWithServerVision = async (
   upload?: { bytes: Uint8Array; mimeType: string },
 ): Promise<DealPdfResult> => {
   if (typeof window === "undefined") throw new Error("AI_IMPORT_UNAVAILABLE");
-  const prepared = upload ?? { bytes: new Uint8Array(await file.arrayBuffer()), mimeType: file.type || "image/png" };
+  const prepared = upload ?? { bytes: new Uint8Array(await file.arrayBuffer()), mimeType: mimeTypeForDealImport(file) };
   onProgress?.({ progress: 0.08, status: "sending the document to PencilProof vision import" });
   const response = await fetch("https://audit.pencilproof.com/api/ai-import", {
     method: "POST",
@@ -1387,14 +1432,11 @@ export const extractDealFromFile = async (
   file: File,
   onProgress?: (update: DealImportProgress) => void,
 ): Promise<DealPdfResult> => {
-  const name = file.name.toLowerCase();
-  const isPdf = file.type === "application/pdf" || name.endsWith(".pdf");
-  const isJpeg = file.type === "image/jpeg" || /\.jpe?g$/.test(name);
-  const isPng = file.type === "image/png" || name.endsWith(".png");
-  const isWebp = file.type === "image/webp" || name.endsWith(".webp");
+  const isPdf = isDealImportPdf(file);
+  const isImage = isDealImportFile(file) && !isPdf;
 
-  if (isPdf || isJpeg || isPng || isWebp) {
-    if (!isPdf && await isPhotoLikeImage(file)) {
+  if (isPdf || isImage) {
+    if (isImage && await isPhotoLikeImage(file)) {
       onProgress?.({ progress: 0.02, status: "enhancing the image for vision import" });
       try {
         const upload = await prepareVisionImage(file);
@@ -1412,7 +1454,8 @@ export const extractDealFromFile = async (
         : await extractDealFromImage(file, onProgress);
     } catch (localError) {
       try {
-        return await extractDealWithServerVision(file, onProgress);
+        const upload = isImage ? await prepareVisionImage(file) : undefined;
+        return await extractDealWithServerVision(file, onProgress, upload);
       } catch {
         throw localError;
       }
@@ -1424,7 +1467,8 @@ export const extractDealFromFile = async (
     if (isLocallyReadableImport(localResult)) return localResult;
 
     try {
-      const visionResult = await extractDealWithServerVision(file, onProgress);
+      const upload = isImage ? await prepareVisionImage(file) : undefined;
+      const visionResult = await extractDealWithServerVision(file, onProgress, upload);
       return reconcileLocalAndVision(localResult, visionResult);
     } catch {
       // Gemini is optional and may be unavailable or quota-limited. Never

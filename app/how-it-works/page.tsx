@@ -28,7 +28,7 @@ export default function HowItWorksPage() {
           <h2>From a confusing worksheet to a deal you can question with confidence.</h2>
         </div>
         <div className="steps">
-          <article><span>1</span><h3>Upload the quote free</h3><p>Scan a dealer PDF or photo in your browser. PencilProof looks for the vehicle, price, cash down, trade, products, APR, term, payment, and other deal figures.</p></article>
+          <article><span>1</span><h3>Upload the quote free</h3><p>Scan a dealer PDF or image in your browser. PencilProof looks for the vehicle, price, cash down, trade, products, APR, term, payment, and other deal figures.</p></article>
           <article><span>2</span><h3>Check every imported number</h3><p>Compare the detected values with the original quote. If there are multiple payment choices, select the exact option you are considering before continuing.</p></article>
           <article><span>3</span><h3>Unlock the complete solution</h3><p>Pay once to compare scenarios, see product and payment impact, review the math, and create a specific request for a revised buyer&apos;s order.</p></article>
         </div>
