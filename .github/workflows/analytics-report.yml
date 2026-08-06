@@ -5,7 +5,7 @@ on:
   repository_dispatch:
     types: [analytics-report]
   schedule:
-    - cron: "0 15 * * *"
+    - cron: "*/5 * * * *"
 
 permissions:
   contents: read
