@@ -2,7 +2,7 @@ name: PencilProof Analytics Report
 
 on:
   issues:
-    types: [opened]
+    types: [opened, reopened]
   workflow_dispatch:
 
 permissions:
@@ -53,7 +53,6 @@ jobs:
               event: sum(int(by_day[day].get(event, 0)) for day in days)
               for event, _ in event_labels
           }
-          attempts = totals["scan_started"]
           success = totals["import_success"]
           failed = totals["import_failed"]
           resolved = success + failed
