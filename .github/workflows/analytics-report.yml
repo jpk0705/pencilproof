@@ -1,0 +1,116 @@
+name: PencilProof Analytics Report
+
+on:
+  issues:
+    types: [opened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  report:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.actor == github.repository_owner && startsWith(github.event.issue.title, '[analytics-report]'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Build seven-day analytics report
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import datetime as dt
+          import json
+          import urllib.request
+
+          URL = "https://pencilproof-audit.jpkwork0705.workers.dev/api/analytics/summary"
+          req = urllib.request.Request(
+              URL,
+              headers={"Accept": "application/json", "User-Agent": "PencilProof-Analytics-Report/1.0"},
+          )
+          with urllib.request.urlopen(req, timeout=30) as response:
+              payload = json.load(response)
+
+          today = dt.datetime.now(dt.timezone.utc).date()
+          days = [(today - dt.timedelta(days=offset)).isoformat() for offset in range(6, -1, -1)]
+          raw_by_day = payload.get("byDay") or {}
+          by_day = {day: raw_by_day.get(day, {}) for day in days}
+
+          event_labels = [
+              ("page_view", "Visits / page views"),
+              ("scan_started", "Upload attempts"),
+              ("import_success", "Successful uploads"),
+              ("import_failed", "Failed uploads"),
+              ("manual_fallback_opened", "Manual-entry fallbacks"),
+              ("audit_completed", "Completed audits"),
+              ("checkout_started", "Checkout attempts"),
+              ("payment_completed", "Completed payments"),
+          ]
+          totals = {
+              event: sum(int(by_day[day].get(event, 0)) for day in days)
+              for event, _ in event_labels
+          }
+          attempts = totals["scan_started"]
+          success = totals["import_success"]
+          failed = totals["import_failed"]
+          resolved = success + failed
+          success_rate = (success / resolved * 100) if resolved else 0.0
+
+          lines = [
+              "## PencilProof analytics — last 7 UTC dates",
+              "",
+              f"**Date range:** {days[0]} through {days[-1]} (UTC)",
+              f"**Analytics updated:** {payload.get('updatedAt') or 'unknown'}",
+              f"**All-time unique sessions:** {int(payload.get('sessions') or 0):,}",
+              "",
+              "### Seven-day totals",
+              "",
+              "| Metric | Count |",
+              "|---|---:|",
+          ]
+          for event, label in event_labels:
+              lines.append(f"| {label} | {totals[event]:,} |")
+          lines.extend([
+              f"| Import success rate (success ÷ success+failed) | {success_rate:.1f}% |",
+              "",
+              "### Daily breakdown",
+              "",
+              "| UTC date | Visits | Attempts | Success | Failed | Manual | Audits | Checkout | Paid |",
+              "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+          ])
+          for day in days:
+              events = by_day[day]
+              values = [int(events.get(event, 0)) for event, _ in event_labels]
+              lines.append(
+                  f"| {day} | {values[0]} | {values[1]} | {values[2]} | {values[3]} | "
+                  f"{values[4]} | {values[5]} | {values[6]} | {values[7]} |"
+              )
+          lines.extend([
+              "",
+              "_Visits are recorded page-view events. The current tracker stores unique sessions as an all-time total, not a historical daily series._",
+          ])
+
+          report = "\n".join(lines) + "\n"
+          with open("report.md", "w", encoding="utf-8") as handle:
+              handle.write(report)
+          print(report)
+          print("ANALYTICS_JSON_BEGIN")
+          print(json.dumps({
+              "range": {"start": days[0], "end": days[-1], "timezone": "UTC"},
+              "totals": totals,
+              "success_rate": round(success_rate, 1),
+              "by_day": by_day,
+              "all_time_sessions": int(payload.get("sessions") or 0),
+              "updated_at": payload.get("updatedAt") or None,
+          }, sort_keys=True))
+          print("ANALYTICS_JSON_END")
+          PY
+
+      - name: Comment report on request issue
+        if: github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment "${{ github.event.issue.number }}" --repo "${{ github.repository }}" --body-file report.md
