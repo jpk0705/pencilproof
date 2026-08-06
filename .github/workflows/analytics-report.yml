@@ -4,6 +4,10 @@ on:
   workflow_dispatch:
   repository_dispatch:
     types: [analytics-report]
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/analytics-report-trigger.txt"
   schedule:
     - cron: "*/5 * * * *"
 
