@@ -7,12 +7,8 @@ on:
   workflow_run:
     workflows: ["Deploy PencilProof Worker"]
     types: [completed]
-  push:
-    branches: ["main"]
-    paths:
-      - ".github/analytics-report-trigger.txt"
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "0 15 * * *"
 
 permissions:
   contents: read
