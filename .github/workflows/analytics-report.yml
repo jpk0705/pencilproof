@@ -4,6 +4,9 @@ on:
   workflow_dispatch:
   repository_dispatch:
     types: [analytics-report]
+  workflow_run:
+    workflows: ["Deploy PencilProof Worker"]
+    types: [completed]
   push:
     branches: ["main"]
     paths:
