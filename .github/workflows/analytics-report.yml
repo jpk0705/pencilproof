@@ -1,19 +1,17 @@
 name: PencilProof Analytics Report
 
 on:
-  issues:
-    types: [opened, reopened]
   workflow_dispatch:
+  repository_dispatch:
+    types: [analytics-report]
+  schedule:
+    - cron: "0 15 * * *"
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
   report:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.actor == github.repository_owner && startsWith(github.event.issue.title, '[analytics-report]'))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -95,21 +93,23 @@ jobs:
           report = "\n".join(lines) + "\n"
           with open("report.md", "w", encoding="utf-8") as handle:
               handle.write(report)
+          with open("report.json", "w", encoding="utf-8") as handle:
+              json.dump({
+                  "range": {"start": days[0], "end": days[-1], "timezone": "UTC"},
+                  "totals": totals,
+                  "success_rate": round(success_rate, 1),
+                  "by_day": by_day,
+                  "all_time_sessions": int(payload.get("sessions") or 0),
+                  "updated_at": payload.get("updatedAt") or None,
+              }, handle, sort_keys=True, indent=2)
           print(report)
-          print("ANALYTICS_JSON_BEGIN")
-          print(json.dumps({
-              "range": {"start": days[0], "end": days[-1], "timezone": "UTC"},
-              "totals": totals,
-              "success_rate": round(success_rate, 1),
-              "by_day": by_day,
-              "all_time_sessions": int(payload.get("sessions") or 0),
-              "updated_at": payload.get("updatedAt") or None,
-          }, sort_keys=True))
-          print("ANALYTICS_JSON_END")
           PY
 
-      - name: Comment report on request issue
-        if: github.event_name == 'issues'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh issue comment "${{ github.event.issue.number }}" --repo "${{ github.repository }}" --body-file report.md
+      - name: Upload analytics report
+        uses: actions/upload-artifact@v4
+        with:
+          name: pencilproof-analytics-report
+          path: |
+            report.md
+            report.json
+          retention-days: 30
