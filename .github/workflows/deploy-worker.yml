@@ -5,6 +5,7 @@ on:
     branches: ["main"]
     paths:
       - "worker/**"
+      - "lib/analytics.ts"
       - "wrangler.jsonc"
       - "package.json"
       - "package-lock.json"
@@ -31,6 +32,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Run regression tests
+        run: npm test
+
+      - name: Run type check
+        run: npm run typecheck
+
       - name: Build static assets
         run: npm run build
 
@@ -50,4 +57,5 @@ jobs:
 # Deployment trigger: refresh after OCR asset fallback fix.
 # Deployment trigger: refresh after complete OCR asset fallback fix.
 # Deployment trigger: refresh after dependency-install fix.
-# Deployment trigger: refresh after PR #29 invalid-model fallback fix.\n# Deployment trigger: refresh after PR #30 model fallback fix.\n
+# Deployment trigger: refresh after PR #29 invalid-model fallback fix.
+# Deployment trigger: refresh after PR #30 model fallback fix.

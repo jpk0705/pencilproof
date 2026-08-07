@@ -14,6 +14,15 @@ const makeEnv = (paths: string[]): Env => ({
               byDay: {},
               byEvent: {},
               feedback: { byCategory: {}, byRating: {}, recent: [], total: 0 },
+              ledger: {
+                duplicateEventsRejected: 0,
+                eventCount: 0,
+                firstEventAt: null,
+                lastEventAt: null,
+                reliableFrom: new Date(0).toISOString(),
+                schemaVersion: 2,
+                verified: true,
+              },
               sessions: 0,
               updatedAt: new Date(0).toISOString(),
             })
@@ -46,9 +55,13 @@ test("analytics public routes translate to Durable Object routes", async () => {
   const event = await worker.fetch(
     new Request("https://audit.pencilproof.com/api/analytics/event", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "https://pencilproof.com",
+      },
       body: JSON.stringify({
         event: "page_view",
+        eventId: "12345678-1234-1234-1234-123456789012",
         sessionId: "abcdefghijklmnopqrst",
       }),
     }),
@@ -67,5 +80,26 @@ test("analytics routes reject the wrong method before reaching storage", async (
     makeEnv(paths),
   );
   assert.equal(response.status, 405);
+  assert.deepEqual(paths, []);
+});
+
+test("analytics event rejects an unrelated browser origin", async () => {
+  const paths: string[] = [];
+  const response = await worker.fetch(
+    new Request("https://audit.pencilproof.com/api/analytics/event", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "https://example.com",
+      },
+      body: JSON.stringify({
+        event: "page_view",
+        eventId: "12345678-1234-1234-1234-123456789012",
+        sessionId: "abcdefghijklmnopqrst",
+      }),
+    }),
+    makeEnv(paths),
+  );
+  assert.equal(response.status, 403);
   assert.deepEqual(paths, []);
 });

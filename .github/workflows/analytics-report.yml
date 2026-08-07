@@ -30,10 +30,14 @@ jobs:
           URL = "https://pencilproof-audit.jpkwork0705.workers.dev/api/analytics/summary"
           req = urllib.request.Request(
               URL,
-              headers={"Accept": "application/json", "User-Agent": "PencilProof-Analytics-Report/1.0"},
+              headers={"Accept": "application/json", "User-Agent": "PencilProof-Analytics-Report/2.0"},
           )
           with urllib.request.urlopen(req, timeout=30) as response:
               payload = json.load(response)
+
+          ledger = payload.get("ledger") or {}
+          if ledger.get("verified") is not True:
+              raise RuntimeError("Analytics ledger is not reporting verified data")
 
           today = dt.datetime.now(dt.timezone.utc).date()
           days = [(today - dt.timedelta(days=offset)).isoformat() for offset in range(6, -1, -1)]
@@ -59,12 +63,19 @@ jobs:
           resolved = success + failed
           success_rate = (success / resolved * 100) if resolved else 0.0
 
+          reliable_from = ledger.get("reliableFrom") or "unknown"
+          event_count = int(ledger.get("eventCount") or 0)
+          duplicates = int(ledger.get("duplicateEventsRejected") or 0)
+
           lines = [
               "## PencilProof analytics — last 7 UTC dates",
               "",
               f"**Date range:** {days[0]} through {days[-1]} (UTC)",
+              f"**Reliable record starts:** {reliable_from}",
               f"**Analytics updated:** {payload.get('updatedAt') or 'unknown'}",
-              f"**All-time unique sessions:** {int(payload.get('sessions') or 0):,}",
+              f"**Verified event receipts stored:** {event_count:,}",
+              f"**Duplicate receipts rejected:** {duplicates:,}",
+              f"**All-time unique sessions since reliable tracking began:** {int(payload.get('sessions') or 0):,}",
               "",
               "### Seven-day totals",
               "",
@@ -90,7 +101,7 @@ jobs:
               )
           lines.extend([
               "",
-              "_Visits are recorded page-view events. The current tracker stores unique sessions as an all-time total, not a historical daily series._",
+              "_These totals are calculated from individual saved event receipts. Records from before the reliable-tracking start time are not included because the old tracker was incomplete._",
           ])
 
           report = "\n".join(lines) + "\n"
@@ -104,6 +115,7 @@ jobs:
                   "by_day": by_day,
                   "all_time_sessions": int(payload.get("sessions") or 0),
                   "updated_at": payload.get("updatedAt") or None,
+                  "ledger": ledger,
               }, handle, sort_keys=True, indent=2)
           print(report)
           PY
