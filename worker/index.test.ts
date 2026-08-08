@@ -130,6 +130,43 @@ test.afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
+test("AI import reports a stable Gemini quota diagnostic", async () => {
+  const env = makeEnv();
+  env.GEMINI_API_KEY = "test-gemini-key";
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith("/v1beta/models")) {
+      return Response.json({ models: [] });
+    }
+    return Response.json(
+      { error: { status: "RESOURCE_EXHAUSTED", message: "quota exceeded" } },
+      { status: 429 },
+    );
+  };
+
+  const response = await handleRequest(
+    new Request("https://audit.pencilproof.com/api/ai-import", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "https://pencilproof.com",
+      },
+      body: JSON.stringify({ base64: "aGVsbG8=", mimeType: "image/jpeg" }),
+    }),
+    env,
+  );
+  const result = await response.json() as {
+    error: string;
+    providerCode: string;
+    providerHttpStatus: number;
+  };
+
+  assert.equal(response.status, 502);
+  assert.equal(result.error, "AI_IMPORT_PROVIDER_ERROR");
+  assert.equal(result.providerCode, "QUOTA");
+  assert.equal(result.providerHttpStatus, 429);
+});
+
 test("access tokens are signed and expire", async () => {
   const token = await createAccessToken(
     "cs_test_paid",
