@@ -1,25 +1,22 @@
-name: Verify PencilProof Worker
+name: Deploy PencilProof Social Worker
 
 on:
-  pull_request:
+  push:
     branches: ["main"]
     paths:
-      - "worker/**"
-      - "lib/analytics.ts"
-      - "wrangler.jsonc"
+      - "worker/social.mjs"
+      - "worker/social.test.mjs"
       - "wrangler.social.jsonc"
       - "package.json"
       - "package-lock.json"
-      - ".github/workflows/verify-worker.yml"
-      - ".github/workflows/deploy-worker.yml"
       - ".github/workflows/deploy-social.yml"
-      - ".github/workflows/analytics-report.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  verify:
+  deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -38,8 +35,9 @@ jobs:
       - name: Run regression tests
         run: npm test
 
-      - name: Run type check
-        run: npm run typecheck
-
-      - name: Build static assets
-        run: npm run build
+      - name: Deploy social Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --config wrangler.social.jsonc
