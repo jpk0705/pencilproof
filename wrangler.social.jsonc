@@ -1,8 +1,8 @@
-// PencilProof unattended social-media automation
+// PencilProof unattended social-media automation — direct API / zero-cost mode
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "pencilproof-social",
-  "main": "./worker/social.mjs",
+  "main": "./worker/social-direct.mjs",
   "compatibility_date": "2026-08-08",
   "workers_dev": true,
   "ai": {
@@ -25,7 +25,7 @@
     }
   ],
   "triggers": {
-    "crons": ["*/15 * * * *"]
+    "crons": ["*/30 * * * *"]
   },
   "vars": {
     "SOCIAL_AUTOMATION_ENABLED": "true",
@@ -38,7 +38,10 @@
     "SOCIAL_REPLY_LOOKBACK_DAYS": "14",
     "SOCIAL_MAX_REPLIES_PER_RUN": "4",
     "SOCIAL_MAX_REPLIES_PER_DAY": "12",
-    "SOCIAL_AI_MODEL": "@cf/zai-org/glm-4.7-flash"
+    "SOCIAL_AI_MAX_CALLS_PER_DAY": "12",
+    "SOCIAL_AI_MODEL": "@cf/meta/llama-3.2-1b-instruct",
+    "META_API_VERSION": "v24.0",
+    "LINKEDIN_API_VERSION": "202604"
   },
   "observability": {
     "enabled": true,
