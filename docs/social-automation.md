@@ -168,7 +168,7 @@ Omitting this variable means all configured direct platforms that support the ne
 
 ## Safety defaults
 
-`SOCIAL_PUBLISH_ENABLED` is `false` in `wrangler.social.jsonc`. Leave it off for initial monitoring and reply testing. Enable scheduled publishing only after the linked accounts, tokens, and test results have been reviewed.
+`SOCIAL_REPLY_ENABLED` and `SOCIAL_PUBLISH_ENABLED` are both `false` in `wrangler.social.jsonc`. Leave them off for the first credentialed deployment so the Worker can safely monitor without posting. Enable replies for a controlled comment test, then enable scheduled publishing only after the linked accounts, tokens, and test results have been reviewed.
 
 The AI prompts prohibit requests for sensitive personal information, guarantees, individualized legal/financial advice, dealer accusations, and claims that PencilProof negotiates or contacts dealerships.
 
@@ -194,7 +194,7 @@ Neither endpoint returns access tokens, passwords, comment bodies, or other cred
 Defaults live in `wrangler.social.jsonc`:
 
 - `SOCIAL_AUTOMATION_ENABLED=true`
-- `SOCIAL_REPLY_ENABLED=true`
+- `SOCIAL_REPLY_ENABLED=false`
 - `SOCIAL_PUBLISH_ENABLED=false`
 - `SOCIAL_TIMEZONE=America/Los_Angeles`
 - `SOCIAL_ACTIVE_START_HOUR=8`

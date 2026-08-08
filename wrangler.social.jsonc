@@ -29,7 +29,7 @@
   },
   "vars": {
     "SOCIAL_AUTOMATION_ENABLED": "true",
-    "SOCIAL_REPLY_ENABLED": "true",
+    "SOCIAL_REPLY_ENABLED": "false",
     "SOCIAL_PUBLISH_ENABLED": "false",
     "SOCIAL_TIMEZONE": "America/Los_Angeles",
     "SOCIAL_ACTIVE_START_HOUR": "8",
