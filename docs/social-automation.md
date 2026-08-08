@@ -9,11 +9,12 @@ The target is $0/month at normal PencilProof launch volume.
 - Cloudflare Cron wakes the Worker every 30 minutes.
 - A SQLite-backed Durable Object stores dedupe/rate-limit state.
 - Workers AI uses `@cf/meta/llama-3.2-1b-instruct`, a small low-cost model.
-- `SOCIAL_AI_MAX_CALLS_PER_DAY=12` stops new AI generations after the local daily cap.
+- `SOCIAL_AI_MAX_CALLS_PER_DAY=12` caps the direct-network AI loop.
+- `SOCIAL_FACEBOOK_AI_MAX_CALLS_PER_DAY=6` separately caps Facebook AI calls.
 - X/Twitter is intentionally disabled in this mode because its API is pay-per-use.
 - No paid social aggregator is required.
 
-The AI-call cap is a safety brake, not a billing guarantee. Keep the Cloudflare account on the Free plan if the objective is a hard $0 Cloudflare bill, and review Workers AI usage after activation.
+The AI-call caps are safety brakes, not billing guarantees. Keep the Cloudflare account on the Free plan if the objective is a hard $0 Cloudflare bill, and review Workers AI usage after activation.
 
 ## What it does
 
@@ -30,21 +31,21 @@ The AI-call cap is a safety brake, not a billing guarantee. Keep the Cloudflare 
 
 ## Direct platforms
 
-### Bluesky
+### Facebook Page
 
 Supported now:
 
-- read recent PencilProof posts
-- read reply threads
-- publish text posts
-- publish replies
+- read recent Page feed posts created by the Page
+- read comments on those posts
+- publish Page replies to comments
+- publish text posts to the Page feed
 
-Cloudflare secrets/variables required:
+Required:
 
-- `BLUESKY_HANDLE`
-- `BLUESKY_APP_PASSWORD`
+- `FACEBOOK_PAGE_ID`
+- `FACEBOOK_PAGE_ACCESS_TOKEN`
 
-An App Password should be used instead of the account's main password.
+Automation is for a Facebook **Page**, not a normal personal profile. The Page Access Token must be created from a Meta app/user authorization that has the Page tasks and permissions needed for reading engagement, creating content, and moderating/replying.
 
 ### Threads
 
@@ -78,6 +79,22 @@ Required:
 
 If `INSTAGRAM_IMAGE_URL` is absent, Instagram remains active for monitoring and replies but is automatically excluded from scheduled publishing.
 
+A Professional Instagram account can be linked to the Facebook Page and authorized through Meta's Facebook Login path.
+
+### Bluesky
+
+Supported now:
+
+- read recent PencilProof posts
+- read reply threads
+- publish text posts
+- publish replies
+
+Required:
+
+- `BLUESKY_HANDLE`
+- `BLUESKY_APP_PASSWORD`
+
 ### LinkedIn
 
 Supported now:
@@ -89,8 +106,8 @@ Supported now:
 
 Required:
 
-- secret: `LINKEDIN_ACCESS_TOKEN`
-- variable/secret: `LINKEDIN_AUTHOR_URN` such as an organization URN
+- `LINKEDIN_ACCESS_TOKEN`
+- `LINKEDIN_AUTHOR_URN`
 
 The LinkedIn developer app must have the appropriate Community Management API access and social-feed permissions for the account/page.
 
@@ -98,16 +115,15 @@ The LinkedIn developer app must have the appropriate Community Management API ac
 
 - **X/Twitter:** disabled in zero-cost mode because current API access is pay-per-use.
 - **TikTok:** not enabled in the zero-cost worker; direct public posting requires TikTok's app/content-posting approval flow and is media-oriented.
-- **Facebook Pages:** not wired into this first direct release. It can be added as another Meta adapter after the Page/app permissions are established, without bringing Ayrshare back.
-- **Reddit:** not enabled because commercial Data API terms/access should be reviewed before automating a business account.
+- **Reddit:** disabled for PencilProof. Do not configure Reddit credentials or automation.
 
 ## Cloudflare secrets
 
-Secrets must never be committed to GitHub. Add only the credentials for platforms PencilProof actually uses. Examples:
+Secrets must never be committed to GitHub. Add only the credentials for platforms PencilProof actually uses.
 
 ```bash
-npx wrangler secret put BLUESKY_HANDLE --config wrangler.social.jsonc
-npx wrangler secret put BLUESKY_APP_PASSWORD --config wrangler.social.jsonc
+npx wrangler secret put FACEBOOK_PAGE_ID --config wrangler.social.jsonc
+npx wrangler secret put FACEBOOK_PAGE_ACCESS_TOKEN --config wrangler.social.jsonc
 npx wrangler secret put THREADS_ACCESS_TOKEN --config wrangler.social.jsonc
 npx wrangler secret put INSTAGRAM_ACCESS_TOKEN --config wrangler.social.jsonc
 npx wrangler secret put INSTAGRAM_USER_ID --config wrangler.social.jsonc
@@ -115,14 +131,14 @@ npx wrangler secret put LINKEDIN_ACCESS_TOKEN --config wrangler.social.jsonc
 npx wrangler secret put LINKEDIN_AUTHOR_URN --config wrangler.social.jsonc
 ```
 
-`INSTAGRAM_IMAGE_URL` can be stored as a secret or normal Worker variable because it is not a credential.
+Never paste social passwords or access tokens into source code, GitHub issues, PR comments, or chat messages.
 
 ## Optional publishing restriction
 
 If credentials for several platforms are configured but scheduled posts should go only to selected networks, add a comma-separated Worker variable:
 
 ```jsonc
-"SOCIAL_PUBLISH_PLATFORMS": "bluesky,threads,linkedin"
+"SOCIAL_PUBLISH_PLATFORMS": "facebook,threads,instagram,linkedin"
 ```
 
 Omitting this variable means all configured direct platforms that support the needed post format are eligible.
@@ -135,17 +151,18 @@ Default limits:
 
 - maximum 4 automated replies per run
 - maximum 12 automated replies per local day
-- maximum 12 AI generations per local day
-- at most 1 scheduled post cycle per local day
+- maximum 12 direct-network AI generations per local day
+- maximum 6 Facebook AI generations per local day
+- at most 1 scheduled post cycle per local day per state loop
 - at least 48 hours between scheduled post cycles
 - scheduled publishing only between 8 AM and 7 PM Pacific
 
 ## Status endpoints
 
 - `GET /health` reports direct-zero-cost mode, automation/publish flags, and which platforms have complete credentials.
-- `GET /status` reports the latest run counts, configured platforms, publishing platforms, AI calls, and warning count.
+- `GET /status` reports the latest direct-network status plus a separate Facebook status block.
 
-Neither endpoint returns access tokens, App Passwords, comment bodies, or other credentials.
+Neither endpoint returns access tokens, passwords, comment bodies, or other credentials.
 
 ## Configuration
 
@@ -162,8 +179,9 @@ Defaults live in `wrangler.social.jsonc`:
 - `SOCIAL_MAX_REPLIES_PER_RUN=4`
 - `SOCIAL_MAX_REPLIES_PER_DAY=12`
 - `SOCIAL_AI_MAX_CALLS_PER_DAY=12`
+- `SOCIAL_FACEBOOK_AI_MAX_CALLS_PER_DAY=6`
 - `SOCIAL_AI_MODEL=@cf/meta/llama-3.2-1b-instruct`
 - `META_API_VERSION=v24.0`
 - `LINKEDIN_API_VERSION=202604`
 
-The Worker remains inactive until at least one platform has its required direct credentials configured.
+The Worker remains inactive for each platform until that platform's required credentials are configured.
