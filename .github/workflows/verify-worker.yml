@@ -7,10 +7,12 @@ on:
       - "worker/**"
       - "lib/analytics.ts"
       - "wrangler.jsonc"
+      - "wrangler.social.jsonc"
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/verify-worker.yml"
       - ".github/workflows/deploy-worker.yml"
+      - ".github/workflows/deploy-social.yml"
       - ".github/workflows/analytics-report.yml"
 
 permissions:
