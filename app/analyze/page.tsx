@@ -361,8 +361,22 @@ export default function AnalyzePage() {
           ? "PencilProof could not find enough readable text in that image or scanned PDF. Try a brighter, sharper copy or enter the figures manually."
           : error instanceof Error && error.message.startsWith("AI_IMPORT_PROVIDER_QUOTA")
             ? "PencilProof's vision importer reached its Google Gemini usage limit. Please try again shortly or enter the figures manually."
-            : error instanceof Error && error.message.startsWith("AI_IMPORT_PROVIDER_")
-              ? "PencilProof's vision importer could not process this image. Please try the original full-resolution quote or enter the figures manually."
+            : error instanceof Error && error.message.startsWith("AI_IMPORT_PROVIDER_AUTHENTICATION")
+              ? "PencilProof could not authenticate with Google Gemini. Please try again later or enter the figures manually."
+              : error instanceof Error && error.message.startsWith("AI_IMPORT_PROVIDER_PERMISSION")
+                ? "Google Gemini is not permitted to process this import right now. Please try again later or enter the figures manually."
+                : error instanceof Error && error.message.startsWith("AI_IMPORT_PROVIDER_BAD_REQUEST")
+                  ? "Google Gemini rejected this file request. Try the original full-resolution quote or enter the figures manually."
+                  : error instanceof Error && error.message.startsWith("AI_IMPORT_PROVIDER_INVALID_RESPONSE")
+                    ? "Google Gemini returned an unusable extraction response. Please try again or enter the figures manually."
+                    : error instanceof Error && error.message.startsWith("AI_IMPORT_PROVIDER_PROVIDER_UNAVAILABLE")
+                      ? "Google Gemini is temporarily unavailable. Please try again shortly or enter the figures manually."
+                      : error instanceof Error && error.message.startsWith("AI_IMPORT_PROVIDER_REQUEST_TOO_LARGE")
+                        ? "This file is too large for the vision importer. Use a smaller copy or enter the figures manually."
+                        : error instanceof Error && error.message.startsWith("AI_IMPORT_PROVIDER_MODEL_UNAVAILABLE")
+                          ? "No compatible Google Gemini vision model is available right now. Please try again later or enter the figures manually."
+                      : error instanceof Error && error.message.startsWith("AI_IMPORT_PROVIDER_")
+                        ? "PencilProof's vision importer could not process this file. Please try again or enter the figures manually."
           : "PencilProof could not read this file. It may be password-protected, blurry, or use an unsupported format. Check the original quote and enter the figures manually.",
         fields: [],
       });
@@ -825,7 +839,7 @@ export default function AnalyzePage() {
             <button type="button" onClick={() => { setSelectedOfferId(""); setSelectedOfferType(null); }}>Choose a finance option instead</button>
           </section>
         ) : null}
-        <p className="pdf-import-note">Best results: use a dealer-generated PDF or a bright, sharp, straight-on image with the full figures visible. Small or photographed worksheets use the secured vision importer after image enhancement. OCR and vision can make mistakes, so compare every imported value with the original.</p>
+        <p className="pdf-import-note">Best results: use a dealer-generated PDF or a bright, sharp, straight-on image with the full figures visible. PencilProof reads images locally first and uses the secured vision importer only when local extraction is incomplete or ambiguous. OCR and vision can make mistakes, so compare every imported value with the original.</p>
       </section>
 
       {!pendingImport && selectedOfferType !== "lease" ? <div className="analyzer-layout shell" id="manual-entry" ref={manualEntryRef}>

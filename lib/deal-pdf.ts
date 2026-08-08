@@ -1275,19 +1275,6 @@ const bytesToBase64 = (bytes: Uint8Array) => {
   return btoa(binary);
 };
 
-const isPhotoLikeImage = async (file: File) => {
-  if (typeof window === "undefined") return false;
-  try {
-    const bitmap = await createImageBitmap(file);
-    const pixels = bitmap.width * bitmap.height;
-    const photoLike = Math.max(bitmap.width, bitmap.height) < 1400 || pixels < 1_000_000;
-    bitmap.close();
-    return photoLike;
-  } catch {
-    return false;
-  }
-};
-
 // Small phone screenshots and compressed social-media images lose the character
 // detail that both Tesseract and vision models need. Upscale before the server
 // request, while keeping the original untouched for the user's evidence view.
@@ -1314,10 +1301,9 @@ const prepareVisionImage = async (file: File) => {
 };
 
 /**
- * QuoteDefender's accuracy advantage comes from server-side document vision
- * followed by a layout-aware structured extraction prompt. PencilProof keeps
- * the local OCR path as a fallback, but uses the same stronger architecture
- * whenever the production AI importer is configured.
+ * Server-side document vision is an escalation path after local extraction,
+ * not the first step. This keeps ordinary quote images private and avoids
+ * spending provider quota when browser OCR already found a usable quote.
  */
 const extractDealWithServerVision = async (
   file: File,
@@ -1440,17 +1426,6 @@ export const extractDealFromFile = async (
   const isImage = isDealImportFile(file) && !isPdf;
 
   if (isPdf || isImage) {
-    if (isImage && await isPhotoLikeImage(file)) {
-      onProgress?.({ progress: 0.02, status: "enhancing the image for vision import" });
-      try {
-        const upload = await prepareVisionImage(file);
-        return await extractDealWithServerVision(file, onProgress, upload);
-      } catch (visionError) {
-        // For a tiny photo, local OCR is not a trustworthy fallback. Preserve
-        // the server diagnostic so the user can retry or use manual entry.
-        throw visionError;
-      }
-    }
     let localResult: DealPdfResult;
     try {
       localResult = isPdf
@@ -1460,8 +1435,11 @@ export const extractDealFromFile = async (
       try {
         const upload = isImage ? await prepareVisionImage(file) : undefined;
         return await extractDealWithServerVision(file, onProgress, upload);
-      } catch {
-        throw localError;
+      } catch (visionError) {
+        // When local extraction failed and the escalation provider also fails,
+        // preserve the provider category so the user sees the actionable cause
+        // instead of a generic OCR failure.
+        throw visionError instanceof Error ? visionError : localError;
       }
     }
 
@@ -1470,15 +1448,9 @@ export const extractDealFromFile = async (
     // overwrite correct local values.
     if (isLocallyReadableImport(localResult)) return localResult;
 
-    try {
-      const upload = isImage ? await prepareVisionImage(file) : undefined;
-      const visionResult = await extractDealWithServerVision(file, onProgress, upload);
-      return reconcileLocalAndVision(localResult, visionResult);
-    } catch {
-      // Gemini is optional and may be unavailable or quota-limited. Never
-      // discard a usable local result when the provider does not answer.
-      return localResult;
-    }
+    const upload = isImage ? await prepareVisionImage(file) : undefined;
+    const visionResult = await extractDealWithServerVision(file, onProgress, upload);
+    return reconcileLocalAndVision(localResult, visionResult);
   }
   throw new Error("UNSUPPORTED_FILE");
 };

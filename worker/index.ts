@@ -200,15 +200,21 @@ const handleAiImport = async (request: Request, env: Env) => {
       statusText: response?.statusText,
       body: providerBody.slice(0, 1000),
     });
-    let providerCode = "UNKNOWN";
+    let providerCode = lastProviderBody === "MODEL_RETURNED_INVALID_JSON"
+      ? "INVALID_RESPONSE"
+      : !response
+        ? "NO_MODEL_RESPONSE"
+        : "UNKNOWN";
     try {
       const parsed = JSON.parse(providerBody) as { error?: { status?: string; code?: number; message?: string } };
       const providerStatus = parsed.error?.status;
       const providerMessage = parsed.error?.message ?? "";
-      if (providerStatus === "UNAUTHENTICATED" || /api key|authentication|credential/i.test(providerMessage)) providerCode = "AUTHENTICATION";
-      else if (providerStatus === "PERMISSION_DENIED" || /permission|disabled|not enabled/i.test(providerMessage)) providerCode = "PERMISSION";
+      if (providerStatus === "UNAUTHENTICATED" || response?.status === 401 || /api key|authentication|credential/i.test(providerMessage)) providerCode = "AUTHENTICATION";
+      else if (providerStatus === "PERMISSION_DENIED" || response?.status === 403 || /permission|disabled|not enabled/i.test(providerMessage)) providerCode = "PERMISSION";
       else if (providerStatus === "RESOURCE_EXHAUSTED" || response.status === 429) providerCode = "QUOTA";
       else if (response?.status === 400) providerCode = "BAD_REQUEST";
+      else if (response?.status === 413) providerCode = "REQUEST_TOO_LARGE";
+      else if (response?.status === 404) providerCode = "MODEL_UNAVAILABLE";
       else if ((response?.status ?? 0) >= 500) providerCode = "PROVIDER_UNAVAILABLE";
     } catch {
       // Keep UNKNOWN when Google did not return JSON.
