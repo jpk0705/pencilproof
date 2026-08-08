@@ -52,6 +52,8 @@ Meta setup:
 - Meta's current Pages API docs also list `pages_read_user_engagement` for Page post/comment access. Request it if the app dashboard requires it for comment reads or App Review.
 - Store only the resulting Page access token in Cloudflare. Do not commit it or paste it into chat.
 
+The current Page and Instagram app is **PencilProof Social** (Meta app ID `1617000713152705`).
+
 Automation is for a Facebook **Page**, not a normal personal profile.
 
 ### Threads
@@ -69,7 +71,7 @@ Required Worker secret:
 
 Meta setup:
 
-- Add the Threads API use case/product to the Meta developer app.
+- Use the separate **PencilProof Threads** Meta app (app ID `1047346081125533`); Meta currently prevents the Threads use case from being combined with the Page/Instagram use cases in the same app.
 - Request the current Threads permissions needed by this Worker: `threads_basic`, `threads_content_publish`, `threads_read_replies`, and `threads_manage_replies`.
 - `threads_basic` is required for all Threads endpoints.
 - `threads_content_publish` is required for publishing.
