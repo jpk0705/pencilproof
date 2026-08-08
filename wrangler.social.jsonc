@@ -16,12 +16,14 @@
       }
     ]
   },
-  "exports": {
-    "SocialAutomationState": {
-      "type": "durable-object",
-      "storage": "sqlite"
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "SocialAutomationState"
+      ]
     }
-  },
+  ],
   "triggers": {
     "crons": ["*/15 * * * *"]
   },
