@@ -4,8 +4,6 @@ on:
   push:
     branches: ["main"]
     paths:
-      - "worker/social.mjs"
-      - "worker/social.test.mjs"
       - "worker/social-direct.mjs"
       - "worker/social-direct.test.mjs"
       - "worker/social-facebook.mjs"
