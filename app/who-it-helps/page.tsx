@@ -4,6 +4,7 @@ import { SiteFooter, SiteNav, AuditCta } from "@/app/components/SiteChrome";
 export const metadata = {
   title: "Who PencilProof Helps | Shoppers and Salespeople",
   description: "See how shoppers and salespeople can use a written vehicle quote to ask clearer questions and structure a better request.",
+  alternates: { canonical: "/who-it-helps" },
 };
 
 export default function WhoItHelpsPage() {

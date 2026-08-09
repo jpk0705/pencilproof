@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /analyze
+Disallow: /api/
+
+Sitemap: https://pencilproof.com/sitemap.xml
+Host: https://pencilproof.com

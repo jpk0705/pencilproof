@@ -4,6 +4,7 @@ import { SiteFooter, SiteNav } from "@/app/components/SiteChrome";
 export const metadata: Metadata = {
   title: "Questions & Answers | PencilProof",
   description: "Straight answers about PencilProof quote audits, quote imports, payment calculations, privacy, and what to verify before signing.",
+  alternates: { canonical: "/questions" },
 };
 
 const questions = [

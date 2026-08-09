@@ -7,6 +7,7 @@ const Arrow = () => <span aria-hidden="true">→</span>;
 export const metadata = {
   title: "How PencilProof Works | Free Quote Scan",
   description: "Upload a vehicle quote free, check the imported figures, and unlock a Full Quote Audit only when you know what PencilProof found.",
+  alternates: { canonical: "/how-it-works" },
 };
 
 export default function HowItWorksPage() {

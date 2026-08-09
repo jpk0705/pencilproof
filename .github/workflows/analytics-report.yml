@@ -2,11 +2,6 @@ name: PencilProof Analytics Report
 
 on:
   workflow_dispatch:
-  repository_dispatch:
-    types: [analytics-report]
-  workflow_run:
-    workflows: ["Deploy PencilProof Worker"]
-    types: [completed]
   schedule:
     - cron: "0 15 * * *"
 
@@ -14,117 +9,10 @@ permissions:
   contents: read
 
 jobs:
-  report:
+  notice:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     steps:
-      - name: Build seven-day analytics report
-        shell: bash
+      - name: Keep private analytics in the dashboard
         run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import datetime as dt
-          import json
-          import urllib.request
-
-          URL = "https://pencilproof-audit.jpkwork0705.workers.dev/api/analytics/summary"
-          req = urllib.request.Request(
-              URL,
-              headers={"Accept": "application/json", "User-Agent": "PencilProof-Analytics-Report/2.0"},
-          )
-          with urllib.request.urlopen(req, timeout=30) as response:
-              payload = json.load(response)
-
-          ledger = payload.get("ledger") or {}
-          if ledger.get("verified") is not True:
-              raise RuntimeError("Analytics ledger is not reporting verified data")
-
-          today = dt.datetime.now(dt.timezone.utc).date()
-          days = [(today - dt.timedelta(days=offset)).isoformat() for offset in range(6, -1, -1)]
-          raw_by_day = payload.get("byDay") or {}
-          by_day = {day: raw_by_day.get(day, {}) for day in days}
-
-          event_labels = [
-              ("page_view", "Visits / page views"),
-              ("scan_started", "Upload attempts"),
-              ("import_success", "Successful uploads"),
-              ("import_failed", "Failed uploads"),
-              ("manual_fallback_opened", "Manual-entry fallbacks"),
-              ("audit_completed", "Completed audits"),
-              ("checkout_started", "Checkout attempts"),
-              ("payment_completed", "Completed payments"),
-          ]
-          totals = {
-              event: sum(int(by_day[day].get(event, 0)) for day in days)
-              for event, _ in event_labels
-          }
-          success = totals["import_success"]
-          failed = totals["import_failed"]
-          resolved = success + failed
-          success_rate = (success / resolved * 100) if resolved else 0.0
-
-          reliable_from = ledger.get("reliableFrom") or "unknown"
-          event_count = int(ledger.get("eventCount") or 0)
-          duplicates = int(ledger.get("duplicateEventsRejected") or 0)
-
-          lines = [
-              "## PencilProof analytics — last 7 UTC dates",
-              "",
-              f"**Date range:** {days[0]} through {days[-1]} (UTC)",
-              f"**Reliable record starts:** {reliable_from}",
-              f"**Analytics updated:** {payload.get('updatedAt') or 'unknown'}",
-              f"**Verified event receipts stored:** {event_count:,}",
-              f"**Duplicate receipts rejected:** {duplicates:,}",
-              f"**All-time unique sessions since reliable tracking began:** {int(payload.get('sessions') or 0):,}",
-              "",
-              "### Seven-day totals",
-              "",
-              "| Metric | Count |",
-              "|---|---:|",
-          ]
-          for event, label in event_labels:
-              lines.append(f"| {label} | {totals[event]:,} |")
-          lines.extend([
-              f"| Import success rate (success ÷ success+failed) | {success_rate:.1f}% |",
-              "",
-              "### Daily breakdown",
-              "",
-              "| UTC date | Visits | Attempts | Success | Failed | Manual | Audits | Checkout | Paid |",
-              "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
-          ])
-          for day in days:
-              events = by_day[day]
-              values = [int(events.get(event, 0)) for event, _ in event_labels]
-              lines.append(
-                  f"| {day} | {values[0]} | {values[1]} | {values[2]} | {values[3]} | "
-                  f"{values[4]} | {values[5]} | {values[6]} | {values[7]} |"
-              )
-          lines.extend([
-              "",
-              "_These totals are calculated from individual saved event receipts. Records from before the reliable-tracking start time are not included because the old tracker was incomplete._",
-          ])
-
-          report = "\n".join(lines) + "\n"
-          with open("report.md", "w", encoding="utf-8") as handle:
-              handle.write(report)
-          with open("report.json", "w", encoding="utf-8") as handle:
-              json.dump({
-                  "range": {"start": days[0], "end": days[-1], "timezone": "UTC"},
-                  "totals": totals,
-                  "success_rate": round(success_rate, 1),
-                  "by_day": by_day,
-                  "all_time_sessions": int(payload.get("sessions") or 0),
-                  "updated_at": payload.get("updatedAt") or None,
-                  "ledger": ledger,
-              }, handle, sort_keys=True, indent=2)
-          print(report)
-          PY
-
-      - name: Upload analytics report
-        uses: actions/upload-artifact@v4
-        with:
-          name: pencilproof-analytics-report
-          path: |
-            report.md
-            report.json
-          retention-days: 30
+          echo "PencilProof analytics are private and are not copied into GitHub Actions."
+          echo "Use the authenticated dashboard at https://audit.pencilproof.com/analytics."
