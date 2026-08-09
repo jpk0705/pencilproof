@@ -24,13 +24,20 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           import datetime as dt
+          import base64
           import json
+          import os
           import urllib.request
 
-          URL = "https://pencilproof-audit.jpkwork0705.workers.dev/api/analytics/summary"
+          URL = "https://pencilproof-audit.jpkwork0705.workers.dev/api/analytics/summary?range=7d"
+          credentials = f"{os.environ['ANALYTICS_DASHBOARD_USERNAME']}:{os.environ['ANALYTICS_DASHBOARD_PASSWORD']}".encode()
           req = urllib.request.Request(
               URL,
-              headers={"Accept": "application/json", "User-Agent": "PencilProof-Analytics-Report/2.0"},
+              headers={
+                  "Accept": "application/json",
+                  "Authorization": "Basic " + base64.b64encode(credentials).decode(),
+                  "User-Agent": "PencilProof-Analytics-Report/3.0",
+              },
           )
           with urllib.request.urlopen(req, timeout=30) as response:
               payload = json.load(response)
@@ -119,6 +126,9 @@ jobs:
               }, handle, sort_keys=True, indent=2)
           print(report)
           PY
+        env:
+          ANALYTICS_DASHBOARD_USERNAME: ${{ secrets.ANALYTICS_DASHBOARD_USERNAME }}
+          ANALYTICS_DASHBOARD_PASSWORD: ${{ secrets.ANALYTICS_DASHBOARD_PASSWORD }}
 
       - name: Upload analytics report
         uses: actions/upload-artifact@v4
