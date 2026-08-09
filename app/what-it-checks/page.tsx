@@ -12,6 +12,7 @@ const productCards = [
 export const metadata = {
   title: "What PencilProof Checks | Products, APR, Trade, and Payment",
   description: "See how PencilProof breaks down payment math, products, APR, trade equity, fees, and the full-term cost of a vehicle quote.",
+  alternates: { canonical: "/what-it-checks" },
 };
 
 export default function WhatItChecksPage() {
