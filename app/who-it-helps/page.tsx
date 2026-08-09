@@ -13,9 +13,9 @@ export default function WhoItHelpsPage() {
       <section className="page-hero shell">
         <div className="page-hero-copy">
           <p className="kicker">WHO IT HELPS</p>
-          <h1>Stop waiting for the manager to make the numbers understandable.</h1>
+          <h1>Use the written quote as a clearer starting point.</h1>
           <p>Whether you are buying a car or helping a customer buy one, PencilProof turns the written quote into a specific conversation instead of another round of guesswork.</p>
-          <div className="page-actions"><Link className="button button-primary" href="/#free-scan">Scan my quote free <span aria-hidden="true">→</span></Link><Link className="text-link" href="/how-it-works">See how it works <span aria-hidden="true">→</span></Link></div>
+          <div className="page-actions"><Link className="button button-primary" href="/#free-scan">Review your quote free <span aria-hidden="true">→</span></Link><Link className="text-link" href="/how-it-works">See how it works <span aria-hidden="true">→</span></Link></div>
         </div>
       </section>
 
@@ -60,7 +60,7 @@ export default function WhoItHelpsPage() {
       <section className="section shell audience-next-step">
         <div className="section-intro compact">
           <p className="kicker">THE SIMPLE NEXT STEP</p>
-          <h2>Start with the quote, not the pressure.</h2>
+          <h2>Start with the quote and the questions.</h2>
           <p>Upload a PDF or image for free. PencilProof shows what it can detect before you decide whether a Full Quote Audit is useful.</p>
           <AuditCta />
         </div>

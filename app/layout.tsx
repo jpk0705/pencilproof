@@ -8,16 +8,12 @@ import "@fontsource/manrope/800.css";
 import AnalyticsBoot from "@/app/components/AnalyticsBoot";
 
 const isGitHubPages = process.env.GITHUB_ACTIONS === "true";
-const iconPath = "/favicon.svg";
 
 export const metadata: Metadata = {
-  title: "PencilProof | Stop Negotiating Blind",
-  description: "Upload your dealer quote free. PencilProof separates the price, rate, fees, products, trade, and payment math so you can verify the deal before you sign.",
+  title: "PencilProof | Privacy-first Full Quote Audit for car buyers",
+  description: "PencilProof is a privacy-first Full Quote Audit for car buyers. Review dealer quote math, APR, amount financed, payment, trade equity, and add-ons before signing.",
   other: isGitHubPages ? undefined : { "codex-preview": "development" },
-  icons: {
-    icon: iconPath,
-    shortcut: iconPath,
-  },
+  icons: { icon: "/pencilproof-profile-mark.png", shortcut: "/pencilproof-profile-mark.png" },
 };
 
 export default function RootLayout({

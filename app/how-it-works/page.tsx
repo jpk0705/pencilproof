@@ -18,7 +18,7 @@ export default function HowItWorksPage() {
           <p className="kicker">HOW IT WORKS</p>
           <h1>See what PencilProof can read before you pay for the full answer.</h1>
           <p>There is no mystery checkout wall. The free scan comes first, you review the detected numbers, and only then decide whether the complete audit is worth it.</p>
-          <div className="page-actions"><Link className="button button-primary" href="/#free-scan">Upload my quote free <Arrow /></Link><Link className="text-link" href="/pricing">See what&apos;s included <Arrow /></Link></div>
+          <div className="page-actions"><Link className="button button-primary" href="/#free-scan">Review your quote free <Arrow /></Link><Link className="text-link" href="/pricing">See what&apos;s included <Arrow /></Link></div>
         </div>
       </section>
 
@@ -30,7 +30,7 @@ export default function HowItWorksPage() {
         <div className="steps">
           <article><span>1</span><h3>Upload the quote free</h3><p>Scan a dealer PDF or image in your browser. PencilProof looks for the vehicle, price, cash down, trade, products, APR, term, payment, and other deal figures.</p></article>
           <article><span>2</span><h3>Check every imported number</h3><p>Compare the detected values with the original quote. If there are multiple payment choices, select the exact option you are considering before continuing.</p></article>
-          <article><span>3</span><h3>Unlock the complete solution</h3><p>Pay once to compare scenarios, see product and payment impact, review the math, and create a specific request for a revised buyer&apos;s order.</p></article>
+          <article><span>3</span><h3>Open the complete audit</h3><p>Pay once to compare scenarios, see product and payment impact, review the math, and create a specific request for a revised buyer&apos;s order.</p></article>
         </div>
       </section>
 
@@ -48,7 +48,7 @@ export default function HowItWorksPage() {
           <p className="kicker">WHAT THE AUDIT REVEALS</p>
           <h2>You shouldn&apos;t need years inside a dealership to know whether your own deal adds up.</h2>
           <p>PencilProof separates the vehicle, financing, trade, fees, and optional products, then shows what changed and what to ask next.</p>
-          <Link className="text-link" href={CHECKOUT_URL}>Unlock My Full Quote Audit · $39 <Arrow /></Link>
+          <Link className="text-link" href={CHECKOUT_URL}>Review the Full Quote Audit · $39 <Arrow /></Link>
         </div>
         <div className="audit-preview" aria-label="Example audit findings">
           <div className="audit-preview-head"><span>EXAMPLE FINDINGS</span><strong>What the Full Quote Audit reveals</strong></div>
