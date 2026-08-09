@@ -1,4 +1,11 @@
+import type { Metadata } from "next";
 import { SiteNav } from "@/app/components/SiteChrome";
+
+export const metadata: Metadata = {
+  title: "Terms | PencilProof",
+  description: "PencilProof terms for the educational quote-audit tool and one-time Full Quote Audit.",
+  alternates: { canonical: "/terms" },
+};
 
 export default function TermsPage() {
   return (
