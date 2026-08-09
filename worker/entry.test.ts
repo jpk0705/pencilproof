@@ -43,13 +43,15 @@ test("analytics public routes translate to Durable Object routes", async () => {
   const env = makeEnv(paths);
 
   const summary = await worker.fetch(
-    new Request("https://audit.pencilproof.com/api/analytics/summary"),
+    new Request("https://audit.pencilproof.com/api/analytics/summary", {
+      headers: { Origin: "https://audit.pencilproof.com" },
+    }),
     env,
   );
   assert.equal(summary.status, 200);
   assert.equal(
     summary.headers.get("Access-Control-Allow-Origin"),
-    "https://pencilproof.com",
+    "https://audit.pencilproof.com",
   );
 
   const event = await worker.fetch(

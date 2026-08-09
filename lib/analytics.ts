@@ -3,6 +3,7 @@
 export const ANALYTICS_URL = "https://audit.pencilproof.com/api/analytics";
 
 const PENDING_KEY = "pencilproof:analytics-pending";
+const ATTRIBUTION_KEY = "pencilproof:analytics-attribution";
 const MAX_PENDING_EVENTS = 500;
 
 type AnalyticsEvent = {
@@ -116,7 +117,15 @@ export const flushAnalyticsQueue = async () => {
 
 export const track = (event: AnalyticsEvent) => {
   if (typeof window === "undefined") return;
-  const utmSource = new URLSearchParams(window.location.search).get("utm_source");
+  const query = new URLSearchParams(window.location.search);
+  const utmSource = query.get("utm_source");
+  const utmMedium = query.get("utm_medium");
+  const utmCampaign = query.get("utm_campaign");
+  const existingAttribution = window.sessionStorage.getItem(ATTRIBUTION_KEY);
+  const attribution = utmSource
+    ? [utmSource, utmMedium, utmCampaign].filter(Boolean).join("/")
+    : existingAttribution;
+  if (attribution) window.sessionStorage.setItem(ATTRIBUTION_KEY, attribution);
   let referrer = "direct";
   try {
     referrer = document.referrer ? new URL(document.referrer).hostname : "direct";
@@ -131,7 +140,7 @@ export const track = (event: AnalyticsEvent) => {
     occurredAt: new Date().toISOString(),
     path: event.path ?? window.location.pathname,
     sessionId: sessionId(),
-    source: utmSource ?? referrer,
+    source: attribution ?? (referrer === "audit.pencilproof.com" ? "internal-audit" : referrer),
   };
 
   if (!enqueue(payload)) {

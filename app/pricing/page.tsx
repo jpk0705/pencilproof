@@ -5,6 +5,7 @@ import { SiteFooter, SiteNav } from "@/app/components/SiteChrome";
 export const metadata = {
   title: "PencilProof Pricing | Full Quote Audit",
   description: "Try the quote scan free, then unlock the one-time $39 PencilProof Full Quote Audit when you are ready.",
+  alternates: { canonical: "/pricing" },
 };
 
 export default function PricingPage() {

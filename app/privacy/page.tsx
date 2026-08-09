@@ -1,4 +1,11 @@
+import type { Metadata } from "next";
 import { SiteNav } from "@/app/components/SiteChrome";
+
+export const metadata: Metadata = {
+  title: "Privacy | PencilProof",
+  description: "PencilProof privacy notice for quote processing, analytics, and checkout.",
+  alternates: { canonical: "/privacy" },
+};
 
 export default function PrivacyPage() {
   return (

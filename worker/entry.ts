@@ -312,13 +312,41 @@ export class AnalyticsStore {
   async alarm() {}
 }
 
-const analyticsCorsHeaders = (env: Env) => ({
-  "Access-Control-Allow-Origin": env.PUBLIC_SITE_ORIGIN,
+const analyticsCorsHeaders = (request: Request, env: Env) => ({
+  "Access-Control-Allow-Origin": allowedAnalyticsOrigin(request, env),
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
   "Cache-Control": "no-store",
   Vary: "Origin",
 });
+
+const allowedAnalyticsOrigin = (request: Request, env: Env) => {
+  const origin = request.headers.get("Origin");
+  return origin === env.PUBLIC_SITE_ORIGIN || origin === env.SITE_ORIGIN
+    ? origin
+    : env.PUBLIC_SITE_ORIGIN;
+};
+
+const analyticsDashboard = async (request: Request, env: Env) => {
+  if (request.method !== "GET") return new Response("Method not allowed", { status: 405, headers: { Allow: "GET" } });
+  const stub = env.ANALYTICS.get(env.ANALYTICS.idFromName("pencilproof-analytics"));
+  const response = await stub.fetch(new Request("https://analytics.internal/summary"));
+  if (!response.ok) return new Response("Analytics unavailable", { status: 502 });
+  const summary = await response.json() as {
+    sessions?: number;
+    byEvent?: Record<string, number>;
+    byDay?: Record<string, Record<string, number>>;
+    updatedAt?: string;
+  };
+  const esc = (value: unknown) => String(value ?? "").replace(/[&<>\"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[char] ?? char));
+  const events = Object.entries(summary.byEvent ?? {}).sort((a, b) => b[1] - a[1]);
+  const maxEvent = Math.max(1, ...events.map(([, count]) => count));
+  const cards = events.map(([name, count]) => `<div class="metric"><div class="metric-top"><span>${esc(name.replaceAll("_", " "))}</span><b>${count}</b></div><div class="bar"><i style="width:${Math.round((count / maxEvent) * 100)}%"></i></div></div>`).join("");
+  const days = Object.entries(summary.byDay ?? {}).slice(-14);
+  const maxDay = Math.max(1, ...days.map(([, values]) => Object.values(values).reduce((sum, count) => sum + count, 0)));
+  const dayBars = days.map(([day, values]) => { const count = Object.values(values).reduce((sum, value) => sum + value, 0); return `<div class="day"><div class="day-bar" style="height:${Math.max(8, Math.round((count / maxDay) * 100))}%"><b>${count}</b></div><span>${esc(day.slice(5))}</span></div>`; }).join("");
+  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PencilProof analytics</title><style>:root{font-family:Inter,Arial,sans-serif;color:#10284b;background:#f4f1e9}*{box-sizing:border-box}body{margin:0}.shell{max-width:1080px;margin:auto;padding:32px 20px 56px}header{display:flex;justify-content:space-between;align-items:end;gap:20px;margin-bottom:28px}h1{margin:0;font:700 clamp(30px,5vw,50px)/1 Georgia,serif}p{color:#627086}.updated{font-size:12px}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px}.card,.panel{background:#fff;border:1px solid #d9d6ca;border-radius:16px;padding:20px;box-shadow:0 8px 24px #10284b0d}.label{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#718096}.big{font:700 38px Georgia,serif;margin-top:8px;color:#b27a22}.grid{display:grid;grid-template-columns:1.2fr .8fr;gap:18px}.panel h2{font:700 24px Georgia,serif;margin:0 0 18px}.metric{margin:14px 0}.metric-top{display:flex;justify-content:space-between;text-transform:capitalize;font-size:14px}.bar{height:9px;background:#edf0f3;border-radius:20px;margin-top:7px;overflow:hidden}.bar i{display:block;height:100%;background:#c5943f;border-radius:20px}.chart{height:230px;display:flex;align-items:end;gap:8px;padding-top:16px}.day{height:100%;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:end;gap:7px;font-size:11px;color:#6a7789}.day-bar{width:100%;max-width:34px;background:#15365e;border-radius:7px 7px 2px 2px;min-height:8px;display:flex;justify-content:center;color:#fff;font-size:11px;padding-top:5px}.day-bar b{font-weight:700}.empty{color:#718096;font-size:14px}@media(max-width:700px){header{display:block}.cards,.grid{grid-template-columns:1fr}.updated{margin-top:10px}.shell{padding:22px 14px 40px}}</style></head><body><main class="shell"><header><div><div class="label">PENCILPROOF / MEASUREMENT</div><h1>Traffic at a glance</h1><p>See whether people are arriving, starting a scan, and moving toward an audit.</p></div><div class="updated">Updated ${esc(summary.updatedAt ?? "not yet")}</div></header><section class="cards"><div class="card"><div class="label">Sessions</div><div class="big">${summary.sessions ?? 0}</div></div><div class="card"><div class="label">Page views</div><div class="big">${summary.byEvent?.page_view ?? 0}</div></div><div class="card"><div class="label">Scan starts</div><div class="big">${summary.byEvent?.scan_started ?? 0}</div></div></section><section class="grid"><div class="panel"><h2>Last 14 days</h2>${dayBars ? `<div class="chart">${dayBars}</div>` : `<div class="empty">No tracked activity yet.</div>`}</div><div class="panel"><h2>Funnel events</h2>${cards || `<div class="empty">No tracked events yet.</div>`}</div></section></main></body></html>`, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
+};
 
 const handleAnalyticsRoute = async (request: Request, env: Env) => {
   const url = new URL(request.url);
@@ -329,7 +357,7 @@ const handleAnalyticsRoute = async (request: Request, env: Env) => {
       : null;
   if (!internalPath) return null;
 
-  const headers = analyticsCorsHeaders(env);
+  const headers = analyticsCorsHeaders(request, env);
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers });
   }
@@ -374,7 +402,9 @@ const handleAnalyticsRoute = async (request: Request, env: Env) => {
 };
 
 export const handleRequest = async (request: Request, env: Env) =>
-  await handleAnalyticsRoute(request, env) ?? app.fetch(request, env);
+  (new URL(request.url).pathname === "/analytics" || new URL(request.url).pathname === "/analytics/")
+    ? analyticsDashboard(request, env)
+    : await handleAnalyticsRoute(request, env) ?? app.fetch(request, env);
 
 export default {
   fetch: handleRequest,
