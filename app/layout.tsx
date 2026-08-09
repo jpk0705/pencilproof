@@ -13,7 +13,14 @@ export const metadata: Metadata = {
   title: "PencilProof | Privacy-first Full Quote Audit for car buyers",
   description: "PencilProof is a privacy-first Full Quote Audit for car buyers. Review dealer quote math, APR, amount financed, payment, trade equity, and add-ons before signing.",
   other: isGitHubPages ? undefined : { "codex-preview": "development" },
-  icons: { icon: "/pencilproof-profile-mark.png", shortcut: "/pencilproof-profile-mark.png" },
+  icons: {
+    icon: [
+      { url: "/favicon.png", type: "image/png", sizes: "64x64" },
+      { url: "/favicon.svg", type: "image/svg+xml" },
+    ],
+    shortcut: "/favicon.png",
+    apple: "/favicon.png",
+  },
 };
 
 export default function RootLayout({

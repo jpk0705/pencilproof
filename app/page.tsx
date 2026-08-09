@@ -69,12 +69,42 @@ export default function Home() {
 
       <FreeQuotePreview />
 
-      <section className="brand-cover-section" aria-label="PencilProof brand statement">
-        <div className="brand-cover-frame">
-          <img src="/pencilproof-cover.png" alt="PencilProof document and quote review brand artwork" />
-          <div className="brand-cover-overlay">
-            <p className="kicker">A CLEARER WAY TO REVIEW THE DEAL</p>
-            <h2>Privacy-first quote review for the moment before signing.</h2>
+      <section className="brand-value-section" aria-labelledby="brand-value-title">
+        <div className="brand-value-frame shell">
+          <div className="brand-value-copy">
+            <p className="kicker">WHAT THE AUDIT MAKES CLEAR</p>
+            <h2 id="brand-value-title">See what the monthly payment is really carrying.</h2>
+            <p>
+              A dealer worksheet can compress the whole deal into one number. PencilProof lays
+              out the figures behind it so you can understand what is required, what is optional,
+              and what to ask about before signing.
+            </p>
+            <div className="brand-value-grid" aria-label="What PencilProof checks">
+              <div className="brand-value-item">
+                <span>01</span>
+                <div><strong>Price + rebates</strong><small>Selling price, discounts, fees, and amount financed.</small></div>
+              </div>
+              <div className="brand-value-item">
+                <span>02</span>
+                <div><strong>APR + term</strong><small>Rate, length of the loan, payment, and total finance cost.</small></div>
+              </div>
+              <div className="brand-value-item">
+                <span>03</span>
+                <div><strong>Optional products</strong><small>GAP, service contracts, maintenance, tire &amp; wheel, and more.</small></div>
+              </div>
+              <div className="brand-value-item">
+                <span>04</span>
+                <div><strong>Trade equity</strong><small>Trade value, payoff, negative equity, and cash down.</small></div>
+              </div>
+            </div>
+            <Link className="text-link brand-value-link" href="/what-it-checks">See everything PencilProof checks <Arrow /></Link>
+          </div>
+          <div className="brand-value-art">
+            <div className="brand-value-art-card">
+              <span>FULL QUOTE AUDIT</span>
+              <strong>Clearer figures.<br />Better questions.</strong>
+              <small>Understand the deal before you sign.</small>
+            </div>
           </div>
         </div>
       </section>
