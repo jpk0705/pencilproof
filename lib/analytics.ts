@@ -5,6 +5,7 @@ export const ANALYTICS_URL = "https://audit.pencilproof.com/api/analytics";
 const PENDING_KEY = "pencilproof:analytics-pending";
 const ATTRIBUTION_KEY = "pencilproof:analytics-attribution";
 const MAX_PENDING_EVENTS = 500;
+const SESSION_IDLE_MILLISECONDS = 30 * 60 * 1000;
 
 type AnalyticsEvent = {
   category?: string;
@@ -27,10 +28,17 @@ let flushing = false;
 const sessionId = () => {
   if (typeof window === "undefined") return "";
   const key = "pencilproof:analytics-session";
+  const lastSeenKey = `${key}:last-seen`;
+  const now = Date.now();
   const existing = window.localStorage.getItem(key);
-  if (existing) return existing;
-  const generated = `${crypto.randomUUID()}-${Math.random().toString(36).slice(2, 10)}`;
+  const lastSeen = Number(window.localStorage.getItem(lastSeenKey));
+  if (existing && Number.isFinite(lastSeen) && now - lastSeen <= SESSION_IDLE_MILLISECONDS) {
+    window.localStorage.setItem(lastSeenKey, String(now));
+    return existing;
+  }
+  const generated = crypto.randomUUID();
   window.localStorage.setItem(key, generated);
+  window.localStorage.setItem(lastSeenKey, String(now));
   return generated;
 };
 

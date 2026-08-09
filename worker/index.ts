@@ -56,6 +56,8 @@ export interface Env {
     fetch(request: Request): Promise<Response>;
   };
   ACCESS_MAX_AGE_SECONDS?: string;
+  ANALYTICS_DASHBOARD_PASSWORD?: string;
+  ANALYTICS_DASHBOARD_USERNAME?: string;
   ORDERS: DurableObjectNamespaceLike;
   ANALYTICS: DurableObjectNamespaceLike;
   PUBLIC_SITE_ORIGIN: string;

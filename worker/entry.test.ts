@@ -8,8 +8,9 @@ const makeEnv = (paths: string[]): Env => ({
     idFromName: (name: string) => name,
     get: () => ({
       fetch: async (request: Request) => {
-        paths.push(new URL(request.url).pathname);
-        return new URL(request.url).pathname === "/summary"
+        const url = new URL(request.url);
+        paths.push(url.pathname + url.search);
+        return url.pathname === "/summary"
           ? Response.json({
               byDay: {},
               byEvent: {},
@@ -31,6 +32,8 @@ const makeEnv = (paths: string[]): Env => ({
     }),
   },
   ASSETS: { fetch: async () => new Response("asset") },
+  ANALYTICS_DASHBOARD_PASSWORD: "test-dashboard-password",
+  ANALYTICS_DASHBOARD_USERNAME: "test-admin",
   ORDERS: {} as Env["ORDERS"],
   SESSION_SECRET: "test-secret",
   SITE_ORIGIN: "https://audit.pencilproof.com",
@@ -38,13 +41,41 @@ const makeEnv = (paths: string[]): Env => ({
   STRIPE_SECRET_KEY: "rk_test",
 } as Env);
 
-test("analytics public routes translate to Durable Object routes", async () => {
+const basicAuth = (username: string, password: string) =>
+  `Basic ${btoa(`${username}:${password}`)}`;
+
+test("analytics summary requires credentials while event ingestion remains public", async () => {
+  const paths: string[] = [];
+  const response = await worker.fetch(
+    new Request("https://audit.pencilproof.com/api/analytics/summary?range=7d"),
+    makeEnv(paths),
+  );
+  assert.equal(response.status, 401);
+  assert.equal(response.headers.get("WWW-Authenticate"), 'Basic realm="PencilProof analytics", charset="UTF-8"');
+  assert.deepEqual(paths, []);
+});
+
+test("analytics fails closed when dashboard credentials are not configured", async () => {
+  const env = makeEnv([]);
+  delete env.ANALYTICS_DASHBOARD_USERNAME;
+  delete env.ANALYTICS_DASHBOARD_PASSWORD;
+  const response = await worker.fetch(
+    new Request("https://audit.pencilproof.com/analytics"),
+    env,
+  );
+  assert.equal(response.status, 503);
+});
+
+test("analytics protected routes translate to Durable Object routes", async () => {
   const paths: string[] = [];
   const env = makeEnv(paths);
 
   const summary = await worker.fetch(
-    new Request("https://audit.pencilproof.com/api/analytics/summary", {
-      headers: { Origin: "https://audit.pencilproof.com" },
+    new Request("https://audit.pencilproof.com/api/analytics/summary?range=14d", {
+      headers: {
+        Authorization: basicAuth("test-admin", "test-dashboard-password"),
+        Origin: "https://audit.pencilproof.com",
+      },
     }),
     env,
   );
@@ -70,7 +101,25 @@ test("analytics public routes translate to Durable Object routes", async () => {
     env,
   );
   assert.equal(event.status, 200);
-  assert.deepEqual(paths, ["/summary", "/event"]);
+  assert.deepEqual(paths, ["/summary?range=14d", "/event"]);
+});
+
+test("analytics dashboard renders the selected range and business funnel", async () => {
+  const env = makeEnv([]);
+  const response = await worker.fetch(
+    new Request("https://audit.pencilproof.com/analytics?range=1y", {
+      headers: { Authorization: basicAuth("test-admin", "test-dashboard-password") },
+    }),
+    env,
+  );
+  const body = await response.text();
+  assert.equal(response.status, 200);
+  assert.match(body, /1 year/);
+  assert.match(body, /Visitors/);
+  assert.match(body, /Used the scan/);
+  assert.match(body, /Reached checkout/);
+  assert.match(body, /Purchased/);
+  assert.match(body, /What “session” means/);
 });
 
 test("analytics routes reject the wrong method before reaching storage", async () => {
@@ -78,6 +127,9 @@ test("analytics routes reject the wrong method before reaching storage", async (
   const response = await worker.fetch(
     new Request("https://audit.pencilproof.com/api/analytics/summary", {
       method: "POST",
+      headers: {
+        Authorization: basicAuth("test-admin", "test-dashboard-password"),
+      },
     }),
     makeEnv(paths),
   );
