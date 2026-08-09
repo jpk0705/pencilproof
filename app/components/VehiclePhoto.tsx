@@ -13,9 +13,10 @@ type VehiclePhotoState =
   | { status: "idle" }
   | { status: "loading" }
   | { status: "ready"; image: CommonsVehicleImage }
-  | { status: "unavailable" };
+  | { status: "fallback" };
 
 const CACHE_PREFIX = "pencilproof.vehicle-photo.";
+const LOCAL_FALLBACK_IMAGE = "/vehicle-placeholder.png";
 
 const readCachedImage = (key: string): CommonsVehicleImage | null => {
   try {
@@ -101,7 +102,7 @@ export default function VehiclePhoto({
           if (error instanceof DOMException && error.name === "AbortError") return;
         }
       }
-      setPhoto({ status: "unavailable" });
+      setPhoto({ status: "fallback" });
     };
 
     void load();
@@ -130,51 +131,50 @@ export default function VehiclePhoto({
     );
   }
 
-  if (photo.status !== "ready") {
-    return (
-      <div className={`${className} vehicle-photo-unavailable`}>
-        <div aria-hidden="true">AUTO</div>
-        <p>
-          <strong>{identity.displayName}</strong>
-          <span>Vehicle photo unavailable. Confirm the imported description.</span>
-        </p>
-      </div>
-    );
-  }
+  const isFallback = photo.status === "fallback";
+  if (photo.status !== "ready" && !isFallback) return null;
 
-  const { image } = photo;
+  const image = photo.status === "ready" ? photo.image : null;
   return (
     <figure className={className}>
       <img
-        src={image.imageUrl}
-        alt={`Representative photo of a ${identity.displayName}`}
+        src={image?.imageUrl ?? LOCAL_FALLBACK_IMAGE}
+        alt={`${isFallback ? "Representative" : "Photo of"} a ${identity.displayName}`}
         loading="lazy"
-        onError={() => setPhoto({ status: "unavailable" })}
+        onError={(event) => {
+          if (!isFallback) {
+            event.currentTarget.src = LOCAL_FALLBACK_IMAGE;
+            setPhoto({ status: "fallback" });
+          }
+        }}
       />
       <figcaption>
         <div>
           <strong>{identity.displayName}</strong>
           <span>
-            {image.exactYearMatch
-              ? "Model-year match"
-              : "Representative model photo"}{" "}
-            · Actual trim and color may vary
+            {isFallback
+              ? "Representative vehicle image · Actual trim and color may vary"
+              : `${image?.exactYearMatch ? "Model-year match" : "Representative model photo"} · Actual trim and color may vary`}
           </span>
         </div>
-        <small>
-          Photo:{" "}
-          <a href={image.sourceUrl} target="_blank" rel="noreferrer">
-            {image.creator}
-          </a>
-          {" · "}
-          {image.licenseUrl ? (
-            <a href={image.licenseUrl} target="_blank" rel="noreferrer">
-              {image.license}
+        {isFallback ? (
+          <small>Custom PencilProof image · exact trim and color may vary</small>
+        ) : (
+          <small>
+            Photo: {" "}
+            <a href={image?.sourceUrl ?? "#"} target="_blank" rel="noreferrer">
+              {image?.creator}
             </a>
-          ) : (
-            image.license
-          )}
-        </small>
+            {" · "}
+            {image?.licenseUrl ? (
+              <a href={image.licenseUrl} target="_blank" rel="noreferrer">
+                {image.license}
+              </a>
+            ) : (
+              image?.license
+            )}
+          </small>
+        )}
       </figcaption>
     </figure>
   );
