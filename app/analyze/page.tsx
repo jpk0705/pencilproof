@@ -679,14 +679,14 @@ export default function AnalyzePage() {
   return (
     <main className="analyzer-page">
       <nav className="site-nav analyzer-nav" aria-label="Main navigation">
-        <Link className="brand" href="/"><span className="brand-mark">P</span><span>PencilProof</span></Link>
+        <Link className="brand" href="/" aria-label="PencilProof home"><img className="brand-logo" src="/pencilproof-profile-mark.png" alt="" width="40" height="40" /><span>PencilProof</span></Link>
         <span className="privacy-chip">Your deal inputs stay in this browser · <a href="mailto:support@pencilproof.com">Contact support</a></span>
       </nav>
 
       <header className="analyzer-header shell">
         <div>
-          <p className="kicker">STRUCTURE YOUR OWN DEAL</p>
-          <h1>Don&apos;t wait for the next quote to understand your options.</h1>
+          <p className="kicker">PRIVACY-FIRST FULL QUOTE AUDIT FOR CAR BUYERS</p>
+          <h1>Review the quote before you sign.</h1>
           <p>Upload the dealer&apos;s quote or enter the figures yourself. Then test the down payment, term, desired APR, trade, and optional products while the dealership works on its official revision.</p>
           <p className="analyzer-founder">Built by an automotive professional with experience as a salesperson, sales manager, and finance manager.</p>
         </div>

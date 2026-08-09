@@ -11,27 +11,25 @@ export default function Home() {
 
       <section className="hero shell">
         <div className="hero-copy">
-          <div className="eyebrow"><span /> SEE THE NUMBERS BEFORE YOU SAY YES.</div>
-          <h1>Stop negotiating blind. See what you&apos;re really paying for.</h1>
+          <div className="eyebrow"><span /> PRIVACY-FIRST FULL QUOTE AUDIT FOR CAR BUYERS</div>
+          <h1>Understand the numbers before you sign.</h1>
           <p className="hero-lede">
-            Upload the quote you were handed. PencilProof turns the price, APR, fees,
-            products, trade, and payment into numbers you can actually check before
-            you agree to anything.
+            PencilProof helps you review the quote you were handed—starting with the
+            math, not the pressure. See the price, APR, fees, products, trade, and
+            payment in one calm, readable audit.
           </p>
           <div className="hero-actions">
             <a className="button button-primary" href="#free-scan">
-              Scan my quote free <Arrow />
+              Review your quote free <Arrow />
             </a>
-            <Link className="button button-quiet" href="/how-it-works#sample-audit">See a sample audit</Link>
+            <Link className="button button-quiet" href="/how-it-works#sample-audit">Learn how it works</Link>
           </div>
-          <p className="hero-caution">No payment required to test your quote. See what PencilProof finds before you decide whether the Full Quote Audit is worth it.</p>
+          <p className="hero-caution">No payment required to review the scan. Your document is read locally first, and you decide whether the complete audit is useful.</p>
           <div className="proof-row" aria-label="Product highlights">
             <span><b>Free scan first</b> before checkout</span>
-            <span><b>No dealer commissions</b> from your purchase</span>
-            <span><b>For shoppers</b> at the dealership</span>
-            <span><b>For salespeople</b> checking scenarios</span>
-            <span><b>Built by a dealership professional</b></span>
-            <span><b>Private by design</b> numbers stay in your browser when local reading works</span>
+            <span><b>No dealership affiliation</b> independent education</span>
+            <span><b>One-time audit</b> no recurring subscription</span>
+            <span><b>Private by design</b> local reading first</span>
           </div>
         </div>
 
@@ -71,6 +69,16 @@ export default function Home() {
 
       <FreeQuotePreview />
 
+      <section className="brand-cover-section" aria-label="PencilProof brand statement">
+        <div className="brand-cover-frame">
+          <img src="/pencilproof-cover.png" alt="PencilProof document and quote review brand artwork" />
+          <div className="brand-cover-overlay">
+            <p className="kicker">A CLEARER WAY TO REVIEW THE DEAL</p>
+            <h2>Privacy-first quote review for the moment before signing.</h2>
+          </div>
+        </div>
+      </section>
+
       <section className="section route-guide-section">
         <div className="shell">
           <div className="section-intro route-guide-intro">
@@ -81,7 +89,7 @@ export default function Home() {
           <div className="route-guide-grid">
             <Link className="route-guide-card" href="/who-it-helps">
               <span>01 · WHO IT HELPS</span>
-              <h3>Stop waiting for a manager.</h3>
+              <h3>Start with a clearer quote.</h3>
               <p>See how shoppers and salespeople can use the same written figures to ask for a clearer deal.</p>
               <strong>See who it helps <Arrow /></strong>
             </Link>

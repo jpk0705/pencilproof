@@ -362,8 +362,8 @@ export default function FreeQuotePreview() {
     <section className="section free-scan-section" id="free-scan">
       <div className="shell free-scan-layout">
         <div className="free-scan-copy">
-          <p className="kicker">PROVE IT WORKS BEFORE YOU PAY</p>
-          <h2>Upload free. Check every imported number. Pay only if it looks right.</h2>
+          <p className="kicker">REVIEW YOUR QUOTE FIRST</p>
+          <h2>Start with a free scan. Keep the decision in your hands.</h2>
           <p>
             Your file stays in this browser. The free scan shows exactly what
             imported, what is missing, and which values need review before
@@ -647,7 +647,7 @@ export default function FreeQuotePreview() {
                       ? `${preview.reviewAreas} area${preview.reviewAreas === 1 ? "" : "s"} worth reviewing`
                       : "The quote is ready for a Full Quote Audit"}
                   </strong>
-                  <p>Unlock exact payment differences, product cost, APR scenarios, full-term totals, and a dealer-ready request.</p>
+                  <p>Review exact payment differences, product cost, APR scenarios, full-term totals, and a dealer-ready request.</p>
                 </div>
                 <label className="free-import-confirm">
                   <input
@@ -674,7 +674,7 @@ export default function FreeQuotePreview() {
                       });
                     }}
                   >
-                    Unlock My Full Quote Audit · $39 <span aria-hidden="true">→</span>
+                    Review the Full Quote Audit · $39 <span aria-hidden="true">→</span>
                   </a>
                 ) : (
                   <button className="button button-primary" type="button" disabled>

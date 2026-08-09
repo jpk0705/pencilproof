@@ -16,7 +16,7 @@ export default function PricingPage() {
           <p className="kicker">PRICING</p>
           <h1>See it work first. Pay once only when you want the full audit.</h1>
           <p>Upload your quote free and review what PencilProof finds. The complete Full Quote Audit is a one-time $39 purchase, not a subscription.</p>
-          <div className="page-actions"><Link className="button button-primary" href="/#free-scan">Scan my quote free <span aria-hidden="true">→</span></Link><Link className="text-link" href={CHECKOUT_URL}>Go to checkout <span aria-hidden="true">→</span></Link></div>
+          <div className="page-actions"><Link className="button button-primary" href="/#free-scan">Review your quote free <span aria-hidden="true">→</span></Link><Link className="text-link" href={CHECKOUT_URL}>Review checkout details <span aria-hidden="true">→</span></Link></div>
         </div>
       </section>
 
@@ -40,7 +40,7 @@ export default function PricingPage() {
               <li>Copy-ready dealer questions</li>
               <li>Print or save the finished audit</li>
             </ul>
-            <Link className="button button-light" href={CHECKOUT_URL}>Unlock My Full Quote Audit · $39 <span aria-hidden="true">→</span></Link>
+            <Link className="button button-light" href={CHECKOUT_URL}>Review the Full Quote Audit · $39 <span aria-hidden="true">→</span></Link>
             <small>One-time payment. Educational estimate. No guaranteed savings. If your quote cannot be processed, use the support options on your receipt for help or a refund review.</small>
           </div>
         </div>
