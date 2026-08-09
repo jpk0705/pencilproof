@@ -1103,6 +1103,15 @@ footer { color: var(--brand-text); background: var(--brand-navy); border-top-col
 .input-field input,
 .input-field select,
 .input-money { color: var(--brand-navy); background: #f5f7fb; border-color: #aebbd0; }
+.vehicle-photo:not(.vehicle-photo-dark) {
+  color: var(--brand-navy);
+  background: #fff;
+  border-color: #c9d1dc;
+}
+.vehicle-photo:not(.vehicle-photo-dark) figcaption strong { color: var(--brand-navy); }
+.vehicle-photo:not(.vehicle-photo-dark) figcaption span { color: #3e5263; }
+.vehicle-photo:not(.vehicle-photo-dark) figcaption small { color: #4d6170; }
+.vehicle-photo:not(.vehicle-photo-dark) a { color: #1f4f74; }
 .input-field input:focus,
 .input-field select:focus,
 .input-money:focus-within { border-color: var(--brand-gold); box-shadow: 0 0 0 3px rgba(246,195,67,.18); }
