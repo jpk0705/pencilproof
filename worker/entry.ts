@@ -390,13 +390,13 @@ const analyticsUnauthorized = () => new Response("Authentication required", {
 });
 
 const constantTimeEqual = (left: Uint8Array, right: Uint8Array) => {
-  const nativeTimingSafeEqual = (crypto.subtle as SubtleCrypto & {
+  const subtle = crypto.subtle as SubtleCrypto & {
     timingSafeEqual?: (a: ArrayBufferView, b: ArrayBufferView) => boolean;
-  }).timingSafeEqual;
-  if (nativeTimingSafeEqual) {
+  };
+  if (subtle.timingSafeEqual) {
     return left.byteLength === right.byteLength
-      ? nativeTimingSafeEqual(left, right)
-      : !nativeTimingSafeEqual(left, left);
+      ? subtle.timingSafeEqual(left, right)
+      : !subtle.timingSafeEqual(left, left);
   }
 
   let difference = left.byteLength ^ right.byteLength;
