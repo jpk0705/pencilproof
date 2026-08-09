@@ -1706,15 +1706,20 @@ const handleWebhookStatus = async (request: Request, env: Env) => {
   );
 };
 
-const analyticsCorsHeaders = (env: Env) => ({
-  "Access-Control-Allow-Origin": env.PUBLIC_SITE_ORIGIN,
+const analyticsCorsHeaders = (request: Request, env: Env) => ({
+  "Access-Control-Allow-Origin": (() => {
+    const origin = request.headers.get("Origin");
+    return origin === env.PUBLIC_SITE_ORIGIN || origin === env.SITE_ORIGIN
+      ? origin
+      : env.PUBLIC_SITE_ORIGIN;
+  })(),
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
   "Vary": "Origin",
 });
 
 const handleAnalytics = async (request: Request, env: Env) => {
-  const headers = analyticsCorsHeaders(env);
+  const headers = analyticsCorsHeaders(request, env);
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers });
   }

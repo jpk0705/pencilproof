@@ -10,8 +10,10 @@ import AnalyticsBoot from "@/app/components/AnalyticsBoot";
 const isGitHubPages = process.env.GITHUB_ACTIONS === "true";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://pencilproof.com"),
   title: "PencilProof | Privacy-first Full Quote Audit for car buyers",
   description: "PencilProof is a privacy-first Full Quote Audit for car buyers. Review dealer quote math, APR, amount financed, payment, trade equity, and add-ons before signing.",
+  alternates: { canonical: "/" },
   other: isGitHubPages ? undefined : { "codex-preview": "development" },
   icons: {
     icon: [
