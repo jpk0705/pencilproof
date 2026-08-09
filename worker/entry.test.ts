@@ -44,6 +44,31 @@ const makeEnv = (paths: string[]): Env => ({
 const basicAuth = (username: string, password: string) =>
   `Basic ${btoa(`${username}:${password}`)}`;
 
+test("analytics authentication keeps timingSafeEqual bound to crypto.subtle", async () => {
+  const originalSubtle = crypto.subtle;
+  const timingSafeEqual = function (this: typeof originalSubtle, left: ArrayBufferView, right: ArrayBufferView) {
+    assert.equal(this, originalSubtle);
+    const a = new Uint8Array(left.buffer, left.byteOffset, left.byteLength);
+    const b = new Uint8Array(right.buffer, right.byteOffset, right.byteLength);
+    if (a.byteLength !== b.byteLength) throw new Error("length mismatch");
+    let difference = 0;
+    for (let index = 0; index < a.length; index += 1) difference |= a[index] ^ b[index];
+    return difference === 0;
+  };
+  Object.defineProperty(originalSubtle, "timingSafeEqual", { value: timingSafeEqual, configurable: true });
+  try {
+    const response = await worker.fetch(
+      new Request("https://audit.pencilproof.com/api/analytics/summary", {
+        headers: { Authorization: basicAuth("test-admin", "test-dashboard-password") },
+      }),
+      makeEnv([]),
+    );
+    assert.equal(response.status, 200);
+  } finally {
+    delete (originalSubtle as SubtleCrypto & { timingSafeEqual?: unknown }).timingSafeEqual;
+  }
+});
+
 test("analytics summary requires credentials while event ingestion remains public", async () => {
   const paths: string[] = [];
   const response = await worker.fetch(
