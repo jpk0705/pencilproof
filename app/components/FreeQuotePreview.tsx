@@ -26,7 +26,7 @@ import { track } from "@/lib/analytics";
 
 type ScanState =
   | { status: "idle" }
-  | { status: "loading"; message: string }
+  | { status: "loading"; message: string; progress: number }
   | { status: "error"; message: string }
   | { status: "ready"; result: DealPdfResult; fileName: string };
 
@@ -248,7 +248,7 @@ export default function FreeQuotePreview() {
       return;
     }
 
-    setScan({ status: "loading", message: `Reading ${file.name} in your browser…` });
+    setScan({ status: "loading", message: `Preparing ${file.name}…`, progress: 0.02 });
     track({ event: "scan_started" });
     try {
       const result = await extractDealFromFile(file, ({ progress, status }) => {
@@ -257,6 +257,7 @@ export default function FreeQuotePreview() {
         setScan({
           status: "loading",
           message: `${readable.charAt(0).toUpperCase()}${readable.slice(1)}${progress > 0 ? ` · ${percent}%` : ""}`,
+          progress,
         });
       });
       if (!isPreviewImportUsable(result)) {
@@ -389,7 +390,7 @@ export default function FreeQuotePreview() {
                   ? `${preview.reviewAreas} TO REVIEW`
                   : "SCAN COMPLETE"
                 : scan.status === "loading"
-                  ? "READING QUOTE"
+                  ? "PROCESSING QUOTE"
                   : "FREE PREVIEW"}
             </span>
           </div>
@@ -403,6 +404,7 @@ export default function FreeQuotePreview() {
                 <input
                   type="file"
                   accept={DEAL_IMPORT_ACCEPT}
+                  capture="environment"
                   onChange={handleFile}
                 />
               </label>
@@ -412,8 +414,13 @@ export default function FreeQuotePreview() {
 
           {scan.status === "loading" ? (
             <div className="free-scan-progress" role="status" aria-live="polite">
-              <span>…</span>
-              <div><strong>Reading your quote</strong><p>{scan.message}</p></div>
+              <span className="free-scan-progress-icon" aria-hidden="true">↗</span>
+              <div className="free-scan-progress-body">
+                <div className="free-scan-progress-heading"><strong>Working on your quote</strong><b>{Math.round(scan.progress * 100)}%</b></div>
+                <div className="free-scan-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(scan.progress * 100)}><span style={{ width: `${Math.max(3, Math.round(scan.progress * 100))}%` }} /></div>
+                <p>{scan.message}</p>
+                <small>Keep this screen open while PencilProof checks the document.</small>
+              </div>
             </div>
           ) : null}
 
@@ -438,6 +445,7 @@ export default function FreeQuotePreview() {
                   <input
                     type="file"
                     accept={DEAL_IMPORT_ACCEPT}
+                    capture="environment"
                     onChange={handleFile}
                   />
                 </label>
