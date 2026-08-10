@@ -19,7 +19,7 @@ export default function HowItWorksPage() {
           <p className="kicker">HOW IT WORKS</p>
           <h1>See what PencilProof can read before you pay for the full answer.</h1>
           <p>There is no mystery checkout wall. The free scan comes first, you review the detected numbers, and only then decide whether the complete audit is worth it.</p>
-          <div className="page-actions"><Link className="button button-primary" href="/#free-scan">Review your quote free <Arrow /></Link><Link className="text-link" href="/pricing">See what&apos;s included <Arrow /></Link></div>
+          <div className="page-actions"><Link className="button button-primary" href="/analyze">Review your quote free <Arrow /></Link><Link className="text-link" href="/pricing">See what&apos;s included <Arrow /></Link></div>
         </div>
       </section>
 

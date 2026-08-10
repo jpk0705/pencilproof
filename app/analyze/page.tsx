@@ -17,7 +17,12 @@ import {
   isPreviewImportUsable,
   shouldOfferManualEntry,
 } from "@/lib/deal-review";
-import { QUOTE_HANDOFF_KEY } from "@/lib/checkout";
+import {
+  CHECKOUT_URL,
+  createQuoteHandoffEnvelope,
+  QUOTE_HANDOFF_KEY,
+} from "@/lib/checkout";
+import { track } from "@/lib/analytics";
 import VehiclePhoto from "@/app/components/VehiclePhoto";
 
 type Deal = {
@@ -180,6 +185,10 @@ function MoneyField({
 }
 
 export default function AnalyzePage() {
+  // The public Pages site and the paid audit Worker share this static build.
+  // Default to the public state so an unauthenticated visitor never gets a
+  // client-side glimpse of the paid calculator while the host is being read.
+  const [isPaidAuditHost, setIsPaidAuditHost] = useState(false);
   const [deal, setDeal] = useState<Deal>(blank);
   const [copied, setCopied] = useState(false);
   const [dealImport, setDealImport] = useState<DealImportState>({ status: "idle", message: "", fields: [] });
@@ -191,6 +200,10 @@ export default function AnalyzePage() {
   const [manualEntryMode, setManualEntryMode] = useState(false);
   const [importSource, setImportSource] = useState<{ url: string; type: "pdf" | "image" } | null>(null);
   const manualEntryRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setIsPaidAuditHost(window.location.hostname.toLowerCase() === "audit.pencilproof.com");
+  }, []);
 
   useEffect(() => () => {
     if (importSource?.url) URL.revokeObjectURL(importSource.url);
@@ -273,6 +286,32 @@ export default function AnalyzePage() {
 
   const setNumber = (field: keyof Deal, value: string) =>
     setDeal((current) => ({ ...current, [field]: value === "" ? 0 : Number(value) }));
+
+  const manualCheckoutFields = useMemo(() => {
+    const fields = Object.fromEntries(
+      Object.entries(deal).filter(([field, value]) =>
+        field !== "outsideApr" && (
+          field === "vehicle"
+            ? typeof value === "string" && value.trim().length > 0
+            : typeof value === "number" && Number.isFinite(value) && value > 0
+        ),
+      ),
+    ) as ImportedDealFields;
+    const fieldNames = Object.keys(fields).map(
+      (field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields],
+    );
+    return {
+      fields,
+      fieldNames,
+      ready: isPreviewImportUsable({ fields, fieldNames, offerMatrix: undefined }),
+    };
+  }, [deal]);
+
+  const openCheckout = (payload: unknown) => {
+    track({ event: "checkout_started" });
+    window.name = createQuoteHandoffEnvelope(payload);
+    window.location.assign(CHECKOUT_URL);
+  };
 
   const importDealFile = async (file: File) => {
     const isPdf = isDealImportPdf(file);
@@ -436,6 +475,16 @@ export default function AnalyzePage() {
 
   const confirmPendingImport = () => {
     if (!pendingImport) return;
+    if (!isPaidAuditHost) {
+      openCheckout({
+        fields: pendingImport.fields,
+        confidence: pendingImport.confidence,
+        fileName: pendingImport.fileName,
+        offerMatrix,
+        selectedOfferId: selectedOfferId || null,
+      });
+      return;
+    }
     setDeal((current) => ({ ...current, ...pendingImport.fields }));
     setPendingImport(null);
     setDealImport((current) => ({
@@ -685,15 +734,19 @@ export default function AnalyzePage() {
 
       <header className="analyzer-header shell">
         <div>
-          <p className="kicker">PRIVACY-FIRST FULL QUOTE AUDIT FOR CAR BUYERS</p>
+          <p className="kicker">{isPaidAuditHost ? "PRIVACY-FIRST FULL QUOTE AUDIT FOR CAR BUYERS" : "FREE QUOTE SCAN FOR CAR BUYERS"}</p>
           <h1>Review the quote before you sign.</h1>
-          <p>Upload the dealer&apos;s quote or enter the figures yourself. Then test the down payment, term, desired APR, trade, and optional products while the dealership works on its official revision.</p>
+          <p>{isPaidAuditHost
+            ? "Upload the dealer's quote or enter the figures yourself. Then test the down payment, term, desired APR, trade, and optional products while the dealership works on its official revision."
+            : "Upload the dealer's quote or enter the figures yourself. Confirm what PencilProof found, then continue to secure checkout. The complete audit opens only after payment."}</p>
           <p className="analyzer-founder">Built by an automotive professional with experience as a salesperson, sales manager, and finance manager.</p>
         </div>
-        <div className="analyzer-actions">
-          <button type="button" onClick={() => { setDeal(sample); setPendingImport(null); setOfferMatrix(null); setSelectedOfferId(""); setSelectedOfferType(null); setDealImport({ status: "idle", message: "", fields: [] }); }}>Load sample</button>
-          <button type="button" onClick={() => { setDeal(blank); setPendingImport(null); setOfferMatrix(null); setSelectedOfferId(""); setSelectedOfferType(null); setDealImport({ status: "idle", message: "", fields: [] }); }}>Clear all</button>
-        </div>
+        {isPaidAuditHost ? (
+          <div className="analyzer-actions">
+            <button type="button" onClick={() => { setDeal(sample); setPendingImport(null); setOfferMatrix(null); setSelectedOfferId(""); setSelectedOfferType(null); setDealImport({ status: "idle", message: "", fields: [] }); }}>Load sample</button>
+            <button type="button" onClick={() => { setDeal(blank); setPendingImport(null); setOfferMatrix(null); setSelectedOfferId(""); setSelectedOfferType(null); setDealImport({ status: "idle", message: "", fields: [] }); }}>Clear all</button>
+          </div>
+        ) : null}
       </header>
 
       <section className="pdf-import shell" aria-labelledby="pdf-import-title">
@@ -770,7 +823,7 @@ export default function AnalyzePage() {
               <div>
                 <p className="eyebrow">REQUIRED CHECK</p>
                 <h3 id="import-verification-title">Confirm the imported values</h3>
-                <p>PencilProof found a draft, not a guaranteed transcription. Compare each value with the document and correct anything marked “Needs review.”</p>
+                <p>PencilProof found a draft, not a guaranteed transcription. Compare each value with the document and correct anything marked “Needs review.” {isPaidAuditHost ? "After confirmation, the audit will use these figures." : "After confirmation, secure checkout opens; the full audit remains locked until payment."}</p>
               </div>
               <div className="verification-legend" aria-label="Confidence legend">
                 <span className="confidence-high">High confidence</span>
@@ -826,7 +879,7 @@ export default function AnalyzePage() {
               </div>
             </div>
             <div className="verification-actions">
-              <button className="button button-primary" type="button" onClick={confirmPendingImport}>Confirm values and run audit <Arrow /></button>
+              <button className="button button-primary" type="button" onClick={confirmPendingImport}>{isPaidAuditHost ? "Confirm values and run audit" : "Confirm values and continue to checkout"} <Arrow /></button>
               <button type="button" onClick={clearImport}>Enter manually instead</button>
             </div>
           </section>
@@ -842,7 +895,7 @@ export default function AnalyzePage() {
         <p className="pdf-import-note">Best results: use a dealer-generated PDF or a bright, sharp, straight-on image with the full figures visible. PencilProof reads images locally first and uses the secured vision importer only when local extraction is incomplete or ambiguous. OCR and vision can make mistakes, so compare every imported value with the original.</p>
       </section>
 
-      {!pendingImport && selectedOfferType !== "lease" ? <div className="analyzer-layout shell" id="manual-entry" ref={manualEntryRef}>
+      {!pendingImport && selectedOfferType !== "lease" && (isPaidAuditHost || manualEntryMode) ? <div className={`analyzer-layout shell ${isPaidAuditHost ? "" : "public-manual-layout"}`} id="manual-entry" ref={manualEntryRef}>
         <form className="deal-form" onSubmit={(event) => event.preventDefault()}>
           {manualEntryMode ? (
             <section className="manual-entry-intro" aria-live="polite">
@@ -892,9 +945,32 @@ export default function AnalyzePage() {
               <p>This amount updates immediately when you change the price, tax, fees, products, trade, cash down, APR, or term. The dealer&apos;s quoted payment above stays unchanged so PencilProof can compare the two.</p>
             </div>
           </section>
+          {!isPaidAuditHost ? (
+            <div className="public-manual-checkout">
+              <div>
+                <span>FREE SCAN COMPLETE</span>
+                <strong>Ready to continue?</strong>
+                <p>Your entered figures stay in this browser. Continue to secure checkout to unlock the complete Full Quote Audit after payment.</p>
+              </div>
+              <button
+                className="button button-primary"
+                type="button"
+                disabled={!manualCheckoutFields.ready}
+                onClick={() => openCheckout({
+                  fields: manualCheckoutFields.fields,
+                  confidence: Object.fromEntries(Object.keys(manualCheckoutFields.fields).map((field) => [field, "review"])),
+                  fileName: "Manual quote entry",
+                  offerMatrix: null,
+                  selectedOfferId: null,
+                })}
+              >
+                Continue to secure checkout <Arrow />
+              </button>
+            </div>
+          ) : null}
         </form>
 
-        <aside className="results-panel" aria-live="polite">
+        {isPaidAuditHost ? <aside className="results-panel" aria-live="polite">
           <div className="results-sticky">
             <div className="result-top">
               <div><p>DEAL CHECKS</p><h2>{deal.vehicle || "Your finance deal"}</h2></div>
@@ -1007,7 +1083,7 @@ export default function AnalyzePage() {
             )}
             <p className="result-disclaimer">Educational estimate only. Coverage, taxes, fees, trade credits, lender rules, and product terms vary. Verify every figure and contract before signing. No savings are guaranteed.</p>
           </div>
-        </aside>
+        </aside> : null}
       </div> : null}
     </main>
   );
