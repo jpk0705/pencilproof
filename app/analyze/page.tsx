@@ -59,6 +59,7 @@ type DealImportState = {
   status: "idle" | "loading" | "success" | "warning" | "error";
   message: string;
   fields: string[];
+  progress?: number;
 };
 
 type PendingImport = {
@@ -319,6 +320,7 @@ export default function AnalyzePage() {
         ? `Reading ${file.name} in your browser…`
         : `Preparing image recognition for ${file.name}… The first image can take a moment.`,
       fields: [],
+      progress: 0.02,
     });
     try {
       const result = await extractDealFromFile(file, ({ progress, status }) => {
@@ -328,6 +330,7 @@ export default function AnalyzePage() {
           status: "loading",
           message: `${readableStatus.charAt(0).toUpperCase()}${readableStatus.slice(1)}${progress > 0 ? ` · ${percent}%` : ""}`,
           fields: [],
+          progress,
         });
       });
       if (!isPreviewImportUsable(result)) {
@@ -368,6 +371,7 @@ export default function AnalyzePage() {
             ? `Detected ${result.offerMatrix.options.length} payment choices in ${file.name}. Select the finance or lease option you are considering.${hasImportGaps ? ` ${missingVerificationFields.length} other categories were not detected; review and enter them manually.` : ""}`
             : `Found ${result.fieldNames.length} field${result.fieldNames.length === 1 ? "" : "s"} in ${file.name}${result.sourceType === "pdf" ? ` (${result.pageCount} page${result.pageCount === 1 ? "" : "s"}${result.usedOcr ? ", scanned-document OCR" : ""})` : ""}.${hasImportGaps ? ` Import incomplete: ${missingVerificationFields.length} categories were not detected. Review every field and enter missing numbers manually.` : " Confirm every value before starting the audit."}`,
         fields: result.fieldNames,
+        progress: 1,
       });
     } catch (error) {
       console.error("PencilProof document import failed", error);
@@ -396,6 +400,7 @@ export default function AnalyzePage() {
                         ? "PencilProof's vision importer could not process this file. Please try again or enter the figures manually."
           : "PencilProof could not read this file. It may be password-protected, blurry, or use an unsupported format. Check the original quote and enter the figures manually.",
         fields: [],
+        progress: 0,
       });
     }
   };
@@ -785,10 +790,23 @@ export default function AnalyzePage() {
             <p>Choose a digital or scanned PDF, or any image format your device can open. PencilProof reads it locally first. Small or unclear images may be enlarged and sent through PencilProof&apos;s secured vision importer for better label and number matching.</p>
           </div>
           <label className={`pdf-upload-button ${dealImport.status === "loading" ? "pdf-upload-loading" : ""}`}>
-            <input type="file" accept={DEAL_IMPORT_ACCEPT} disabled={dealImport.status === "loading"} onChange={handleDealFileChange} />
-            {dealImport.status === "loading" ? "Reading file…" : "Choose PDF or image"}
+            <input type="file" accept={DEAL_IMPORT_ACCEPT} capture="environment" disabled={dealImport.status === "loading"} onChange={handleDealFileChange} />
+            {dealImport.status === "loading" ? "Processing…" : "Choose PDF or image"}
           </label>
         </div>
+        {dealImport.status === "loading" ? (
+          <div className="pdf-import-progress" role="status" aria-live="polite">
+            <div className="pdf-import-progress-heading">
+              <strong>Working on your quote</strong>
+              <span>{Math.round((dealImport.progress ?? 0) * 100)}%</span>
+            </div>
+            <div className="pdf-import-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((dealImport.progress ?? 0) * 100)}>
+              <span style={{ width: `${Math.max(3, Math.round((dealImport.progress ?? 0) * 100))}%` }} />
+            </div>
+            <p>{dealImport.message}</p>
+            <small>Keep this screen open while PencilProof checks the document.</small>
+          </div>
+        ) : null}
         {dealImport.status === "error" ? (
           <div className={`pdf-import-status pdf-status-${dealImport.status}`} role="status" aria-live="polite">
             <span aria-hidden="true">!</span>
