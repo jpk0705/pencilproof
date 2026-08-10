@@ -11,6 +11,7 @@ import {
   isLocallyReadableImport,
   isDealImportFile,
   isDealImportPdf,
+  dealImageScale,
 } from "../lib/deal-pdf.ts";
 import { paymentFor } from "../lib/deal-calculations.ts";
 import {
@@ -46,6 +47,10 @@ assert.equal(isDealImportFile({ name: "quote-from-phone", type: "image/heic" }),
 assert.equal(isDealImportFile({ name: "quote.pdf", type: "application/pdf" }), true);
 assert.equal(isDealImportPdf({ name: "quote.pdf", type: "" }), true);
 assert.equal(isDealImportFile({ name: "notes.txt", type: "text/plain" }), false);
+
+const phoneScale = dealImageScale(4032, 3024, 2200);
+assert.ok(phoneScale < 1, "camera originals should be downscaled before OCR");
+assert.ok(4032 * 3024 * phoneScale ** 2 <= 4_000_000, "OCR image area should stay within the mobile-safe cap");
 
 // Missing optional categories must not trigger Gemini when local extraction
 // already produced a usable quote. Those categories are legitimately absent
