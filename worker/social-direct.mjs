@@ -150,6 +150,7 @@ function emptyState() {
     ownCommentIds: [],
     recentPosts: [],
     publishedKeys: [],
+    lastPublishedByPlatform: {},
     lastSummary: null,
   };
 }
@@ -168,6 +169,9 @@ function normalizeState(value) {
     ownCommentIds: Array.isArray(state.ownCommentIds) ? state.ownCommentIds : [],
     recentPosts: Array.isArray(state.recentPosts) ? state.recentPosts : [],
     publishedKeys: Array.isArray(state.publishedKeys) ? state.publishedKeys : [],
+    lastPublishedByPlatform: state.lastPublishedByPlatform && typeof state.lastPublishedByPlatform === "object"
+      ? state.lastPublishedByPlatform
+      : {},
   };
 }
 
@@ -647,6 +651,35 @@ async function getRecentPlatformPosts(env, runtime, platform, limit) {
   return [];
 }
 
+export async function runDirectReadOnlyAudit(env, now = new Date()) {
+  const runtime = { blueskySession: null };
+  const results = {};
+  for (const platform of detectConfiguredPlatforms(env)) {
+    try {
+      const posts = await getRecentPlatformPosts(env, runtime, platform, 5);
+      results[platform] = {
+        configured: true,
+        apiReachable: true,
+        recentPostCount: posts.length,
+        latestRemotePostAt: posts
+          .map((post) => String(post.created ?? ""))
+          .filter(Boolean)
+          .sort()
+          .at(-1) ?? null,
+      };
+    } catch (error) {
+      results[platform] = {
+        configured: true,
+        apiReachable: false,
+        recentPostCount: 0,
+        latestRemotePostAt: null,
+        error: safeErrorMessage(error),
+      };
+    }
+  }
+  return { checkedAt: now.toISOString(), platforms: results };
+}
+
 async function getPostComments(env, runtime, platform, post) {
   if (platform === "bluesky") return getBlueskyComments(env, runtime, post);
   if (platform === "threads") return getThreadsComments(env, runtime, post);
@@ -824,8 +857,10 @@ async function runAutomation(env, state, now = new Date()) {
         if (state.publishedKeys.includes(key)) continue;
         try {
           const result = await publishToPlatform(env, runtime, platform, generated);
+          const id = outboundId(result) || key;
           state.publishedKeys.push(key);
-          summary.postsPublished.push({ platform, id: outboundId(result) || key });
+          state.lastPublishedByPlatform[platform] = { id, at: now.toISOString() };
+          summary.postsPublished.push({ platform, id });
         } catch (error) {
           summary.warnings.push(`publish ${platform}: ${safeErrorMessage(error)}`);
         }
@@ -895,6 +930,7 @@ export class SocialAutomationState {
         lastPostAt: state.lastPostAt,
         lastPostId: state.lastPostId,
         lastError: state.lastError,
+        lastPublishedByPlatform: state.lastPublishedByPlatform,
         counters: state.counters,
         lastSummary: state.lastSummary,
       });
@@ -930,6 +966,8 @@ export default {
         mode: "direct-zero-cost",
         lastRunAt: status.lastRunAt ?? null,
         lastPostAt: status.lastPostAt ?? null,
+        lastError: status.lastError ?? null,
+        lastPublishedByPlatform: status.lastPublishedByPlatform ?? {},
         counters: status.counters ?? null,
         lastSummary: status.lastSummary
           ? {
