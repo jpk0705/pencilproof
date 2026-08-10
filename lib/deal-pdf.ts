@@ -885,7 +885,14 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     /\bcash deposit\b/i,
     /\bdeposit\s*\/\s*cash down\b/i,
     /\bdeferred down payment\b/i,
-  ], { allowZero: true });
+  ], {
+    allowZero: true,
+    exclude: [
+      /\btotal\s+(?:cash\s+)?down\b/i,
+      /\btotal down payment\b/i,
+      /\btotal down amount\b/i,
+    ],
+  });
   if (cashDown !== undefined) fields.cashDown = cashDown;
 
   const rebate = findAmount(lines, [

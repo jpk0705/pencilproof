@@ -401,6 +401,14 @@ const splitDownPaymentAmountFinanced =
   splitDownPaymentQuote.rebate;
 closeTo(splitDownPaymentAmountFinanced, 35442.5);
 
+const totalDownPaymentMustNotDoubleCount = parseDealerText([
+  "Selling Price $30,000.00",
+  "Deposit / Cash Down $3,000.00",
+  "Deferred Down Payment Due 1/3/2026 $250.00",
+  "TOTAL DOWN PAYMENT $3,250.00",
+]);
+closeTo(totalDownPaymentMustNotDoubleCount.cashDown, 3250);
+
 const explicitManufacturerRebate = parseDealerText([
   "Sales Price $30,000.00",
   "Manufacturer Rebate $1,000.00",
