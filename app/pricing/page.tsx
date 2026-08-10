@@ -17,7 +17,7 @@ export default function PricingPage() {
           <p className="kicker">PRICING</p>
           <h1>See it work first. Pay once only when you want the full audit.</h1>
           <p>Upload your quote free and review what PencilProof finds. The complete Full Quote Audit is a one-time $39 purchase, not a subscription.</p>
-          <div className="page-actions"><Link className="button button-primary" href="/#free-scan">Review your quote free <span aria-hidden="true">→</span></Link><Link className="text-link" href={CHECKOUT_URL}>Review checkout details <span aria-hidden="true">→</span></Link></div>
+          <div className="page-actions"><Link className="button button-primary" href="/analyze">Review your quote free <span aria-hidden="true">→</span></Link><Link className="text-link" href={CHECKOUT_URL}>Review checkout details <span aria-hidden="true">→</span></Link></div>
         </div>
       </section>
 
