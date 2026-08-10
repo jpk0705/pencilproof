@@ -7,6 +7,7 @@ import {
 } from "@/lib/checkout";
 import {
   DEAL_IMPORT_ACCEPT,
+  DEAL_CAMERA_ACCEPT,
   DEAL_FIELD_LABELS,
   extractDealFromFile,
   isDealImportFile,
@@ -399,15 +400,25 @@ export default function FreeQuotePreview() {
             <div className="free-scan-drop" ref={uploadPanelRef}>
               <strong>Start with the written quote</strong>
               <p>Use a dealer-generated PDF or a bright, sharp image with the full page visible.</p>
-              <label className="button button-primary">
-                Upload PDF or image
-                <input
-                  type="file"
-                  accept={DEAL_IMPORT_ACCEPT}
-                  capture="environment"
-                  onChange={handleFile}
-                />
-              </label>
+              <div className="free-scan-upload-actions">
+                <label className="button button-primary">
+                  Take photo — rear camera
+                  <input
+                    type="file"
+                    accept={DEAL_CAMERA_ACCEPT}
+                    capture="environment"
+                    onChange={handleFile}
+                  />
+                </label>
+                <label className="button button-quiet">
+                  Upload PDF or image
+                  <input
+                    type="file"
+                    accept={DEAL_IMPORT_ACCEPT}
+                    onChange={handleFile}
+                  />
+                </label>
+              </div>
               <small>PDF or any image format · up to 15 MB</small>
             </div>
           ) : null}
@@ -445,7 +456,6 @@ export default function FreeQuotePreview() {
                   <input
                     type="file"
                     accept={DEAL_IMPORT_ACCEPT}
-                    capture="environment"
                     onChange={handleFile}
                   />
                 </label>
