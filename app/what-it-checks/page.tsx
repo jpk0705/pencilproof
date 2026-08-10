@@ -24,7 +24,7 @@ export default function WhatItChecksPage() {
           <p className="kicker">WHAT IT CHECKS</p>
           <h1>See where the money goes before it becomes a monthly payment.</h1>
           <p>A lower payment can hide a longer term, a higher rate, financed products, or rolled-in trade debt. PencilProof separates the pieces so you can see the actual impact.</p>
-          <div className="page-actions"><Link className="button button-primary" href="/#free-scan">Review your quote free <span aria-hidden="true">→</span></Link><Link className="text-link" href="/questions">Read common questions <span aria-hidden="true">→</span></Link></div>
+          <div className="page-actions"><Link className="button button-primary" href="/analyze">Review your quote free <span aria-hidden="true">→</span></Link><Link className="text-link" href="/questions">Read common questions <span aria-hidden="true">→</span></Link></div>
         </div>
       </section>
 
