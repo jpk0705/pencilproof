@@ -473,6 +473,62 @@ export default function AnalyzePage() {
     });
   };
 
+  const pendingPreview = useMemo(() => {
+    if (!pendingImport) return null;
+    const fields = pendingImport.fields;
+    const products =
+      (fields.serviceContract ?? 0) +
+      (fields.gap ?? 0) +
+      (fields.prepaidMaintenance ?? 0) +
+      (fields.tireWheel ?? 0) +
+      (fields.accessories ?? 0);
+    const amountFinanced = fields.sellingPrice
+      ? Math.max(
+          0,
+          fields.sellingPrice +
+            (fields.tax ?? 0) +
+            (fields.govFees ?? 0) +
+            (fields.docFee ?? 0) +
+            products +
+            (fields.tradePayoff ?? 0) -
+            (fields.tradeValue ?? 0) -
+            (fields.cashDown ?? 0) -
+            (fields.rebate ?? 0),
+        )
+      : 0;
+    const calculatedPayment =
+      amountFinanced && fields.apr && fields.term
+        ? paymentFor(amountFinanced, fields.apr, fields.term)
+        : 0;
+    const paymentDifference =
+      calculatedPayment && fields.quotedPayment
+        ? Math.abs(fields.quotedPayment - calculatedPayment)
+        : 0;
+    const criticalFields: (keyof ImportedDealFields)[] = [
+      "sellingPrice",
+      "tax",
+      "apr",
+      "term",
+      "quotedPayment",
+    ];
+
+    return {
+      products,
+      pricedProductCount: [
+        fields.serviceContract,
+        fields.gap,
+        fields.prepaidMaintenance,
+        fields.tireWheel,
+        fields.accessories,
+      ].filter((value) => typeof value === "number" && value > 0).length,
+      amountFinanced,
+      calculatedPayment,
+      paymentDifference,
+      hasPaymentMismatch: paymentDifference > PAYMENT_MATCH_TOLERANCE,
+      missingCritical: criticalFields.filter((field) => fields[field] === undefined),
+    };
+  }, [pendingImport]);
+
   const confirmPendingImport = () => {
     if (!pendingImport) return;
     if (!isPaidAuditHost) {
@@ -770,7 +826,7 @@ export default function AnalyzePage() {
               {dealImport.fields.length ? <div className="pdf-field-list">{dealImport.fields.map((field) => <small key={field}>{field}</small>)}</div> : null}
               {dealImport.status === "error" && shouldOfferManualEntry(failedImportAttempts + 1) ? (
                 <button className="manual-entry-button" type="button" onClick={startManualEntry}>
-                  Enter the numbers manually instead
+                  Open manual quote form
                 </button>
               ) : null}
             </div>
@@ -878,9 +934,42 @@ export default function AnalyzePage() {
                 })}
               </div>
             </div>
+            {pendingPreview ? (
+              <div className="free-math-preview import-math-preview">
+                <div>
+                  <span>ESTIMATED AMOUNT FINANCED</span>
+                  <strong>{pendingPreview.amountFinanced ? dollarsAndCents(pendingPreview.amountFinanced) : "Not enough data"}</strong>
+                  <small>Rebuilt from the editable imported figures</small>
+                </div>
+                <div className="free-preview-statuses">
+                  <p className={pendingPreview.calculatedPayment && pendingImport.fields.quotedPayment ? pendingPreview.hasPaymentMismatch ? "preview-warn" : "preview-good" : "preview-note"}>
+                    <b>Payment math</b>
+                    <span>
+                      {!pendingPreview.calculatedPayment || !pendingImport.fields.quotedPayment
+                        ? "Enter the printed payment to compare"
+                        : pendingPreview.hasPaymentMismatch
+                          ? `${dollarsAndCents(pendingPreview.paymentDifference)} mismatch · quote ${dollarsAndCents(pendingImport.fields.quotedPayment)} vs calculated ${dollarsAndCents(pendingPreview.calculatedPayment)}`
+                          : "Quoted payment is within $5"
+                      }
+                    </span>
+                  </p>
+                  <p className={pendingPreview.amountFinanced ? "preview-good" : "preview-note"}>
+                    <b>Amount financed</b>
+                    <span>{pendingPreview.amountFinanced ? "Rebuilt from price, fees, products, trade, cash down, and rebate" : "Not enough figures to rebuild"}</span>
+                  </p>
+                  <p className={pendingPreview.products > 0 ? "preview-warn" : "preview-note"}>
+                    <b>Products and add-ons</b>
+                    <span>{pendingPreview.pricedProductCount > 0 ? `${pendingPreview.pricedProductCount} priced item${pendingPreview.pricedProductCount === 1 ? "" : "s"} detected` : "No priced items detected"}</span>
+                  </p>
+                  <p className={pendingPreview.missingCritical.length ? "preview-warn" : "preview-good"}>
+                    <b>Required information</b>
+                    <span>{pendingPreview.missingCritical.length ? `${pendingPreview.missingCritical.length} key item${pendingPreview.missingCritical.length === 1 ? "" : "s"} not found` : "Key fields found"}</span>
+                  </p>
+                </div>
+              </div>
+            ) : null}
             <div className="verification-actions">
               <button className="button button-primary" type="button" onClick={confirmPendingImport}>{isPaidAuditHost ? "Confirm values and run audit" : "Confirm values and continue to checkout"} <Arrow /></button>
-              <button type="button" onClick={clearImport}>Enter manually instead</button>
             </div>
           </section>
         ) : null}
