@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import {
   DEAL_IMPORT_ACCEPT,
+  DEAL_CAMERA_ACCEPT,
   DEAL_FIELD_LABELS,
   extractDealFromFile,
   isDealImportFile,
@@ -789,10 +790,16 @@ export default function AnalyzePage() {
             <h2 id="pdf-import-title">Upload what the dealer gave you</h2>
             <p>Choose a digital or scanned PDF, or any image format your device can open. PencilProof reads it locally first. Small or unclear images may be enlarged and sent through PencilProof&apos;s secured vision importer for better label and number matching.</p>
           </div>
-          <label className={`pdf-upload-button ${dealImport.status === "loading" ? "pdf-upload-loading" : ""}`}>
-            <input type="file" accept={DEAL_IMPORT_ACCEPT} capture="environment" disabled={dealImport.status === "loading"} onChange={handleDealFileChange} />
-            {dealImport.status === "loading" ? "Processing…" : "Choose PDF or image"}
-          </label>
+          <div className="pdf-upload-actions">
+            <label className={`pdf-upload-button pdf-camera-button ${dealImport.status === "loading" ? "pdf-upload-loading" : ""}`}>
+              <input type="file" accept={DEAL_CAMERA_ACCEPT} capture="environment" disabled={dealImport.status === "loading"} onChange={handleDealFileChange} />
+              {dealImport.status === "loading" ? "Processing…" : "Take photo — rear camera"}
+            </label>
+            <label className={`pdf-upload-button ${dealImport.status === "loading" ? "pdf-upload-loading" : ""}`}>
+              <input type="file" accept={DEAL_IMPORT_ACCEPT} disabled={dealImport.status === "loading"} onChange={handleDealFileChange} />
+              Choose PDF or image
+            </label>
+          </div>
         </div>
         {dealImport.status === "loading" ? (
           <div className="pdf-import-progress" role="status" aria-live="polite">
