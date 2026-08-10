@@ -7,6 +7,7 @@ import {
   isWithinActiveHours,
   normalizePlatform,
   pickPublishPlatforms,
+  runDirectReadOnlyAudit,
   shouldPublishNow,
   trimUnique,
   uniquePlatforms,
@@ -32,6 +33,12 @@ test("detects direct social accounts only when their required credentials exist"
     BLUESKY_HANDLE: "pencilproof.bsky.social",
     INSTAGRAM_ACCESS_TOKEN: "ig-token",
   }), []);
+});
+
+test("read-only audit is inert when no direct accounts are configured", async () => {
+  const audit = await runDirectReadOnlyAudit({}, new Date("2026-08-10T18:00:00.000Z"));
+  assert.equal(audit.checkedAt, "2026-08-10T18:00:00.000Z");
+  assert.deepEqual(audit.platforms, {});
 });
 
 test("publish selection excludes paid-only and unsupported networks", () => {

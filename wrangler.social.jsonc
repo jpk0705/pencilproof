@@ -31,6 +31,7 @@
     "SOCIAL_AUTOMATION_ENABLED": "true",
     "SOCIAL_REPLY_ENABLED": "true",
     "SOCIAL_PUBLISH_ENABLED": "true",
+    "SOCIAL_PUBLISH_PLATFORMS": "facebook,threads,instagram",
     "SOCIAL_TIMEZONE": "America/Los_Angeles",
     "SOCIAL_ACTIVE_START_HOUR": "8",
     "SOCIAL_ACTIVE_END_HOUR": "19",

@@ -5,6 +5,7 @@ import directWorker, {
   isLikelyOwnComment,
   localClockParts,
   parseBoolean,
+  runDirectReadOnlyAudit,
   shouldPublishNow,
   trimUnique,
 } from "./social-direct.mjs";
@@ -105,6 +106,7 @@ function emptyFacebookState() {
     ownCommentIds: [],
     recentPosts: [],
     publishedKeys: [],
+    lastPublishedByPlatform: {},
     lastSummary: null,
   };
 }
@@ -123,6 +125,9 @@ function normalizeFacebookState(value) {
     ownCommentIds: Array.isArray(state.ownCommentIds) ? state.ownCommentIds : [],
     recentPosts: Array.isArray(state.recentPosts) ? state.recentPosts : [],
     publishedKeys: Array.isArray(state.publishedKeys) ? state.publishedKeys : [],
+    lastPublishedByPlatform: state.lastPublishedByPlatform && typeof state.lastPublishedByPlatform === "object"
+      ? state.lastPublishedByPlatform
+      : {},
   };
 }
 
@@ -411,6 +416,10 @@ async function runFacebookAutomation(env, state, now = new Date()) {
         state.publishedKeys.push(publishKey);
         state.lastPostAt = now.toISOString();
         state.lastPostId = String(result?.id ?? publishKey);
+        state.lastPublishedByPlatform.facebook = {
+          id: state.lastPostId,
+          at: now.toISOString(),
+        };
         state.counters.posts += 1;
         state.recentPosts.push({ id: state.lastPostId, post: generated, created: now.toISOString() });
         summary.postPublished = true;
@@ -443,6 +452,93 @@ async function triggerFacebookRun(env) {
   return response;
 }
 
+function recentPostCheck(posts) {
+  return {
+    apiReachable: true,
+    recentPostCount: posts.length,
+    latestRemotePostAt: posts
+      .map((post) => String(post.created ?? ""))
+      .filter(Boolean)
+      .sort()
+      .at(-1) ?? null,
+  };
+}
+
+async function buildReadOnlyAudit(env, ctx) {
+  const checkedAt = new Date().toISOString();
+  const directAudit = await runDirectReadOnlyAudit(env, new Date(checkedAt));
+  const directResponse = await directWorker.fetch(new Request("https://social.internal/status"), env, ctx);
+  const directStatus = directResponse.ok ? await directResponse.json() : {};
+  const facebookStatusResponse = await stateStub(env).fetch(new Request("https://social.internal/facebook-status"));
+  const facebookStatus = facebookStatusResponse.ok ? await facebookStatusResponse.json() : {};
+
+  let facebookResult = {
+    configured: facebookConfigured(env),
+    apiReachable: false,
+    recentPostCount: 0,
+    latestRemotePostAt: null,
+  };
+  if (facebookResult.configured) {
+    try {
+      facebookResult = { configured: true, ...recentPostCheck(await getFacebookPosts(env, 5)) };
+    } catch (error) {
+      facebookResult.error = safeErrorMessage(error);
+    }
+  }
+
+  const lastPublishedByPlatform = {
+    ...(directStatus.lastPublishedByPlatform ?? {}),
+    ...(facebookStatus.lastPublishedByPlatform ?? {}),
+  };
+  const weekStart = Date.now() - (7 * 24 * 60 * 60 * 1000);
+  const targetPlatforms = ["facebook", "instagram", "threads"];
+  const platforms = {
+    facebook: { ...facebookResult, lastPublished: lastPublishedByPlatform.facebook ?? null },
+    instagram: {
+      ...(directAudit.platforms.instagram ?? { configured: false, apiReachable: false, recentPostCount: 0, latestRemotePostAt: null }),
+      lastPublished: lastPublishedByPlatform.instagram ?? null,
+    },
+    threads: {
+      ...(directAudit.platforms.threads ?? { configured: false, apiReachable: false, recentPostCount: 0, latestRemotePostAt: null }),
+      lastPublished: lastPublishedByPlatform.threads ?? null,
+    },
+  };
+  for (const platform of targetPlatforms) {
+    const lastPublished = platforms[platform].lastPublished;
+    platforms[platform].publishedWithin7Days = Boolean(lastPublished?.at && Date.parse(lastPublished.at) >= weekStart);
+  }
+
+  const errors = [];
+  for (const [platform, result] of Object.entries(platforms)) {
+    if (result.error) errors.push(`${platform}: ${result.error}`);
+  }
+  if (directStatus.lastError) errors.push(`direct automation: ${directStatus.lastError}`);
+  if (facebookStatus.lastError) errors.push(`facebook automation: ${facebookStatus.lastError}`);
+
+  return {
+    ok: errors.length === 0,
+    mode: "read-only-health-audit",
+    checkedAt,
+    automation: {
+      enabled: parseBoolean(env.SOCIAL_AUTOMATION_ENABLED, true),
+      publishingEnabled: parseBoolean(env.SOCIAL_PUBLISH_ENABLED, false),
+      repliesEnabled: parseBoolean(env.SOCIAL_REPLY_ENABLED, true),
+      configuredPlatforms: combinedConfiguredPlatforms(env),
+      lastDirectRunAt: directStatus.lastRunAt ?? null,
+      lastFacebookRunAt: facebookStatus.lastRunAt ?? null,
+    },
+    platforms,
+    weeklyPromotion: {
+      windowDays: 7,
+      completed: targetPlatforms.every((platform) => platforms[platform].publishedWithin7Days),
+      targetPlatforms,
+      lastPublishedByPlatform,
+    },
+    errors,
+    sideEffects: [],
+  };
+}
+
 export class SocialAutomationState extends DirectSocialAutomationState {
   async fetch(request) {
     const url = new URL(request.url);
@@ -467,6 +563,8 @@ export class SocialAutomationState extends DirectSocialAutomationState {
       return responseJson({
         lastRunAt: state.lastRunAt,
         lastPostAt: state.lastPostAt,
+        lastError: state.lastError,
+        lastPublishedByPlatform: state.lastPublishedByPlatform,
         counters: state.counters,
         lastSummary: state.lastSummary,
       });
@@ -487,6 +585,7 @@ export default {
         publishEnabled: parseBoolean(env.SOCIAL_PUBLISH_ENABLED, false),
         configuredPlatforms: combinedConfiguredPlatforms(env),
         paidPlatformsEnabled: false,
+        auditEndpoint: "/audit",
       });
     }
 
@@ -502,6 +601,8 @@ export default {
           configured: facebookConfigured(env),
           lastRunAt: facebookStatus.lastRunAt ?? null,
           lastPostAt: facebookStatus.lastPostAt ?? null,
+          lastError: facebookStatus.lastError ?? null,
+          lastPublishedByPlatform: facebookStatus.lastPublishedByPlatform ?? {},
           counters: facebookStatus.counters ?? null,
           lastSummary: facebookStatus.lastSummary
             ? {
@@ -518,6 +619,11 @@ export default {
             : null,
         },
       });
+    }
+
+    if (request.method === "GET" && url.pathname === "/audit") {
+      const audit = await buildReadOnlyAudit(env, ctx);
+      return responseJson(audit, audit.ok ? 200 : 503);
     }
 
     return directWorker.fetch(request, env, ctx);
