@@ -854,11 +854,11 @@ export default function AnalyzePage() {
                   const value = pendingImport.fields[field];
                   const found = value !== undefined;
                   const confidence = found ? pendingImport.confidence[field] ?? "review" : "missing";
-                    const reason = confidence === "high"
-                      ? "Matched to labeled document text"
-                      : confidence === "review"
-                        ? "OCR or payment math requires visual confirmation"
-                        : "No reliable labeled value found";
+                  const reason = confidence === "high"
+                    ? "Matched to labeled document text"
+                    : confidence === "review"
+                      ? "OCR or payment math requires visual confirmation"
+                      : "No reliable labeled value found";
                   return (
                     <label className={`verification-field confidence-${confidence}`} key={field}>
                       <span>{DEAL_FIELD_LABELS[field]}</span>
