@@ -16,7 +16,7 @@ export default function WhoItHelpsPage() {
           <p className="kicker">WHO IT HELPS</p>
           <h1>Use the written quote as a clearer starting point.</h1>
           <p>Whether you are buying a car or helping a customer buy one, PencilProof turns the written quote into a specific conversation instead of another round of guesswork.</p>
-          <div className="page-actions"><Link className="button button-primary" href="/#free-scan">Review your quote free <span aria-hidden="true">→</span></Link><Link className="text-link" href="/how-it-works">See how it works <span aria-hidden="true">→</span></Link></div>
+          <div className="page-actions"><Link className="button button-primary" href="/analyze">Review your quote free <span aria-hidden="true">→</span></Link><Link className="text-link" href="/how-it-works">See how it works <span aria-hidden="true">→</span></Link></div>
         </div>
       </section>
 
