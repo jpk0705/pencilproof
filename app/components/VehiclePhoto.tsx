@@ -149,7 +149,8 @@ export default function VehiclePhoto({
         }}
       />
       <figcaption>
-        <div>
+        <div className="vehicle-photo-header">
+          <span className="vehicle-photo-kicker">VEHICLE MATCH</span>
           <strong>{identity.displayName}</strong>
           <span>
             {isFallback
@@ -157,11 +158,29 @@ export default function VehiclePhoto({
               : `${image?.exactYearMatch ? "Model-year match" : "Representative model photo"} · Actual trim and color may vary`}
           </span>
         </div>
+        <div className="vehicle-photo-match-grid" aria-label="Detected vehicle details">
+          <div>
+            <span>YEAR</span>
+            <b>{identity.year ?? "Not detected"}</b>
+          </div>
+          <div>
+            <span>MAKE</span>
+            <b>{identity.make}</b>
+          </div>
+          <div>
+            <span>MODEL</span>
+            <b>{identity.model}</b>
+          </div>
+        </div>
+        <p className="vehicle-photo-note">
+          Use this image as a visual reference while checking the imported
+          vehicle description and quote figures.
+        </p>
         {isFallback ? (
           <small>Custom PencilProof image · exact trim and color may vary</small>
         ) : (
           <small>
-            Photo: {" "}
+            Photo:{" "}
             <a href={image?.sourceUrl ?? "#"} target="_blank" rel="noreferrer">
               {image?.creator}
             </a>
