@@ -360,7 +360,6 @@ footer { border-top: 1px solid var(--line); padding: 34px 0; }
 .pdf-import-status { display: flex; gap: 11px; align-items: flex-start; margin-top: 17px; padding: 13px; border-radius: 6px; font-size: 10px; }
 .pdf-import-status > span { width: 23px; height: 23px; display: grid; place-items: center; flex: 0 0 23px; border-radius: 50%; font-size: 10px; font-weight: 900; }
 .pdf-import-status p { margin: 3px 0 0; line-height: 1.5; }
-.manual-entry-button { margin-top: 11px; padding: 8px 11px; border: 1px solid currentColor; border-radius: 4px; color: inherit; background: transparent; font-size: 9px; font-weight: 900; cursor: pointer; }
 .pdf-status-loading { color: #38556c; background: #e5eef5; }.pdf-status-loading > span { color: #285f88; background: #cddfec; }
 .pdf-status-success { color: #15543f; background: #e3f1eb; }.pdf-status-success > span { color: white; background: var(--green); }
 .pdf-status-warning { color: #743a12; background: #fff0d8; }.pdf-status-warning > span { color: white; background: #ae591a; }
@@ -598,7 +597,6 @@ footer { border-top: 1px solid var(--line); padding: 34px 0; }
 .pdf-import-main > div:nth-child(2) > p:last-child { font-size: 13px; }
 .pdf-upload-button { min-height: 46px; font-size: 13px; }
 .pdf-import-status { font-size: 13px; }
-.manual-entry-button { min-height: 40px; font-size: 12px; }
 .pdf-field-list small { font-size: 11px; }
 .offer-matrix-heading > span { font-size: 11px; }
 .offer-group-title h4 { font-size: 13px; }
@@ -1112,7 +1110,6 @@ footer { color: var(--brand-text); background: var(--brand-navy); border-top-col
 .pdf-status-success { color: var(--brand-positive); background: rgba(71,174,128,.16); }
 .pdf-status-warning,
 .pdf-status-error { color: #ffe19a; background: rgba(246,195,67,.12); }
-.manual-entry-button { color: var(--brand-muted); }
 .pdf-field-list small { border-color: var(--brand-line); background: rgba(255,255,255,.05); }
 .offer-matrix,
 .import-verification,
@@ -1185,6 +1182,53 @@ footer { color: var(--brand-text); background: var(--brand-navy); border-top-col
 .free-detected-values .confidence-missing span { color: var(--brand-text); }
 .free-detected-values .confidence-missing small { color: #ffd479; font-size: 11px; }
 .free-detected-values .confidence-missing input::placeholder { color: #66758a; opacity: 1; }
+.free-detected-values .confidence-review,
+.free-detected-values .confidence-missing {
+  color: var(--brand-text);
+  border-color: rgba(246, 195, 67, .72);
+  background: #10264a;
+}
+.free-detected-values .confidence-review span,
+.free-detected-values .confidence-missing span {
+  color: var(--brand-text);
+  overflow: visible;
+  white-space: normal;
+}
+.free-detected-values .confidence-review small { color: #ffe19a; }
+.free-detected-values .confidence-missing small { color: #ffd479; }
+.free-detected-values .confidence-review input,
+.free-detected-values .confidence-missing input {
+  color: var(--brand-navy);
+  background: #f5f7fb;
+  border-color: rgba(246, 195, 67, .72);
+}
+.free-detected-values .confidence-review input::placeholder,
+.free-detected-values .confidence-missing input::placeholder {
+  color: #52677d;
+  opacity: 1;
+}
+.verification-legend span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 5px 9px;
+  border: 1px solid var(--brand-line);
+  border-radius: 999px;
+  background: #10264a;
+  line-height: 1.2;
+}
+.verification-legend .confidence-high { color: #9fe3c6; border-color: rgba(159,227,198,.45); }
+.verification-legend .confidence-review { color: #ffe19a; border-color: rgba(246,195,67,.55); }
+.verification-legend .confidence-missing { color: #d8e5f4; border-color: rgba(216,229,244,.42); }
+.verification-field.confidence-review {
+  color: var(--brand-text);
+  border-color: rgba(246,195,67,.72);
+  background: #10264a;
+}
+.verification-field.confidence-review > span { color: var(--brand-text); }
+.verification-field.confidence-review small { color: #ffe19a; }
+.verification-field.confidence-review em { color: #aebdd0; }
+
 .input-field input:focus,
 .input-field select:focus,
 .input-money:focus-within { border-color: var(--brand-gold); box-shadow: 0 0 0 3px rgba(246,195,67,.18); }
