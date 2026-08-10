@@ -353,6 +353,54 @@ closeTo(
   41648.65,
 );
 
+const splitDownPaymentQuote = parseDealerText([
+  "2025 Mitsubishi Outlander SE",
+  "Sales Price $36,430.00",
+  "Zurich Shield - Elite Plus $699.00",
+  "Connected Car 1 Year Plan** $299.00",
+  "GAP Insurance** $900.00",
+  "DMV License / Title Fees* $389.00",
+  "DMV Reg / Transfer Fees* $363.00",
+  "Doc Fee $85.00",
+  "Tire Fee $7.00",
+  "Electronic Filing Fee $35.00",
+  "Sales Tax: 8.625% $3,235.50",
+  "TOTAL SALES AMOUNT $42,442.50",
+  "Deposit / Cash Down (-) $3,000.00",
+  "Deferred Down Payment Due 1/3/2026 (-) $250.00",
+  "Deferred Down Payment Due 1/11/2026 (-) $250.00",
+  "Deferred Down Payment Due 1/18/2026 (-) $250.00",
+  "Deferred Down Payment Due 1/25/2026 (-) $250.00",
+  "Trade Allowance $500.00",
+  "Trade Payoff $0.00",
+  "Net Trade Value (-) $500.00",
+  "Factory Rebate (-) $2,500.00",
+  "TOTAL DOWN AMOUNT $7,000.00",
+  "CASH DUE / FINANCE AMOUNT $35,442.50",
+]);
+closeTo(splitDownPaymentQuote.sellingPrice, 36430);
+closeTo(splitDownPaymentQuote.tax, 3235.5);
+closeTo(splitDownPaymentQuote.govFees, 794);
+closeTo(splitDownPaymentQuote.docFee, 85);
+closeTo(splitDownPaymentQuote.gap, 900);
+closeTo(splitDownPaymentQuote.accessories, 998);
+closeTo(splitDownPaymentQuote.tradeValue, 500);
+assert.equal(splitDownPaymentQuote.tradePayoff, 0);
+closeTo(splitDownPaymentQuote.cashDown, 4000);
+closeTo(splitDownPaymentQuote.rebate, 2500);
+const splitDownPaymentAmountFinanced =
+  splitDownPaymentQuote.sellingPrice +
+  splitDownPaymentQuote.tax +
+  splitDownPaymentQuote.govFees +
+  splitDownPaymentQuote.docFee +
+  splitDownPaymentQuote.gap +
+  splitDownPaymentQuote.accessories +
+  splitDownPaymentQuote.tradePayoff -
+  splitDownPaymentQuote.tradeValue -
+  splitDownPaymentQuote.cashDown -
+  splitDownPaymentQuote.rebate;
+closeTo(splitDownPaymentAmountFinanced, 35442.5);
+
 const explicitManufacturerRebate = parseDealerText([
   "Sales Price $30,000.00",
   "Manufacturer Rebate $1,000.00",
