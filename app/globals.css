@@ -128,6 +128,12 @@ h1 { max-width: 690px; margin: 0; font-family: Georgia, 'Times New Roman', serif
 .free-scan-progress { color: #244d65; background: #e8f1f6; }
 .free-scan-progress > span { width: 30px; height: 30px; display: grid; place-items: center; flex: 0 0 30px; border-radius: 50%; color: white; background: #397ba2; font-weight: 900; }
 .free-scan-progress p, .free-scan-error p { margin: 7px 0 0; font-size: 11px; line-height: 1.55; }
+.free-scan-progress-body { min-width: 0; flex: 1; }
+.free-scan-progress-heading { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.free-scan-progress-heading b { color: var(--brand-gold); font-size: 12px; }
+.free-scan-progress-track { margin-top: 12px; }
+.free-scan-progress-body p { margin-top: 10px; }
+.free-scan-progress-body small { display: block; margin-top: 7px; color: var(--brand-muted); font-size: 10px; line-height: 1.45; }
 .free-scan-error { display: block; color: #6d3816; background: #fff1dd; }
 .free-scan-error .button { width: auto; margin-top: 16px; color: #6d3816; border-color: #9a633a; cursor: pointer; }
 .free-scan-error-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
@@ -360,6 +366,13 @@ footer { border-top: 1px solid var(--line); padding: 34px 0; }
 .pdf-import-status { display: flex; gap: 11px; align-items: flex-start; margin-top: 17px; padding: 13px; border-radius: 6px; font-size: 10px; }
 .pdf-import-status > span { width: 23px; height: 23px; display: grid; place-items: center; flex: 0 0 23px; border-radius: 50%; font-size: 10px; font-weight: 900; }
 .pdf-import-status p { margin: 3px 0 0; line-height: 1.5; }
+.pdf-import-progress { display: grid; gap: 9px; margin-top: 17px; padding: 15px; border: 1px solid var(--brand-line); border-radius: 7px; color: #c6ddf5; background: #102d50; }
+.pdf-import-progress-heading { display: flex; justify-content: space-between; gap: 12px; color: var(--brand-text); font-size: 12px; }
+.pdf-import-progress-heading span { color: var(--brand-gold); font-weight: 900; }
+.pdf-import-progress-track, .free-scan-progress-track { height: 8px; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,.13); }
+.pdf-import-progress-track > span, .free-scan-progress-track > span { display: block; height: 100%; border-radius: inherit; background: var(--brand-gold); transition: width .25s ease; }
+.pdf-import-progress p { margin: 0; color: #e3edf7; font-size: 12px; line-height: 1.45; }
+.pdf-import-progress small { color: var(--brand-muted); font-size: 10px; }
 .pdf-status-loading { color: #38556c; background: #e5eef5; }.pdf-status-loading > span { color: #285f88; background: #cddfec; }
 .pdf-status-success { color: #15543f; background: #e3f1eb; }.pdf-status-success > span { color: white; background: var(--green); }
 .pdf-status-warning { color: #743a12; background: #fff0d8; }.pdf-status-warning > span { color: white; background: #ae591a; }
