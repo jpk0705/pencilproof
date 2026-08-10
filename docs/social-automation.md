@@ -1,6 +1,6 @@
-# PencilProof social automation
+# PencilProof social health audit
 
-PencilProof social automation runs as its own Cloudflare Worker. The production design is **direct-API / zero-cost-first**: there is no Ayrshare, Buffer, Hootsuite, Zapier, or other paid social middleware in the runtime.
+PencilProof social monitoring runs as its own Cloudflare Worker in **read-only audit mode**. Cloudflare is the sole production publisher for Facebook, Instagram, and Threads; this Worker never publishes or replies.
 
 ## Cost goal
 
@@ -20,13 +20,10 @@ The AI-call caps are safety brakes, not billing guarantees. Keep the Cloudflare 
 
 - wakes every 30 minutes with a Cloudflare Cron Trigger
 - detects which direct social credentials are configured
-- scans recent PencilProof posts for new replies/comments
-- uses Workers AI to decide whether a comment merits a reply
-- posts concise educational replies when appropriate
-- deduplicates handled comments in a Durable Object
-- rate-limits replies per run and per local day
-- can create one educational PencilProof post every 48 hours during configured active hours
-- tracks per-platform daily publish keys to avoid duplicate scheduled posts
+- checks provider APIs with GET requests only
+- reports API reachability, recent post visibility, and last successful publish telemetry
+- reports weekly promotional-post completion for Facebook, Instagram, and Threads
+- reports token/API failures and automation errors
 - exposes `/health` and `/status` without returning credentials or comment text
 - exposes a GET-only `/audit` endpoint for read-only health checks; it never publishes or replies
 
@@ -134,12 +131,14 @@ npx wrangler secret put LINKEDIN_AUTHOR_URN --config wrangler.social.jsonc
 
 Never paste social passwords or access tokens into source code, GitHub issues, PR comments, or chat messages.
 
-## Optional publishing restriction
+## Publishing boundary
 
-If credentials for several platforms are configured but scheduled posts should go only to selected networks, add a comma-separated Worker variable:
+The production Worker is explicitly read-only:
 
 ```jsonc
-"SOCIAL_PUBLISH_PLATFORMS": "facebook,threads,instagram,linkedin"
+"SOCIAL_READ_ONLY_AUDIT": "true",
+"SOCIAL_REPLY_ENABLED": "false",
+"SOCIAL_PUBLISH_ENABLED": "false"
 ```
 
 Omitting this variable means all configured direct platforms that support the needed post format are eligible.
@@ -150,17 +149,13 @@ The AI prompts prohibit requests for sensitive personal information, guarantees,
 
 Default limits:
 
-- maximum 4 automated replies per run
-- maximum 12 automated replies per local day
-- maximum 12 direct-network AI generations per local day
-- maximum 6 Facebook AI generations per local day
-- at most 1 scheduled post cycle per local day per state loop
-- at least 48 hours between scheduled post cycles
-- scheduled publishing only between 8 AM and 7 PM Pacific
+- scheduled audits use GET requests only
+- no Workers AI calls are required for audit mode
+- no reply or publish counters are incremented by an audit
 
 ## Status endpoints
 
-- `GET /health` reports direct-zero-cost mode, automation/publish flags, and which platforms have complete credentials.
+- `GET /health` reports read-only mode, disabled publish/reply flags, and which platforms have complete credentials.
 - `GET /status` reports the latest direct-network status plus a separate Facebook status block.
 - `GET /audit` performs read-only provider checks for Facebook, Instagram, and Threads, reports recent successful publish IDs/timestamps, weekly promotional-post completion, API/token failures, and automation errors. It has no publishing or reply code path.
 
@@ -171,8 +166,9 @@ Neither endpoint returns access tokens, passwords, comment bodies, or other cred
 Defaults live in `wrangler.social.jsonc`:
 
 - `SOCIAL_AUTOMATION_ENABLED=true`
-- `SOCIAL_REPLY_ENABLED=true`
-- `SOCIAL_PUBLISH_ENABLED=true`
+- `SOCIAL_READ_ONLY_AUDIT=true`
+- `SOCIAL_REPLY_ENABLED=false`
+- `SOCIAL_PUBLISH_ENABLED=false`
 - `SOCIAL_TIMEZONE=America/Los_Angeles`
 - `SOCIAL_ACTIVE_START_HOUR=8`
 - `SOCIAL_ACTIVE_END_HOUR=19`

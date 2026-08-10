@@ -284,6 +284,18 @@ async function publishFacebook(env, message) {
 }
 
 async function runFacebookAutomation(env, state, now = new Date()) {
+  // Production is intentionally audit-only. Keep this guard before any AI or provider mutation.
+  return {
+    startedAt: now.toISOString(),
+    configured: facebookConfigured(env),
+    postsScanned: 0,
+    commentsScanned: 0,
+    repliesPosted: 0,
+    commentsIgnored: 0,
+    postPublished: false,
+    aiCalls: 0,
+    warnings: ["Read-only audit mode: publishing and replies are disabled."],
+  };
   const summary = {
     startedAt: now.toISOString(),
     configured: facebookConfigured(env),
@@ -314,7 +326,7 @@ async function runFacebookAutomation(env, state, now = new Date()) {
   const maxRepliesPerRun = clampInteger(env.SOCIAL_MAX_REPLIES_PER_RUN, DEFAULT_MAX_REPLIES_PER_RUN, 0, 20);
   const maxRepliesPerDay = clampInteger(env.SOCIAL_MAX_REPLIES_PER_DAY, DEFAULT_MAX_REPLIES_PER_DAY, 0, 100);
   const cutoff = now.getTime() - lookbackDays * 24 * 60 * 60 * 1000;
-  const replyEnabled = parseBoolean(env.SOCIAL_REPLY_ENABLED, true);
+  const replyEnabled = parseBoolean(env.SOCIAL_REPLY_ENABLED, false);
 
   let posts = [];
   try {
@@ -522,7 +534,7 @@ async function buildReadOnlyAudit(env, ctx) {
     automation: {
       enabled: parseBoolean(env.SOCIAL_AUTOMATION_ENABLED, true),
       publishingEnabled: parseBoolean(env.SOCIAL_PUBLISH_ENABLED, false),
-      repliesEnabled: parseBoolean(env.SOCIAL_REPLY_ENABLED, true),
+      repliesEnabled: false,
       configuredPlatforms: combinedConfiguredPlatforms(env),
       lastDirectRunAt: directStatus.lastRunAt ?? null,
       lastFacebookRunAt: facebookStatus.lastRunAt ?? null,
@@ -543,19 +555,7 @@ export class SocialAutomationState extends DirectSocialAutomationState {
   async fetch(request) {
     const url = new URL(request.url);
     if (request.method === "POST" && url.pathname === "/facebook-run") {
-      let state = normalizeFacebookState(await this.state.storage.get(FACEBOOK_STATE_KEY));
-      try {
-        const summary = await runFacebookAutomation(this.env, state, new Date());
-        await this.state.storage.put(FACEBOOK_STATE_KEY, state);
-        console.log(JSON.stringify({ event: "social_facebook_run", ...summary }));
-        return responseJson({ ok: true, summary });
-      } catch (error) {
-        state.lastRunAt = new Date().toISOString();
-        state.lastError = safeErrorMessage(error);
-        await this.state.storage.put(FACEBOOK_STATE_KEY, state);
-        console.error(JSON.stringify({ event: "social_facebook_error", error: state.lastError }));
-        return responseJson({ ok: false, error: state.lastError }, 502);
-      }
+      return responseJson({ ok: false, mode: "read-only-health-audit", error: "Publishing and replies are disabled in read-only audit mode." }, 405);
     }
 
     if (request.method === "GET" && url.pathname === "/facebook-status") {
@@ -580,9 +580,10 @@ export default {
     if (request.method === "GET" && url.pathname === "/health") {
       return responseJson({
         ok: true,
-        mode: "direct-zero-cost",
+        mode: "read-only-health-audit",
         automationEnabled: parseBoolean(env.SOCIAL_AUTOMATION_ENABLED, true),
-        publishEnabled: parseBoolean(env.SOCIAL_PUBLISH_ENABLED, false),
+        publishEnabled: false,
+        repliesEnabled: false,
         configuredPlatforms: combinedConfiguredPlatforms(env),
         paidPlatformsEnabled: false,
         auditEndpoint: "/audit",
@@ -636,16 +637,10 @@ export default {
     }
 
     try {
-      await directWorker.scheduled(controller, env, ctx);
+      const audit = await buildReadOnlyAudit(env, ctx);
+      console.log(JSON.stringify({ event: "social_read_only_audit", ...audit, sideEffects: [] }));
     } catch (error) {
-      console.error(JSON.stringify({ event: "social_direct_child_error", error: safeErrorMessage(error) }));
+      console.error(JSON.stringify({ event: "social_read_only_audit_error", error: safeErrorMessage(error), sideEffects: [] }));
     }
-
-    if (!facebookConfigured(env)) {
-      console.log(JSON.stringify({ event: "social_facebook_skipped", reason: "missing_page_credentials" }));
-      return;
-    }
-
-    await triggerFacebookRun(env);
   },
 };

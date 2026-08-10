@@ -714,6 +714,19 @@ function canPublishPlatform(env, platform) {
 }
 
 async function runAutomation(env, state, now = new Date()) {
+  // Production is intentionally audit-only. Keep this guard before any AI or provider mutation.
+  return {
+    startedAt: now.toISOString(),
+    activePlatforms: detectConfiguredPlatforms(env),
+    publishPlatforms: [],
+    postsScanned: 0,
+    commentsScanned: 0,
+    repliesPosted: 0,
+    commentsIgnored: 0,
+    postsPublished: [],
+    aiCalls: 0,
+    warnings: ["Read-only audit mode: publishing and replies are disabled."],
+  };
   const startedAt = now.toISOString();
   const summary = {
     startedAt,
@@ -758,7 +771,7 @@ async function runAutomation(env, state, now = new Date()) {
   const lookbackDays = clampInteger(env.SOCIAL_REPLY_LOOKBACK_DAYS, DEFAULT_LOOKBACK_DAYS, 1, 60);
   const maxRepliesPerRun = clampInteger(env.SOCIAL_MAX_REPLIES_PER_RUN, DEFAULT_MAX_REPLIES_PER_RUN, 0, 20);
   const maxRepliesPerDay = clampInteger(env.SOCIAL_MAX_REPLIES_PER_DAY, DEFAULT_MAX_REPLIES_PER_DAY, 0, 100);
-  const replyEnabled = parseBoolean(env.SOCIAL_REPLY_ENABLED, true);
+  const replyEnabled = parseBoolean(env.SOCIAL_REPLY_ENABLED, false);
   const cutoff = now.getTime() - lookbackDays * 24 * 60 * 60 * 1000;
   const monitorPlatforms = activePlatforms.filter((platform) => REPLY_SUPPORTED.has(platform));
 
@@ -909,19 +922,7 @@ export class SocialAutomationState {
   async fetch(request) {
     const url = new URL(request.url);
     if (request.method === "POST" && url.pathname === "/run") {
-      let state = normalizeState(await this.state.storage.get(STATE_KEY));
-      try {
-        const summary = await runAutomation(this.env, state, new Date());
-        await this.state.storage.put(STATE_KEY, state);
-        console.log(JSON.stringify({ event: "social_direct_run", ...summary }));
-        return responseJson({ ok: true, summary });
-      } catch (error) {
-        state.lastRunAt = new Date().toISOString();
-        state.lastError = safeErrorMessage(error);
-        await this.state.storage.put(STATE_KEY, state);
-        console.error(JSON.stringify({ event: "social_direct_error", error: state.lastError }));
-        return responseJson({ ok: false, error: state.lastError }, 502);
-      }
+      return responseJson({ ok: false, mode: "read-only-health-audit", error: "Publishing and replies are disabled in read-only audit mode." }, 405);
     }
     if (request.method === "GET" && url.pathname === "/status") {
       const state = normalizeState(await this.state.storage.get(STATE_KEY));
@@ -951,9 +952,10 @@ export default {
     if (request.method === "GET" && url.pathname === "/health") {
       return responseJson({
         ok: true,
-        mode: "direct-zero-cost",
+        mode: "read-only-health-audit",
         automationEnabled: parseBoolean(env.SOCIAL_AUTOMATION_ENABLED, true),
-        publishEnabled: parseBoolean(env.SOCIAL_PUBLISH_ENABLED, false),
+        publishEnabled: false,
+        repliesEnabled: false,
         configuredPlatforms: detectConfiguredPlatforms(env),
         paidPlatformsEnabled: false,
       });
@@ -963,7 +965,7 @@ export default {
       if (!response.ok) return response;
       const status = await response.json();
       return responseJson({
-        mode: "direct-zero-cost",
+        mode: "read-only-health-audit",
         lastRunAt: status.lastRunAt ?? null,
         lastPostAt: status.lastPostAt ?? null,
         lastError: status.lastError ?? null,
@@ -992,10 +994,7 @@ export default {
       console.log(JSON.stringify({ event: "social_direct_skipped", reason: "disabled" }));
       return;
     }
-    if (detectConfiguredPlatforms(env).length === 0) {
-      console.log(JSON.stringify({ event: "social_direct_skipped", reason: "no_direct_accounts_configured" }));
-      return;
-    }
-    await triggerRun(env);
+    const audit = await runDirectReadOnlyAudit(env, new Date());
+    console.log(JSON.stringify({ event: "social_direct_read_only_audit", ...audit, sideEffects: [] }));
   },
 };
