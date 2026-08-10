@@ -599,7 +599,19 @@ assert.deepEqual(rav4Identity, {
   year: "2026",
   make: "Toyota",
   model: "RAV4",
+  trim: "XLE",
   displayName: "2026 Toyota RAV4",
+});
+
+const outlanderIdentity = parseVehicleIdentity(
+  "2025 Mitsubishi Outlander SE",
+);
+assert.deepEqual(outlanderIdentity, {
+  year: "2025",
+  make: "Mitsubishi",
+  model: "Outlander",
+  trim: "SE",
+  displayName: "2025 Mitsubishi Outlander",
 });
 
 const commonsImage = selectBestVehicleImage(

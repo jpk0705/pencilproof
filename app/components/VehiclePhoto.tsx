@@ -8,6 +8,7 @@ import {
   type CommonsPage,
   type CommonsVehicleImage,
 } from "@/lib/vehicle-image";
+import { lookupVehicleFuelEconomy, type VehicleFuelEconomy } from "@/lib/vehicle-fuel-economy";
 
 type VehiclePhotoState =
   | { status: "idle" }
@@ -62,10 +63,14 @@ export default function VehiclePhoto({
 }) {
   const identity = useMemo(() => parseVehicleIdentity(vehicle), [vehicle]);
   const [photo, setPhoto] = useState<VehiclePhotoState>({ status: "idle" });
+  const [fuelEconomy, setFuelEconomy] = useState<VehicleFuelEconomy | null>(null);
+  const [fuelEconomyLoading, setFuelEconomyLoading] = useState(false);
 
   useEffect(() => {
     if (!identity) {
       setPhoto({ status: "idle" });
+      setFuelEconomy(null);
+      setFuelEconomyLoading(false);
       return;
     }
 
@@ -106,6 +111,26 @@ export default function VehiclePhoto({
     };
 
     void load();
+    return () => controller.abort();
+  }, [identity]);
+
+  useEffect(() => {
+    if (!identity?.year) {
+      setFuelEconomy(null);
+      setFuelEconomyLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setFuelEconomy(null);
+    setFuelEconomyLoading(true);
+    void lookupVehicleFuelEconomy(identity, controller.signal)
+      .then((result) => {
+        if (!controller.signal.aborted) setFuelEconomy(result);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setFuelEconomyLoading(false);
+      });
     return () => controller.abort();
   }, [identity]);
 
@@ -172,6 +197,36 @@ export default function VehiclePhoto({
             <b>{identity.model}</b>
           </div>
         </div>
+        <div className="vehicle-photo-reference">
+          <div className="vehicle-photo-reference-heading">
+            <span>QUICK VEHICLE REFERENCE</span>
+            <small>{fuelEconomyLoading ? "Checking EPA data…" : "Helpful context for your review"}</small>
+          </div>
+          <div className="vehicle-photo-reference-grid">
+            <div>
+              <span>TRIM</span>
+              <b>{identity.trim ?? "Confirm on quote"}</b>
+            </div>
+            <div>
+              <span>BODY STYLE</span>
+              <b>{bodyStyleFor(identity.model)}</b>
+            </div>
+            <div className="vehicle-photo-reference-wide">
+              <span>EPA FUEL ECONOMY</span>
+              <b>{fuelEconomy?.label ?? (fuelEconomyLoading ? "Looking up exact model…" : "Check exact trim")}</b>
+              <small>
+                {fuelEconomy ? (
+                  <a href={fuelEconomy.sourceUrl} target="_blank" rel="noreferrer">View EPA rating</a>
+                ) : "Engine and drivetrain can change the rating."}
+              </small>
+            </div>
+            <div className="vehicle-photo-reference-wide">
+              <span>VERIFY BEFORE SIGNING</span>
+              <b>Trim · drivetrain · mileage</b>
+              <small>These details affect value, payment, and ownership cost.</small>
+            </div>
+          </div>
+        </div>
         <p className="vehicle-photo-note">
           Use this image as a visual reference while checking the imported
           vehicle description and quote figures.
@@ -198,3 +253,12 @@ export default function VehiclePhoto({
     </figure>
   );
 }
+
+const bodyStyleFor = (model: string) => {
+  const value = model.toLowerCase();
+  if (/\b(?:f-?150|silverado|sierra|ram|tacoma|tundra|frontier|colorado|ranger|ridgeline|titan|maverick|gladiator)\b/.test(value)) return "Pickup";
+  if (/\b(?:odyssey|sienna|pacifica|carnival|transit|sprinter|promaster)\b/.test(value)) return "Van";
+  if (/\b(?:cx|cr-?v|rav4|outlander|equinox|tahoe|suburban|explorer|escape|pilot|passport|highlander|4runner|rogue|murano|pathfinder|tucson|santa fe|palisade|telluride|sportage|sorento|forester|outback|ascent|grand cherokee|cherokee|wrangler|compass|renegade|x[0-9]|q[3-8]|glc|gle|glb|model y|model x|macan|cayenne|crosstrek|eclipse cross)\b/.test(value)) return "SUV / crossover";
+  if (/\b(?:miata|mx-?5|mustang|camaro|corvette|challenger|charger|supra|z4|911|718|gr86|brz|roadster)\b/.test(value)) return "Coupe / sports car";
+  return "Passenger vehicle";
+};

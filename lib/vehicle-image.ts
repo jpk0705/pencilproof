@@ -2,6 +2,7 @@ export type VehicleIdentity = {
   year?: string;
   make: string;
   model: string;
+  trim?: string;
   displayName: string;
 };
 
@@ -150,6 +151,47 @@ const trimAndDetailTokens = new Set([
   "xse",
 ]);
 
+const vehicleTrimTokens = new Set([
+  "base",
+  "denali",
+  "elite",
+  "ex",
+  "ex-l",
+  "gt",
+  "gt-line",
+  "lariat",
+  "le",
+  "limited",
+  "ls",
+  "lt",
+  "ltz",
+  "lx",
+  "platinum",
+  "premier",
+  "premium",
+  "pro",
+  "reserve",
+  "rst",
+  "s",
+  "se",
+  "sel",
+  "select",
+  "sport",
+  "sr",
+  "sr5",
+  "sv",
+  "sx",
+  "sxt",
+  "titanium",
+  "touring",
+  "trailhawk",
+  "trd",
+  "xl",
+  "xle",
+  "xlt",
+  "xse",
+]);
+
 const excludedImageTerms =
   /\b(?:badge|brochure|cab|dashboard|diagram|engine|grille|interior|logo|manual|parts?|seat|steering|wheel)\b/i;
 
@@ -217,6 +259,7 @@ export const parseVehicleIdentity = (
   if (!afterMake) return null;
 
   const modelTokens: string[] = [];
+  let trim: string | undefined;
   for (const token of afterMake.split(" ")) {
     const normalizedToken = token.toLowerCase().replace(/[(),]/g, "");
     if (
@@ -227,6 +270,9 @@ export const parseVehicleIdentity = (
         ) ||
         /^(?:v[468]|i[346]|[124]\.\d[lt]?)$/i.test(normalizedToken))
     ) {
+      if (vehicleTrimTokens.has(normalizedToken)) {
+        trim = token.replace(/[(),]/g, "");
+      }
       break;
     }
     modelTokens.push(token.replace(/[(),]/g, ""));
@@ -247,6 +293,7 @@ export const parseVehicleIdentity = (
     year,
     make: canonicalMake,
     model,
+    ...(trim ? { trim } : {}),
     displayName: normalize(
       [year, canonicalMake, model].filter(Boolean).join(" "),
     ),
