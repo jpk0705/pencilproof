@@ -6,6 +6,10 @@ on:
     paths:
       - "worker/social.mjs"
       - "worker/social.test.mjs"
+      - "worker/social-direct.mjs"
+      - "worker/social-direct.test.mjs"
+      - "worker/social-facebook.mjs"
+      - "worker/social-facebook.test.mjs"
       - "wrangler.social.jsonc"
       - "package.json"
       - "package-lock.json"
