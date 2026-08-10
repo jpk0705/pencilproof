@@ -96,6 +96,10 @@ const mimeTypeForDealImport = (file: Pick<File, "name" | "type">) => {
 };
 
 export const DEAL_IMPORT_ACCEPT = "application/pdf,image/*,.pdf";
+// Keep camera capture separate from the mixed PDF/image picker. Mobile
+// browsers are much more likely to honor the rear-camera hint when the input
+// accepts images only.
+export const DEAL_CAMERA_ACCEPT = "image/*";
 
 export type DealOfferOption = {
   id: string;
