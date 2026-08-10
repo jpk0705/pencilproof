@@ -28,6 +28,7 @@ The AI-call caps are safety brakes, not billing guarantees. Keep the Cloudflare 
 - can create one educational PencilProof post every 48 hours during configured active hours
 - tracks per-platform daily publish keys to avoid duplicate scheduled posts
 - exposes `/health` and `/status` without returning credentials or comment text
+- exposes a GET-only `/audit` endpoint for read-only health checks; it never publishes or replies
 
 ## Direct platforms
 
@@ -161,6 +162,7 @@ Default limits:
 
 - `GET /health` reports direct-zero-cost mode, automation/publish flags, and which platforms have complete credentials.
 - `GET /status` reports the latest direct-network status plus a separate Facebook status block.
+- `GET /audit` performs read-only provider checks for Facebook, Instagram, and Threads, reports recent successful publish IDs/timestamps, weekly promotional-post completion, API/token failures, and automation errors. It has no publishing or reply code path.
 
 Neither endpoint returns access tokens, passwords, comment bodies, or other credentials.
 
