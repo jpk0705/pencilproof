@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import {
   DEAL_IMPORT_ACCEPT,
   DEAL_FIELD_LABELS,
@@ -15,7 +15,6 @@ import {
 import { paymentFor } from "@/lib/deal-calculations";
 import {
   isPreviewImportUsable,
-  shouldOfferManualEntry,
 } from "@/lib/deal-review";
 import {
   CHECKOUT_URL,
@@ -196,10 +195,7 @@ export default function AnalyzePage() {
   const [selectedOfferId, setSelectedOfferId] = useState("");
   const [selectedOfferType, setSelectedOfferType] = useState<DealOfferOption["type"] | null>(null);
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
-  const [failedImportAttempts, setFailedImportAttempts] = useState(0);
-  const [manualEntryMode, setManualEntryMode] = useState(false);
   const [importSource, setImportSource] = useState<{ url: string; type: "pdf" | "image" } | null>(null);
-  const manualEntryRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setIsPaidAuditHost(window.location.hostname.toLowerCase() === "audit.pencilproof.com");
@@ -270,20 +266,6 @@ export default function AnalyzePage() {
     sessionStorage.removeItem(QUOTE_HANDOFF_KEY);
   }, []);
 
-  useEffect(() => {
-    if (!manualEntryMode) return;
-    const frame = requestAnimationFrame(() => {
-      manualEntryRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-      manualEntryRef.current
-        ?.querySelector<HTMLInputElement>('input[aria-label="Vehicle description"]')
-        ?.focus({ preventScroll: true });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [manualEntryMode]);
-
   const setNumber = (field: keyof Deal, value: string) =>
     setDeal((current) => ({ ...current, [field]: value === "" ? 0 : Number(value) }));
 
@@ -349,8 +331,6 @@ export default function AnalyzePage() {
         });
       });
       if (!isPreviewImportUsable(result)) {
-        const nextFailedAttempts = failedImportAttempts + 1;
-        setFailedImportAttempts(nextFailedAttempts);
         setDealImport({
           status: "error",
           message: "The file contains readable text, but PencilProof did not find enough recognizable deal information for a reliable import. Try a clearer or more complete copy, or enter the figures manually and double-check the worksheet.",
@@ -376,7 +356,6 @@ export default function AnalyzePage() {
       setOfferMatrix(result.offerMatrix ?? null);
       setSelectedOfferId("");
       setSelectedOfferType(null);
-      setFailedImportAttempts(0);
       const missingVerificationFields = verificationFields.filter(
         (field) => result.fields[field] === undefined,
       );
@@ -393,7 +372,6 @@ export default function AnalyzePage() {
     } catch (error) {
       console.error("PencilProof document import failed", error);
       const unreadableImage = error instanceof Error && error.message === "UNREADABLE_IMAGE";
-      setFailedImportAttempts((attempts) => attempts + 1);
       setDealImport({
         status: "error",
         message: unreadableImage
@@ -560,13 +538,6 @@ export default function AnalyzePage() {
     setSelectedOfferId("");
     setSelectedOfferType(null);
     setDealImport({ status: "idle", message: "", fields: [] });
-  };
-
-  const startManualEntry = () => {
-    clearImport();
-    setDeal(blank);
-    setFailedImportAttempts(0);
-    setManualEntryMode(true);
   };
 
   const analysis = useMemo(() => {
@@ -818,17 +789,12 @@ export default function AnalyzePage() {
             {dealImport.status === "loading" ? "Reading file…" : "Choose PDF or image"}
           </label>
         </div>
-        {dealImport.status !== "idle" ? (
+        {dealImport.status === "error" ? (
           <div className={`pdf-import-status pdf-status-${dealImport.status}`} role="status" aria-live="polite">
-            <span aria-hidden="true">{dealImport.status === "success" ? "✓" : dealImport.status === "warning" || dealImport.status === "error" ? "!" : "…"}</span>
+            <span aria-hidden="true">!</span>
             <div>
               <p>{dealImport.message}</p>
               {dealImport.fields.length ? <div className="pdf-field-list">{dealImport.fields.map((field) => <small key={field}>{field}</small>)}</div> : null}
-              {dealImport.status === "error" && shouldOfferManualEntry(failedImportAttempts + 1) ? (
-                <button className="manual-entry-button" type="button" onClick={startManualEntry}>
-                  Open manual quote form
-                </button>
-              ) : null}
             </div>
           </div>
         ) : null}
@@ -984,15 +950,8 @@ export default function AnalyzePage() {
         <p className="pdf-import-note">Best results: use a dealer-generated PDF or a bright, sharp, straight-on image with the full figures visible. PencilProof reads images locally first and uses the secured vision importer only when local extraction is incomplete or ambiguous. OCR and vision can make mistakes, so compare every imported value with the original.</p>
       </section>
 
-      {!pendingImport && selectedOfferType !== "lease" && (isPaidAuditHost || manualEntryMode) ? <div className={`analyzer-layout shell ${isPaidAuditHost ? "" : "public-manual-layout"}`} id="manual-entry" ref={manualEntryRef}>
+      {!pendingImport && selectedOfferType !== "lease" && isPaidAuditHost ? <div className="analyzer-layout shell">
         <form className="deal-form" onSubmit={(event) => event.preventDefault()}>
-          {manualEntryMode ? (
-            <section className="manual-entry-intro" aria-live="polite">
-              <p className="kicker">MANUAL QUOTE ENTRY</p>
-              <h2>Enter the figures printed on your quote</h2>
-              <p>Every box below is editable. Leave a box blank when the quote does not show that item.</p>
-            </section>
-          ) : null}
           <section className="form-section">
             <div className="form-section-title"><span>01</span><div><h2>Vehicle & price</h2><p>Start with the top of the buyer&apos;s order or dealer worksheet.</p></div></div>
             <label className="input-field full-field"><span>Vehicle description</span><input aria-label="Vehicle description" type="text" placeholder="e.g. 2026 Honda CR-V EX-L" value={deal.vehicle} onChange={(event) => setDeal((current) => ({ ...current, vehicle: event.target.value }))} /></label>
