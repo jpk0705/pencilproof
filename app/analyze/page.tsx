@@ -793,7 +793,7 @@ export default function AnalyzePage() {
           <div className="pdf-upload-actions">
             <label className={`pdf-upload-button pdf-camera-button ${dealImport.status === "loading" ? "pdf-upload-loading" : ""}`}>
               <input type="file" accept={DEAL_CAMERA_ACCEPT} capture="environment" disabled={dealImport.status === "loading"} onChange={handleDealFileChange} />
-              {dealImport.status === "loading" ? "Processing…" : "Take photo — rear camera"}
+              {dealImport.status === "loading" ? "Processing…" : "Take photo"}
             </label>
             <label className={`pdf-upload-button ${dealImport.status === "loading" ? "pdf-upload-loading" : ""}`}>
               <input type="file" accept={DEAL_IMPORT_ACCEPT} disabled={dealImport.status === "loading"} onChange={handleDealFileChange} />

@@ -402,7 +402,7 @@ export default function FreeQuotePreview() {
               <p>Use a dealer-generated PDF or a bright, sharp image with the full page visible.</p>
               <div className="free-scan-upload-actions">
                 <label className="button button-primary">
-                  Take photo — rear camera
+                  Take photo
                   <input
                     type="file"
                     accept={DEAL_CAMERA_ACCEPT}
