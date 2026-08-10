@@ -1077,8 +1077,45 @@ const recognizeImages = async (
   return text.join("\n").trim();
 };
 
-const preprocessDealPhoto = async (file: File) => {
-  const bitmap = await createImageBitmap(file);
+const MOBILE_SAFE_IMAGE_MAX_EDGE = 1800;
+const MOBILE_SAFE_IMAGE_MAX_PIXELS = 4_000_000;
+const IMAGE_DECODE_TIMEOUT_MS = 15_000;
+
+export const dealImageScale = (width: number, height: number, targetEdge: number) =>
+  Math.min(
+    2.5,
+    Math.max(1, targetEdge / Math.max(width, height)),
+    Math.sqrt(MOBILE_SAFE_IMAGE_MAX_PIXELS / Math.max(1, width * height)),
+  );
+
+const withImageDecodeTimeout = async <T>(promise: Promise<T>) => {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error("IMAGE_DECODE_TIMEOUT")), IMAGE_DECODE_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+};
+
+const decodeDealImage = async (file: File) => {
+  if (typeof createImageBitmap !== "function") throw new Error("IMAGE_DECODE_UNAVAILABLE");
+  try {
+    return await withImageDecodeTimeout(createImageBitmap(file, {
+      resizeWidth: MOBILE_SAFE_IMAGE_MAX_EDGE,
+      resizeQuality: "high",
+    }));
+  } catch (error) {
+    if (error instanceof Error && error.message === "IMAGE_DECODE_TIMEOUT") throw error;
+    return await withImageDecodeTimeout(createImageBitmap(file));
+  }
+};
+
+const preprocessDealPhoto = async (bitmap: ImageBitmap) => {
   const detectionScale = Math.min(1, 520 / Math.max(bitmap.width, bitmap.height));
   const detectionWidth = Math.max(1, Math.round(bitmap.width * detectionScale));
   const detectionHeight = Math.max(1, Math.round(bitmap.height * detectionScale));
@@ -1151,7 +1188,7 @@ const preprocessDealPhoto = async (file: File) => {
   const sourceY = Math.round(cropY / detectionScale);
   const sourceWidth = Math.min(bitmap.width - sourceX, Math.round((cropRight - cropX) / detectionScale));
   const sourceHeight = Math.min(bitmap.height - sourceY, Math.round((cropBottom - cropY) / detectionScale));
-  const outputScale = Math.min(2.5, Math.max(1, 1400 / Math.max(1, sourceWidth)));
+  const outputScale = dealImageScale(sourceWidth, sourceHeight, 1400);
   const outputCanvas = document.createElement("canvas");
   outputCanvas.width = Math.max(1, Math.round(sourceWidth * outputScale));
   outputCanvas.height = Math.max(1, Math.round(sourceHeight * outputScale));
@@ -1169,7 +1206,6 @@ const preprocessDealPhoto = async (file: File) => {
     outputCanvas.width,
     outputCanvas.height,
   );
-  bitmap.close();
   detectionCanvas.width = 1;
   detectionCanvas.height = 1;
   const blob = await new Promise<Blob>((resolve, reject) => {
@@ -1180,9 +1216,8 @@ const preprocessDealPhoto = async (file: File) => {
   return new Uint8Array(await blob.arrayBuffer());
 };
 
-const preprocessDealPhotoFullFrame = async (file: File, threshold = false) => {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(2.5, Math.max(1, 2200 / Math.max(bitmap.width, bitmap.height)));
+const preprocessDealPhotoFullFrame = async (bitmap: ImageBitmap, threshold = false) => {
+  const scale = dealImageScale(bitmap.width, bitmap.height, 2200);
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(bitmap.width * scale));
   canvas.height = Math.max(1, Math.round(bitmap.height * scale));
@@ -1202,7 +1237,6 @@ const preprocessDealPhotoFullFrame = async (file: File, threshold = false) => {
     }
     context.putImageData(pixels, 0, 0);
   }
-  bitmap.close();
   const blob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((value) => value ? resolve(value) : reject(new Error("IMAGE_PREPROCESS_ERROR")), "image/png");
   });
@@ -1301,19 +1335,36 @@ export const extractDealFromImage = async (
   file: File,
   onProgress?: (update: DealImportProgress) => void,
 ): Promise<DealPdfResult> => {
-  onProgress?.({ progress: 0, status: "isolating the dealer worksheet" });
-  const preparedImage = await preprocessDealPhoto(file);
-  const thresholdImage = await preprocessDealPhotoFullFrame(file, true);
-  const fullFrameImage = await preprocessDealPhotoFullFrame(file);
+  const isLikelyMobileBrowser = typeof navigator !== "undefined" && (
+    navigator.maxTouchPoints > 0 || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+  );
+  onProgress?.({ progress: 0.02, status: "decoding the photo safely for this device" });
+  const bitmap = await decodeDealImage(file);
+  let preparedImage: Uint8Array;
+  let thresholdImage: Uint8Array;
+  let fullFrameImage: Uint8Array;
+  try {
+    onProgress?.({ progress: 0.08, status: "isolating the dealer worksheet" });
+    preparedImage = await preprocessDealPhoto(bitmap);
+    onProgress?.({ progress: 0.16, status: "preparing alternate document views" });
+    thresholdImage = isLikelyMobileBrowser
+      ? preparedImage
+      : await preprocessDealPhotoFullFrame(bitmap, true);
+    fullFrameImage = await preprocessDealPhotoFullFrame(bitmap);
+  } finally {
+    bitmap.close();
+  }
   const texts: string[] = [];
-  onProgress?.({ progress: 0, status: "reading the document with multiple layouts" });
+  onProgress?.({ progress: 0, status: isLikelyMobileBrowser ? "reading the photo with mobile-safe layouts" : "reading the document with multiple layouts" });
   texts.push(await recognizeImages([preparedImage], onProgress, "form"));
   onProgress?.({ progress: 0, status: "checking alternate document layout" });
   texts.push(await recognizeImages([preparedImage], onProgress, "sparse"));
   onProgress?.({ progress: 0, status: "checking enhanced full frame" });
   texts.push(await recognizeImages([fullFrameImage], onProgress, "sparse"));
-  onProgress?.({ progress: 0, status: "checking high-contrast text" });
-  texts.push(await recognizeImages([thresholdImage], onProgress, "sparse"));
+  if (!isLikelyMobileBrowser) {
+    onProgress?.({ progress: 0, status: "checking high-contrast text" });
+    texts.push(await recognizeImages([thresholdImage], onProgress, "sparse"));
+  }
 
   const readableTexts = texts.filter((text) => text.replace(/\s/g, "").length >= 30);
   if (!readableTexts.length) throw new Error("UNREADABLE_IMAGE");
@@ -1350,8 +1401,19 @@ const bytesToBase64 = (bytes: Uint8Array) => {
 // request, while keeping the original untouched for the user's evidence view.
 const prepareVisionImage = async (file: File) => {
   if (typeof window === "undefined") return { bytes: new Uint8Array(await file.arrayBuffer()), mimeType: file.type };
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(5, Math.max(2, 1800 / Math.max(bitmap.width, bitmap.height)));
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await decodeDealImage(file);
+  } catch {
+    // HEIC/HEIF and older mobile browser formats may be accepted by the file
+    // picker but not decoded by canvas. Let the secured vision importer try
+    // the original bytes instead of leaving the user on an endless read.
+    return {
+      bytes: new Uint8Array(await file.arrayBuffer()),
+      mimeType: mimeTypeForDealImport(file),
+    };
+  }
+  const scale = dealImageScale(bitmap.width, bitmap.height, 1800);
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(bitmap.width * scale));
   canvas.height = Math.max(1, Math.round(bitmap.height * scale));
@@ -1503,7 +1565,12 @@ export const extractDealFromFile = async (
         : await extractDealFromImage(file, onProgress);
     } catch (localError) {
       try {
-        const upload = isImage ? await prepareVisionImage(file) : undefined;
+        const decodeFailed = localError instanceof Error && localError.message.startsWith("IMAGE_DECODE_");
+        const upload = isImage
+          ? decodeFailed
+            ? { bytes: new Uint8Array(await file.arrayBuffer()), mimeType: mimeTypeForDealImport(file) }
+            : await prepareVisionImage(file)
+          : undefined;
         return await extractDealWithServerVision(file, onProgress, upload);
       } catch (visionError) {
         // When local extraction failed and the escalation provider also fails,
