@@ -1,5 +1,4 @@
 import Link from "next/link";
-import FreeQuotePreview from "@/app/components/FreeQuotePreview";
 import { SiteFooter, SiteNav } from "@/app/components/SiteChrome";
 
 const Arrow = () => <span aria-hidden="true">→</span>;
@@ -19,9 +18,9 @@ export default function Home() {
             payment in one calm, readable audit.
           </p>
           <div className="hero-actions">
-            <a className="button button-primary" href="#free-scan">
-              Review your quote free <Arrow />
-            </a>
+            <Link className="button button-primary" href="/analyze">
+              Upload PDF or image <Arrow />
+            </Link>
             <Link className="button button-quiet" href="/how-it-works#sample-audit">Learn how it works</Link>
           </div>
           <p className="hero-caution">No payment required to review the scan. Your document is read locally first, and you decide whether the complete audit is useful.</p>
@@ -66,8 +65,6 @@ export default function Home() {
           </div>
         </div>
       </section>
-
-      <FreeQuotePreview />
 
       <section className="brand-value-section" aria-labelledby="brand-value-title">
         <div className="brand-value-frame shell">
@@ -114,7 +111,7 @@ export default function Home() {
           <div className="section-intro route-guide-intro">
             <p className="kicker">START WHERE YOU ARE</p>
             <h2>Everything you need to make the quote easier to understand.</h2>
-            <p>Choose the page that answers your next question. Or upload your quote now and let the free scan show you what PencilProof can read.</p>
+            <p>Choose the page that answers your next question. When you are ready, upload your quote on the free scan page and see what PencilProof can read before checkout.</p>
           </div>
           <div className="route-guide-grid">
             <Link className="route-guide-card" href="/who-it-helps">
