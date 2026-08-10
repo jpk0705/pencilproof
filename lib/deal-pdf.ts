@@ -495,6 +495,67 @@ const findAmount = (lines: string[], labels: RegExp[], options?: { allowZero?: b
   return undefined;
 };
 
+// Some buyer orders split one category across several labeled rows, most
+// commonly a deposit plus scheduled/deferred down payments. Keep the rows
+// separate until after their labels have been matched so totals and nearby
+// values cannot be mistaken for cash down or another category.
+const findInlineLabeledAmount = (
+  line: string,
+  labels: RegExp[],
+  options?: { allowZero?: boolean },
+) => {
+  const matchingLabel = labels.find((label) => label.test(line));
+  if (!matchingLabel) return undefined;
+  const labelMatch = line.match(matchingLabel);
+  const afterLabel = labelMatch?.index === undefined
+    ? line
+    : line.slice(labelMatch.index + labelMatch[0].length);
+  const afterLabelCurrency = currencyValues(afterLabel, options?.allowZero);
+  if (afterLabelCurrency.length) return afterLabelCurrency[0].value;
+  const afterLabelPrice = priceValues(afterLabel, options?.allowZero);
+  if (afterLabelPrice.length) return afterLabelPrice[0].value;
+  const afterLabelPlain = plainNumericValues(afterLabel, options?.allowZero);
+  if (afterLabelPlain.length) return afterLabelPlain[0].value;
+  return undefined;
+};
+
+const sumLabeledAmounts = (
+  lines: string[],
+  labels: RegExp[],
+  options?: { allowZero?: boolean; exclude?: RegExp[] },
+) => {
+  let total = 0;
+  let found = false;
+  const consumedContinuationLines = new Set<number>();
+
+  lines.forEach((line, index) => {
+    if (!labels.some((label) => label.test(line))) return;
+    if (options?.exclude?.some((label) => label.test(line))) return;
+
+    let amount = findInlineLabeledAmount(line, labels, options);
+    if (amount === undefined) {
+      for (let offset = 1; offset <= 2; offset += 1) {
+        const continuationIndex = index + offset;
+        if (consumedContinuationLines.has(continuationIndex)) continue;
+        const continuation = lines[continuationIndex];
+        if (!continuation) break;
+        const values = priceValues(continuation, options?.allowZero);
+        if (values.length) {
+          amount = values[0].value;
+          consumedContinuationLines.add(continuationIndex);
+          break;
+        }
+        if (/[A-Za-z]{4,}/.test(continuation) && !/^\s*[$\d(.-]/.test(continuation)) break;
+      }
+    }
+    if (amount === undefined) return;
+    total += amount;
+    found = true;
+  });
+
+  return found ? Math.round(total * 100) / 100 : undefined;
+};
+
 const findPercent = (lines: string[], labels: RegExp[]) => {
   for (let index = 0; index < lines.length; index += 1) {
     if (!labels.some((label) => label.test(lines[index]))) continue;
@@ -808,31 +869,33 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
   const tradeValue = findAmount(lines, [
     /\btrade(?:-in)? (?:allowance|value|credit)\b/i,
     /\bless trade\b/i,
-  ]);
-  if (tradeValue) fields.tradeValue = tradeValue;
+  ], { allowZero: true });
+  if (tradeValue !== undefined) fields.tradeValue = tradeValue;
 
   const tradePayoff = findAmount(lines, [
     /\btrade(?:-in)? (?:loan )?payoff\b/i,
     /\bpayoff (?:amount|balance)\b/i,
     /\bamount owed on trade\b/i,
-  ]);
-  if (tradePayoff) fields.tradePayoff = tradePayoff;
+  ], { allowZero: true });
+  if (tradePayoff !== undefined) fields.tradePayoff = tradePayoff;
 
-  const cashDown = findAmount(lines, [
+  const cashDown = sumLabeledAmounts(lines, [
     /\bcash down\b/i,
     /\bdown payment\b/i,
     /\bcash deposit\b/i,
     /\bdeposit\s*\/\s*cash down\b/i,
+    /\bdeferred down payment\b/i,
   ], { allowZero: true });
   if (cashDown !== undefined) fields.cashDown = cashDown;
 
   const rebate = findAmount(lines, [
+    /\bfactory rebate\b/i,
     /\bmanufacturer rebate\b/i,
     /\bcash rebate\b/i,
     /\bcustomer(?: cash)? rebate\b/i,
     /\brebate(?:s)?\b/i,
-  ]);
-  if (rebate) fields.rebate = rebate;
+  ], { allowZero: true });
+  if (rebate !== undefined) fields.rebate = rebate;
 
   const totalSalesAmount = findAmount(lines, [/\btotal sales amount\b/i]);
   if (totalSalesAmount) {
