@@ -10,6 +10,10 @@ const QUOTE_HANDOFF_KEY = "pencilproof:pending-import";
 const QUOTE_HANDOFF_TYPE = "pencilproof:quote-handoff:v1";
 const ANALYTICS_RETENTION_MILLISECONDS = 1000 * 60 * 60 * 24 * 400;
 const ANALYTICS_MAX_FEEDBACK = 500;
+const PHONE_SESSION_MAX_AGE_MILLISECONDS = 10 * 60 * 1000;
+const PHONE_SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{24,80}$/;
+const PHONE_SESSION_TOKEN_PATTERN = /^[A-Za-z0-9_-]{32,120}$/;
+const PHONE_SESSION_CHUNK_LIMIT = 1024 * 1024;
 const ANALYTICS_EVENT_NAMES = [
   "page_view",
   "scan_started",
@@ -49,6 +53,8 @@ type DurableObjectStorageLike = {
 
 type DurableObjectStateLike = {
   storage: DurableObjectStorageLike;
+  acceptWebSocket?(socket: WebSocket): void;
+  getWebSockets?(): WebSocket[];
 };
 
 export interface Env {
@@ -60,6 +66,7 @@ export interface Env {
   ANALYTICS_DASHBOARD_USERNAME?: string;
   ORDERS: DurableObjectNamespaceLike;
   ANALYTICS: DurableObjectNamespaceLike;
+  PHONE_SESSIONS: DurableObjectNamespaceLike;
   PUBLIC_SITE_ORIGIN: string;
   SESSION_SECRET: string;
   SITE_ORIGIN: string;
@@ -136,6 +143,77 @@ const aiImportCorsHeaders = (env: Env) => ({
   "Access-Control-Allow-Headers": "Content-Type",
   "Vary": "Origin",
 });
+
+const randomUrlToken = (byteLength: number) => {
+  const bytes = new Uint8Array(byteLength);
+  crypto.getRandomValues(bytes);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+};
+
+const phoneSessionHeaders = (request: Request, env: Env) => ({
+  ...noStoreHeaders,
+  "Access-Control-Allow-Origin": allowedPhoneSessionOrigin(request, env),
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+  "Vary": "Origin",
+});
+
+const allowedPhoneSessionOrigin = (request: Request, env: Env) => {
+  const origin = request.headers.get("Origin");
+  return origin === env.PUBLIC_SITE_ORIGIN || origin === env.SITE_ORIGIN
+    ? origin
+    : env.PUBLIC_SITE_ORIGIN;
+};
+
+const handlePhoneSession = async (request: Request, env: Env) => {
+  const url = new URL(request.url);
+  const headers = phoneSessionHeaders(request, env);
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers });
+  const requestOrigin = request.headers.get("Origin");
+  if (requestOrigin && requestOrigin !== env.PUBLIC_SITE_ORIGIN && requestOrigin !== env.SITE_ORIGIN) {
+    return new Response("Forbidden", { status: 403, headers });
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/phone-session") {
+    const sessionId = randomUrlToken(24);
+    const token = randomUrlToken(32);
+    const expiresAt = Date.now() + PHONE_SESSION_MAX_AGE_MILLISECONDS;
+    const stub = env.PHONE_SESSIONS.get(env.PHONE_SESSIONS.idFromName(sessionId));
+    const created = await stub.fetch(new Request("https://phone-session.internal/create", {
+      method: "POST",
+      body: JSON.stringify({ sessionId, token, expiresAt }),
+      headers: { "Content-Type": "application/json" },
+    }));
+    if (!created.ok) return Response.json({ error: "PHONE_SESSION_UNAVAILABLE" }, { status: 503, headers });
+    return Response.json({
+      expiresAt,
+      phoneUrl: `${env.SITE_ORIGIN}/phone?session=${encodeURIComponent(sessionId)}&token=${encodeURIComponent(token)}`,
+      sessionId,
+      token,
+    }, { headers });
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/phone-session") {
+    const sessionId = url.searchParams.get("session") ?? "";
+    const token = url.searchParams.get("token") ?? "";
+    const role = url.searchParams.get("role") ?? "";
+    if (!PHONE_SESSION_ID_PATTERN.test(sessionId) || !PHONE_SESSION_TOKEN_PATTERN.test(token) || (role !== "desktop" && role !== "phone")) {
+      return new Response("Invalid phone session", { status: 400, headers });
+    }
+    const stub = env.PHONE_SESSIONS.get(env.PHONE_SESSIONS.idFromName(sessionId));
+    return stub.fetch(new Request(`https://phone-session.internal/connect?session=${encodeURIComponent(sessionId)}&token=${encodeURIComponent(token)}&role=${role}`, {
+      method: "GET",
+      headers: request.headers,
+    }));
+  }
+
+  return new Response("Not found", { status: 404, headers });
+};
 
 const handleAiImport = async (request: Request, env: Env) => {
   const headers = aiImportCorsHeaders(env);
@@ -927,6 +1005,151 @@ export class OrderStore {
   }
 
   async alarm() {
+    await this.state.storage.deleteAll();
+  }
+}
+
+type PhoneSessionAttachment = {
+  role: "desktop" | "phone";
+};
+
+type PhoneSessionSocket = WebSocket & {
+  deserializeAttachment?: () => PhoneSessionAttachment | null;
+  serializeAttachment?: (attachment: PhoneSessionAttachment) => void;
+};
+
+/**
+ * Holds one anonymous desktop/phone pairing for a few minutes. The quote image
+ * is streamed through the Durable Object and is never written to storage.
+ */
+export class PhoneSessionStore {
+  private readonly state: DurableObjectStateLike;
+
+  constructor(state: DurableObjectStateLike) {
+    this.state = state;
+  }
+
+  private sockets() {
+    return (this.state.getWebSockets?.() ?? []) as PhoneSessionSocket[];
+  }
+
+  private role(socket: PhoneSessionSocket) {
+    return socket.deserializeAttachment?.()?.role ?? null;
+  }
+
+  private send(socket: PhoneSessionSocket, payload: Record<string, unknown>) {
+    if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(payload));
+  }
+
+  private peer(socket: PhoneSessionSocket) {
+    const role = this.role(socket);
+    return this.sockets().find((candidate) => candidate !== socket && this.role(candidate) !== role) ?? null;
+  }
+
+  async fetch(request: Request) {
+    const url = new URL(request.url);
+
+    if (request.method === "POST" && url.pathname === "/create") {
+      let body: { sessionId?: string; token?: string; expiresAt?: number };
+      try {
+        body = await request.json() as typeof body;
+      } catch {
+        return new Response("Invalid phone session", { status: 400 });
+      }
+      if (
+        !body.sessionId
+        || !PHONE_SESSION_ID_PATTERN.test(body.sessionId)
+        || !body.token
+        || !PHONE_SESSION_TOKEN_PATTERN.test(body.token)
+        || !Number.isInteger(body.expiresAt)
+        || body.expiresAt <= Date.now()
+      ) {
+        return new Response("Invalid phone session", { status: 400 });
+      }
+      await this.state.storage.put("sessionId", body.sessionId);
+      await this.state.storage.put("token", body.token);
+      await this.state.storage.put("expiresAt", body.expiresAt);
+      await this.state.storage.setAlarm?.(body.expiresAt);
+      return Response.json({ created: true });
+    }
+
+    if (request.method !== "GET" || url.pathname !== "/connect") {
+      return new Response("Not found", { status: 404 });
+    }
+
+    const token = url.searchParams.get("token") ?? "";
+    const role = url.searchParams.get("role");
+    const expectedToken = await this.state.storage.get<string>("token");
+    const expiresAt = await this.state.storage.get<number>("expiresAt");
+    if (
+      !expectedToken
+      || token !== expectedToken
+      || !Number.isInteger(expiresAt)
+      || expiresAt <= Date.now()
+      || (role !== "desktop" && role !== "phone")
+    ) {
+      return new Response("Phone session expired", { status: 410 });
+    }
+
+    const existingRole = this.sockets().find((socket) => this.role(socket) === role);
+    if (existingRole) existingRole.close(1000, "replaced");
+    const pair = new WebSocketPair();
+    const client = pair[0];
+    const server = pair[1] as PhoneSessionSocket;
+    if (!this.state.acceptWebSocket || !server.serializeAttachment) {
+      return new Response("Phone session unavailable", { status: 503 });
+    }
+    server.serializeAttachment({ role });
+    this.state.acceptWebSocket(server);
+    this.send(server, { type: "connected", role });
+    const peer = this.sockets().find((socket) => socket !== server && this.role(socket) !== role);
+    if (peer) {
+      this.send(peer, { type: role === "phone" ? "phone_connected" : "desktop_connected" });
+      this.send(server, { type: role === "phone" ? "desktop_connected" : "phone_connected" });
+    }
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  webSocketMessage(socket: PhoneSessionSocket, message: string | ArrayBuffer) {
+    const peer = this.peer(socket);
+    if (!peer || peer.readyState !== WebSocket.OPEN) return;
+    if (typeof message !== "string") {
+      if (message.byteLength > PHONE_SESSION_CHUNK_LIMIT) {
+        socket.close(1009, "chunk too large");
+        return;
+      }
+      peer.send(message);
+      return;
+    }
+    if (message.length > 16_000) {
+      socket.close(1009, "message too large");
+      return;
+    }
+    try {
+      const payload = JSON.parse(message) as { type?: string };
+      if (
+        typeof payload.type !== "string"
+        || !["hello", "photo-start", "photo-end"].includes(payload.type)
+      ) return;
+      peer.send(message);
+    } catch {
+      socket.close(1003, "invalid message");
+    }
+  }
+
+  webSocketClose(socket: PhoneSessionSocket) {
+    const peer = this.peer(socket);
+    if (peer) this.send(peer, { type: "peer_disconnected" });
+  }
+
+  webSocketError(socket: PhoneSessionSocket) {
+    try { socket.close(1011, "session error"); } catch { /* already closed */ }
+  }
+
+  async alarm() {
+    for (const socket of this.sockets()) {
+      try { socket.close(1000, "expired"); } catch { /* already closed */ }
+    }
     await this.state.storage.deleteAll();
   }
 }
@@ -1869,6 +2092,9 @@ export const handleRequest = async (request: Request, env: Env) => {
   }
   if (url.pathname === "/api/ai-import") {
     return handleAiImport(request, env);
+  }
+  if (url.pathname === "/api/phone-session") {
+    return handlePhoneSession(request, env);
   }
   if (url.pathname === "/api/stripe/webhook") {
     return handleStripeWebhook(request, env);
