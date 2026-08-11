@@ -4,8 +4,15 @@ on:
   push:
     branches: ["main"]
     paths:
+      - "app/**"
+      - "lib/**"
+      - "public/**"
       - "worker/**"
-      - "lib/analytics.ts"
+      - "next-env.d.ts"
+      - "next.config.ts"
+      - "postcss.config.mjs"
+      - "scripts/prepare-ocr-assets.mjs"
+      - "tsconfig.json"
       - "wrangler.jsonc"
       - "package.json"
       - "package-lock.json"
