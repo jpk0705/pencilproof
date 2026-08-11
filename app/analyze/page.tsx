@@ -24,6 +24,7 @@ import {
 } from "@/lib/checkout";
 import { track } from "@/lib/analytics";
 import VehiclePhoto from "@/app/components/VehiclePhoto";
+import PhoneCameraBridge from "@/app/components/PhoneCameraBridge";
 
 type Deal = {
   vehicle: string;
@@ -799,6 +800,7 @@ export default function AnalyzePage() {
               <input type="file" accept={DEAL_IMPORT_ACCEPT} disabled={dealImport.status === "loading"} onChange={handleDealFileChange} />
               Choose PDF or image
             </label>
+            <PhoneCameraBridge disabled={dealImport.status === "loading"} onFile={importDealFile} />
           </div>
         </div>
         {dealImport.status === "loading" ? (
