@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import {
   DEAL_IMPORT_ACCEPT,
   DEAL_CAMERA_ACCEPT,
@@ -71,6 +71,16 @@ type PendingImport = {
   sourceUrl?: string;
   sourceType?: "pdf" | "image";
 };
+
+const auditFeedbackRatings = [
+  { value: 1, label: "Very poor" },
+  { value: 2, label: "Poor" },
+  { value: 3, label: "Okay" },
+  { value: 4, label: "Good" },
+  { value: 5, label: "Excellent" },
+] as const;
+
+const auditFeedbackWorth = ["0", "9.99", "19.99", "29.99", "39.99"] as const;
 
 const verificationFields: (keyof ImportedDealFields)[] = [
   "vehicle",
@@ -199,6 +209,13 @@ export default function AnalyzePage() {
   const [selectedOfferType, setSelectedOfferType] = useState<DealOfferOption["type"] | null>(null);
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
   const [importSource, setImportSource] = useState<{ url: string; type: "pdf" | "image" } | null>(null);
+  const [auditFeedback, setAuditFeedback] = useState({
+    ui: 0,
+    service: 0,
+    scanQuality: 0,
+    worth: "",
+  });
+  const [auditFeedbackSent, setAuditFeedbackSent] = useState(false);
 
   useEffect(() => {
     setIsPaidAuditHost(window.location.hostname.toLowerCase() === "audit.pencilproof.com");
@@ -745,6 +762,28 @@ export default function AnalyzePage() {
     };
   }, [deal]);
 
+  const submitAuditFeedback = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (
+      !auditFeedback.ui
+      || !auditFeedback.service
+      || !auditFeedback.scanQuality
+      || !auditFeedback.worth
+    ) return;
+    track({
+      category: "paid-audit-questionnaire",
+      comment: JSON.stringify({
+        ui: auditFeedback.ui,
+        service: auditFeedback.service,
+        scanQuality: auditFeedback.scanQuality,
+        worth: Number(auditFeedback.worth),
+      }),
+      event: "feedback_submitted",
+      value: auditFeedback.scanQuality,
+    });
+    setAuditFeedbackSent(true);
+  };
+
   const productRequest = analysis.addons > 0
     ? `Removes the entered optional products totaling ${dollars(analysis.addons)} and shows the revised payment without them.`
     : "Confirms in writing whether any optional products are included or required.";
@@ -1150,6 +1189,92 @@ export default function AnalyzePage() {
                 <pre>{message}</pre>
               </div>
               <button className="print-button" type="button" onClick={() => window.print()}>Print or save this Full Quote Audit</button>
+              <section className="paid-feedback-card" aria-labelledby="paid-feedback-title">
+                <p className="paid-feedback-kicker">ONE-MINUTE BETA CHECK-IN</p>
+                <h3 id="paid-feedback-title">How did you like your Full Quote Audit?</h3>
+                <p className="paid-feedback-intro">Your answers help us improve the experience. This is anonymous—please do not include your name, VIN, or quote details.</p>
+                {auditFeedbackSent ? (
+                  <p className="paid-feedback-thanks" role="status">Thank you. Your feedback was recorded.</p>
+                ) : (
+                  <form className="paid-feedback-form" onSubmit={submitAuditFeedback}>
+                    <fieldset>
+                      <legend>How was the user interface?</legend>
+                      <div className="paid-feedback-rating-grid">
+                        {auditFeedbackRatings.map((rating) => (
+                          <label className="paid-feedback-rating" key={`ui-${rating.value}`}>
+                            <input
+                              type="radio"
+                              name="audit-feedback-ui"
+                              value={rating.value}
+                              checked={auditFeedback.ui === rating.value}
+                              onChange={() => setAuditFeedback((current) => ({ ...current, ui: rating.value }))}
+                            />
+                            <span><b>{rating.value}</b><small>{rating.label}</small></span>
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                    <fieldset>
+                      <legend>How was the overall service?</legend>
+                      <div className="paid-feedback-rating-grid">
+                        {auditFeedbackRatings.map((rating) => (
+                          <label className="paid-feedback-rating" key={`service-${rating.value}`}>
+                            <input
+                              type="radio"
+                              name="audit-feedback-service"
+                              value={rating.value}
+                              checked={auditFeedback.service === rating.value}
+                              onChange={() => setAuditFeedback((current) => ({ ...current, service: rating.value }))}
+                            />
+                            <span><b>{rating.value}</b><small>{rating.label}</small></span>
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                    <fieldset>
+                      <legend>How was the scan quality?</legend>
+                      <div className="paid-feedback-rating-grid">
+                        {auditFeedbackRatings.map((rating) => (
+                          <label className="paid-feedback-rating" key={`scan-${rating.value}`}>
+                            <input
+                              type="radio"
+                              name="audit-feedback-scan"
+                              value={rating.value}
+                              checked={auditFeedback.scanQuality === rating.value}
+                              onChange={() => setAuditFeedback((current) => ({ ...current, scanQuality: rating.value }))}
+                            />
+                            <span><b>{rating.value}</b><small>{rating.label}</small></span>
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                    <fieldset>
+                      <legend>How much would this service be worth to you?</legend>
+                      <div className="paid-feedback-worth-grid">
+                        {auditFeedbackWorth.map((worth) => (
+                          <label className="paid-feedback-worth" key={worth}>
+                            <input
+                              type="radio"
+                              name="audit-feedback-worth"
+                              value={worth}
+                              checked={auditFeedback.worth === worth}
+                              onChange={() => setAuditFeedback((current) => ({ ...current, worth }))}
+                            />
+                            <span>${worth === "0" ? "0" : worth}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                    <button
+                      className="paid-feedback-submit"
+                      type="submit"
+                      disabled={!auditFeedback.ui || !auditFeedback.service || !auditFeedback.scanQuality || !auditFeedback.worth}
+                    >
+                      Send feedback
+                    </button>
+                  </form>
+                )}
+              </section>
             </> : (
               <div className="empty-audit">
                 <strong>Your audit will appear here.</strong>
