@@ -144,7 +144,24 @@ test("analytics dashboard renders the selected range and business funnel", async
   assert.match(body, /Used the scan/);
   assert.match(body, /Reached checkout/);
   assert.match(body, /Purchased/);
+  assert.match(body, /Customer feedback/);
+  assert.match(body, /Average scan quality/);
+  assert.match(body, /\$39\.99/);
+  assert.match(body, /Written comments/);
+  assert.match(body, /Download CSV/);
   assert.match(body, /What “session” means/);
+});
+
+test("analytics feedback export uses dashboard authentication", async () => {
+  const response = await worker.fetch(
+    new Request("https://audit.pencilproof.com/analytics/feedback.csv?range=1m", {
+      headers: { Authorization: basicAuth("test-admin", "test-dashboard-password") },
+    }),
+    makeEnv([]),
+  );
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("Content-Type"), "text/csv; charset=utf-8");
+  assert.match(await response.text(), /"created_at","ui_rating","service_rating","scan_quality_rating","worth","written_comment"/);
 });
 
 test("analytics routes reject the wrong method before reaching storage", async () => {
