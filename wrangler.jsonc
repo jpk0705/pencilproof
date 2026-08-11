@@ -61,7 +61,7 @@
     },
     {
       "tag": "v3",
-      "new_classes": [
+      "new_sqlite_classes": [
         "PhoneSessionStore"
       ]
     }
