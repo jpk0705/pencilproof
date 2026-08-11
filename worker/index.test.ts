@@ -52,6 +52,13 @@ const makeOrderNamespace = (getEnv: () => Env): Env["ORDERS"] => {
   };
 };
 
+const makePhoneSessionNamespace = (): Env["PHONE_SESSIONS"] => ({
+  idFromName: (name: string) => name,
+  get: () => ({
+    fetch: async () => Response.json({ created: true }),
+  }),
+});
+
 const makeEnv = (): Env => {
   const env = {
     ACCESS_MAX_AGE_SECONDS: "2592000",
@@ -59,6 +66,7 @@ const makeEnv = (): Env => {
       fetch: async () => new Response("asset", { status: 200 }),
     },
     ORDERS: undefined,
+    PHONE_SESSIONS: makePhoneSessionNamespace(),
     PUBLIC_SITE_ORIGIN: "https://pencilproof.com",
     SESSION_SECRET: "test-session-secret-with-enough-entropy",
     SITE_ORIGIN: "https://audit.pencilproof.com",
@@ -124,6 +132,37 @@ const paidSession = (
     amount_shipping: 0,
     amount_tax: 335,
   },
+});
+
+test("phone camera sessions are short-lived and origin restricted", async () => {
+  const env = makeEnv();
+  const response = await handleRequest(
+    new Request("https://audit.pencilproof.com/api/phone-session", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: env.PUBLIC_SITE_ORIGIN,
+      },
+      body: "{}",
+    }),
+    env,
+  );
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("Access-Control-Allow-Origin"), env.PUBLIC_SITE_ORIGIN);
+  const payload = await response.json() as { phoneUrl?: string; sessionId?: string; token?: string; expiresAt?: number };
+  assert.match(payload.sessionId ?? "", /^[A-Za-z0-9_-]{32}$/);
+  assert.match(payload.token ?? "", /^[A-Za-z0-9_-]{43}$/);
+  assert.match(payload.phoneUrl ?? "", /^https:\/\/audit\.pencilproof\.com\/phone\?/);
+  assert.ok((payload.expiresAt ?? 0) > Date.now());
+
+  const forbidden = await handleRequest(
+    new Request("https://audit.pencilproof.com/api/phone-session", {
+      method: "POST",
+      headers: { Origin: "https://example.com" },
+    }),
+    env,
+  );
+  assert.equal(forbidden.status, 403);
 });
 
 test.afterEach(() => {
