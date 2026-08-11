@@ -23,6 +23,7 @@ import {
   shouldOfferManualEntry,
 } from "@/lib/deal-review";
 import VehiclePhoto from "@/app/components/VehiclePhoto";
+import PhoneCameraBridge from "@/app/components/PhoneCameraBridge";
 import { track } from "@/lib/analytics";
 
 type ScanState =
@@ -233,9 +234,7 @@ export default function FreeQuotePreview() {
     track({ event: "audit_completed" });
   };
 
-  const handleFile = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
+  const handleImportedFile = async (file: File) => {
     if (!file) return;
     setImportReviewed(false);
     setSelectedOfferId("");
@@ -276,6 +275,12 @@ export default function FreeQuotePreview() {
         "PencilProof could not read this file. Try a brighter, sharper copy before paying.",
       );
     }
+  };
+
+  const handleFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) await handleImportedFile(file);
   };
 
   const preview = useMemo(() => {
@@ -418,6 +423,7 @@ export default function FreeQuotePreview() {
                     onChange={handleFile}
                   />
                 </label>
+                <PhoneCameraBridge onFile={handleImportedFile} />
               </div>
               <small>PDF or any image format · up to 15 MB</small>
             </div>
