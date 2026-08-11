@@ -11,6 +11,7 @@ import {
   isLocallyReadableImport,
   isDealImportFile,
   isDealImportPdf,
+  DEAL_CAMERA_ACCEPT,
   dealImageScale,
 } from "../lib/deal-pdf.ts";
 import { paymentFor } from "../lib/deal-calculations.ts";
@@ -31,6 +32,8 @@ import {
   selectBestVehicleImage,
 } from "../lib/vehicle-image.ts";
 
+const projectRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+
 const closeTo = (actual, expected, tolerance = 0.01) => {
   assert.ok(
     Math.abs(actual - expected) <= tolerance,
@@ -39,6 +42,20 @@ const closeTo = (actual, expected, tolerance = 0.01) => {
 };
 
 assert.equal(DEAL_FIELD_LABELS.rebate, "Rebate");
+assert.equal(DEAL_CAMERA_ACCEPT, "image/*");
+
+const phoneBridgeSource = await readFile(join(projectRoot, "app/components/PhoneCameraBridge.tsx"), "utf8");
+const phonePageSource = await readFile(join(projectRoot, "app/phone/page.tsx"), "utf8");
+const phoneWorkerSource = await readFile(join(projectRoot, "worker/index.ts"), "utf8");
+const wranglerSource = await readFile(join(projectRoot, "wrangler.jsonc"), "utf8");
+assert.match(phoneBridgeSource, /Scan with phone/);
+assert.match(phoneBridgeSource, /QRCode\.toDataURL/);
+assert.match(phoneBridgeSource, /photo-start/);
+assert.match(phonePageSource, /capture="environment"/);
+assert.match(phonePageSource, /photo-end/);
+assert.match(phoneWorkerSource, /class PhoneSessionStore/);
+assert.match(phoneWorkerSource, /PHONE_SESSIONS/);
+assert.match(wranglerSource, /"PhoneSessionStore"/);
 
 for (const name of ["quote.webp", "quote.gif", "quote.avif", "quote.heic", "quote.tiff", "quote.bmp"]) {
   assert.equal(isDealImportFile({ name, type: "" }), true, `${name} should be accepted as an image`);
