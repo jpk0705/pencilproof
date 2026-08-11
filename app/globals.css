@@ -367,6 +367,47 @@ footer { border-top: 1px solid var(--line); padding: 34px 0; }
 .pdf-upload-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; }
 .pdf-camera-button { background: var(--ink); color: var(--accent); border-color: var(--ink); }
 .pdf-upload-loading { opacity: .65; cursor: wait; }
+.phone-camera-trigger { min-height: 43px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 15px; border: 1px solid var(--ink); border-radius: 4px; color: var(--ink); background: transparent; font: inherit; font-size: 11px; font-weight: 900; cursor: pointer; }
+.phone-camera-trigger:hover { box-shadow: 0 6px 16px rgba(11, 28, 37, .12); transform: translateY(-1px); }
+.phone-camera-trigger:disabled { opacity: .55; cursor: wait; transform: none; }
+.free-scan-upload-actions .phone-camera-trigger { min-height: 56px; padding: 0 17px; color: var(--ink); background: transparent; font-size: 16px; }
+.phone-camera-panel { position: fixed; z-index: 30; inset: 50% auto auto 50%; width: min(660px, calc(100vw - 30px)); max-height: calc(100vh - 30px); overflow: auto; padding: 27px; border: 1px solid rgba(16,40,75,.18); border-radius: 14px; color: #10284b; background: #fffdf8; box-shadow: 0 24px 80px rgba(6,17,38,.35); transform: translate(-50%, -50%); }
+.phone-camera-panel::before { content: ''; position: fixed; z-index: -1; inset: -100vh; background: rgba(6,17,38,.58); }
+.phone-camera-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.phone-camera-panel .eyebrow { margin: 0 0 6px; color: #39745a; font-size: 9px; font-weight: 900; letter-spacing: .14em; }
+.phone-camera-panel h3 { margin: 0; font: 500 27px/1.1 Georgia, serif; }
+.phone-camera-close { width: 34px; height: 34px; border: 1px solid #c9c4b9; border-radius: 50%; color: #10284b; background: transparent; font-size: 24px; line-height: 1; cursor: pointer; }
+.phone-camera-loading { margin-top: 24px; padding: 16px; border-radius: 8px; color: #38556c; background: #e5eef5; font-size: 13px; }
+.phone-camera-content { display: grid; grid-template-columns: 300px 1fr; gap: 26px; align-items: center; margin-top: 24px; }
+.phone-camera-qr-wrap { position: relative; width: 300px; padding: 10px; border: 1px solid #d7d4ca; border-radius: 12px; background: white; }
+.phone-camera-qr { display: block; width: 100%; height: auto; image-rendering: pixelated; }
+.phone-camera-dot { position: absolute; right: 21px; bottom: 21px; width: 13px; height: 13px; border: 3px solid white; border-radius: 50%; background: #d9a630; box-shadow: 0 2px 8px rgba(6,17,38,.22); }
+.phone-camera-dot-connected, .phone-camera-dot-receiving, .phone-camera-dot-complete { background: #39986b; }
+.phone-camera-dot-error { background: #bd5a43; }
+.phone-camera-instructions strong { display: block; font-size: 14px; line-height: 1.5; }
+.phone-camera-instructions ol { margin: 16px 0; padding-left: 22px; color: #536475; font-size: 13px; line-height: 1.8; }
+.phone-camera-instructions small { display: block; color: #7b8790; font-size: 11px; line-height: 1.5; }
+.phone-camera-error, .phone-camera-success { margin: 21px 0 0; padding: 13px; border-radius: 7px; font-size: 12px; line-height: 1.5; }
+.phone-camera-error { color: #8b3026; background: #f9e3dc; }
+.phone-camera-success { color: #15543f; background: #e3f1eb; }
+.phone-camera-upload-fallback { margin-top: 22px; padding: 0; border: 0; color: #39745a; background: transparent; font: inherit; font-size: 11px; font-weight: 800; text-decoration: underline; cursor: pointer; }
+.phone-camera-page { min-height: 100vh; display: grid; place-items: center; padding: 20px; color: #f5f7fb; background: radial-gradient(circle at 80% 12%, rgba(246,195,67,.13), transparent 34%), #061126; font-family: Manrope, ui-sans-serif, system-ui, sans-serif; }
+.phone-camera-card { width: min(520px, 100%); padding: clamp(28px, 7vw, 54px); border: 1px solid rgba(217,225,238,.18); border-radius: 18px; background: linear-gradient(145deg, rgba(11,27,56,.98), rgba(6,17,38,.97)); box-shadow: 0 28px 80px rgba(0,0,0,.38); }
+.phone-camera-brand { display: flex; align-items: center; gap: 11px; color: #f5f7fb; font-size: 17px; letter-spacing: -.03em; }
+.phone-camera-brand img { border: 1px solid rgba(246,195,67,.5); border-radius: 11px; }
+.phone-camera-card .eyebrow { margin: 35px 0 12px; color: #f6c343; font-size: 10px; font-weight: 900; letter-spacing: .14em; }
+.phone-camera-card h1 { margin: 0; color: #f5f7fb; font-size: clamp(37px, 9vw, 52px); line-height: 1.02; letter-spacing: -.055em; }
+.phone-camera-lede { margin: 16px 0 0; color: #d9e1ee; font-size: 15px; line-height: 1.7; }
+.phone-camera-status { display: flex; align-items: flex-start; gap: 11px; margin-top: 27px; padding: 15px 16px; border: 1px solid rgba(246,195,67,.38); border-radius: 10px; color: #ffe39a; background: rgba(246,195,67,.1); font-size: 14px; font-weight: 700; line-height: 1.5; }
+.phone-camera-status-dot { width: 8px; height: 8px; flex: 0 0 8px; margin-top: 6px; border-radius: 50%; background: #f6c343; box-shadow: 0 0 0 5px rgba(246,195,67,.12); }
+.phone-camera-status-ready .phone-camera-status-dot, .phone-camera-status-sent .phone-camera-status-dot { background: #61c28b; box-shadow: 0 0 0 5px rgba(97,194,139,.12); }
+.phone-camera-status-error .phone-camera-status-dot { background: #e47661; box-shadow: 0 0 0 5px rgba(228,118,97,.12); }
+.phone-camera-send-progress { height: 8px; overflow: hidden; margin-top: 18px; border-radius: 999px; background: rgba(255,255,255,.13); }
+.phone-camera-send-progress span { display: block; height: 100%; border-radius: inherit; background: #f6c343; transition: width .2s ease; }
+.phone-camera-take-button { display: flex; align-items: center; justify-content: center; min-height: 53px; margin-top: 25px; border: 1px solid #f6c343; border-radius: 5px; color: #061126; background: #f6c343; font-size: 15px; font-weight: 900; cursor: pointer; }
+.phone-camera-take-button input { display: none; }
+.phone-camera-take-button:has(input:disabled) { opacity: .6; cursor: wait; }
+.phone-camera-footnote { margin: 21px 0 0; color: #aebbd0; font-size: 11px; line-height: 1.6; }
 .pdf-import-status { display: flex; gap: 11px; align-items: flex-start; margin-top: 17px; padding: 13px; border-radius: 6px; font-size: 10px; }
 .pdf-import-status > span { width: 23px; height: 23px; display: grid; place-items: center; flex: 0 0 23px; border-radius: 50%; font-size: 10px; font-weight: 900; }
 .pdf-import-status p { margin: 3px 0 0; line-height: 1.5; }
@@ -719,6 +760,8 @@ footer { border-top: 1px solid var(--line); padding: 34px 0; }
   .evidence-layout { grid-template-columns: 1fr; }.document-evidence { position: static; }.document-evidence iframe, .document-evidence img { height: 55vh; }.document-evidence iframe { min-height: 300px; }
   .vehicle-photo { grid-template-columns: 1fr; }.vehicle-photo img { min-height: 0; aspect-ratio: 16 / 9; }.vehicle-photo figcaption { gap: 10px; padding: 14px; }.vehicle-photo-compact { min-height: 0; }
   .free-scan-head { align-items: flex-start; }.free-scan-summary { grid-template-columns: 1fr 1fr; }.free-scan-summary div:nth-child(2) { border-right: 0; }.free-scan-summary div:nth-child(-n+2) { border-bottom: 1px solid #d3dccb; }.free-detected-values { grid-template-columns: 1fr 1fr; }.free-math-preview, .free-manual-grid { grid-template-columns: 1fr; }.free-manual-grid .manual-field-wide { grid-column: auto; }.free-scan-drop { padding: 42px 20px; }.free-scan-upload-actions { width: 100%; flex-direction: column; }.free-scan-drop .button, .free-scan-error .button { width: 100%; }
+  .free-scan-upload-actions .phone-camera-trigger { width: 100%; }
+  .phone-camera-content { grid-template-columns: 1fr; }.phone-camera-qr-wrap { width: min(280px, 100%); margin: 0 auto; }.phone-camera-panel { padding: 21px; }.phone-camera-panel h3 { font-size: 23px; }
   .pdf-import-main > div:nth-child(2) > p:last-child, .pdf-import-status, .pdf-import-note, .score-note, .result-disclaimer { font-size: 12px; }
   .result-flag b, .product-insight h3 { font-size: 13px; }.result-flag small, .product-insight p, .product-insight > small, .empty-products { font-size: 12px; }
   .analyzer-header.shell { width: min(100% - 36px, 1280px); }

@@ -39,6 +39,10 @@
       {
         "name": "ANALYTICS",
         "class_name": "AnalyticsStore"
+      },
+      {
+        "name": "PHONE_SESSIONS",
+        "class_name": "PhoneSessionStore"
       }
     ]
   },
@@ -53,6 +57,12 @@
       "tag": "v2",
       "new_sqlite_classes": [
         "AnalyticsStore"
+      ]
+    },
+    {
+      "tag": "v3",
+      "new_classes": [
+        "PhoneSessionStore"
       ]
     }
   ],
