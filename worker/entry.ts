@@ -65,6 +65,12 @@ type CategoryCountRow = CountRow & {
 type RatingCountRow = CountRow & {
   rating: number;
 };
+type FeedbackEventRow = {
+  category: string | null;
+  comment: string | null;
+  received_at: string;
+  rating: number | null;
+};
 type MetaRow = {
   key: string;
   value: string;
@@ -89,6 +95,30 @@ const ANALYTICS_RANGES: Array<{
   { key: "1y", label: "1 year", milliseconds: 365 * 24 * 60 * 60 * 1000 },
 ];
 
+const FEEDBACK_WORTH_OPTIONS = [0, 9.99, 19.99, 29.99, 39.99] as const;
+
+type FeedbackResponse = {
+  comment: string | null;
+  createdAt: string;
+  scanQuality: number | null;
+  service: number | null;
+  ui: number | null;
+  worth: number | null;
+};
+
+type FeedbackSummary = {
+  averages: {
+    scanQuality: number | null;
+    service: number | null;
+    ui: number | null;
+  };
+  byCategory: Record<string, number>;
+  byRating: Record<string, number>;
+  recent: FeedbackResponse[];
+  total: number;
+  worthDistribution: Record<string, number>;
+};
+
 const analyticsRange = (value: string | null): (typeof ANALYTICS_RANGES)[number] =>
   ANALYTICS_RANGES.find((range) => range.key === value) ?? ANALYTICS_RANGES[0];
 
@@ -96,6 +126,72 @@ const limitedText = (value: unknown, maxLength: number) =>
   typeof value === "string" && value.trim()
     ? value.trim().slice(0, maxLength)
     : null;
+
+const feedbackNumber = (value: unknown, min: number, max: number) => {
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) && number >= min && number <= max ? number : null;
+};
+
+const feedbackResponse = (row: FeedbackEventRow): FeedbackResponse => {
+  let payload: Record<string, unknown> = {};
+  if (row.comment) {
+    try {
+      const parsed = JSON.parse(row.comment);
+      if (parsed && typeof parsed === "object") payload = parsed as Record<string, unknown>;
+    } catch {
+      // Older or manually submitted feedback may be plain text.
+    }
+  }
+  return {
+    comment: typeof payload.comment === "string"
+      ? limitedText(payload.comment, 1000)
+      : row.comment && Object.keys(payload).length === 0
+        ? limitedText(row.comment, 1000)
+        : null,
+    createdAt: row.received_at,
+    scanQuality: feedbackNumber(payload.scanQuality, 1, 5) ?? feedbackNumber(row.rating, 1, 5),
+    service: feedbackNumber(payload.service, 1, 5),
+    ui: feedbackNumber(payload.ui, 1, 5),
+    worth: feedbackNumber(payload.worth, 0, 39.99),
+  };
+};
+
+const summarizeFeedback = (rows: FeedbackEventRow[]): FeedbackSummary => {
+  const responses = rows.map(feedbackResponse);
+  const average = (values: Array<number | null>) => {
+    const usable = values.filter((value): value is number => value !== null);
+    return usable.length
+      ? Math.round((usable.reduce((sum, value) => sum + value, 0) / usable.length) * 10) / 10
+      : null;
+  };
+  const worthDistribution = Object.fromEntries(
+    FEEDBACK_WORTH_OPTIONS.map((value) => [String(value), 0]),
+  );
+  for (const response of responses) {
+    if (response.worth !== null && String(response.worth) in worthDistribution) {
+      worthDistribution[String(response.worth)] += 1;
+    }
+  }
+  const ratingCounts = new Map<string, number>();
+  for (const response of responses) {
+    if (response.scanQuality !== null) {
+      const key = String(response.scanQuality);
+      ratingCounts.set(key, (ratingCounts.get(key) ?? 0) + 1);
+    }
+  }
+  return {
+    averages: {
+      scanQuality: average(responses.map((response) => response.scanQuality)),
+      service: average(responses.map((response) => response.service)),
+      ui: average(responses.map((response) => response.ui)),
+    },
+    byCategory: { "paid-audit-questionnaire": responses.length },
+    byRating: Object.fromEntries(ratingCounts),
+    recent: responses.slice(0, ANALYTICS_MAX_FEEDBACK),
+    total: responses.length,
+    worthDistribution,
+  };
+};
 
 const eventIdFor = (event: AnalyticsEvent) => {
   if (
@@ -307,6 +403,14 @@ export class AnalyticsStore {
         byRating[String(row.rating)] = Number(row.count) || 0;
       }
 
+      const feedbackRows = this.sql.exec<FeedbackEventRow>(`
+        SELECT category, comment, received_at, rating
+        FROM analytics_events
+        ${eventWindow} AND event_name = 'feedback_submitted'
+        ORDER BY received_at DESC
+      `, startIso, endIso).toArray();
+      const feedback = summarizeFeedback(feedbackRows);
+
       const meta = Object.fromEntries(
         this.sql.exec<MetaRow>(
           "SELECT key, value FROM analytics_meta",
@@ -329,10 +433,10 @@ export class AnalyticsStore {
         byDay,
         byEvent,
         feedback: {
-          byCategory,
-          byRating,
-          recent: [],
-          total: byEvent.feedback_submitted ?? 0,
+          ...feedback,
+          byCategory: Object.keys(feedback.byCategory).length ? feedback.byCategory : byCategory,
+          byRating: Object.keys(feedback.byRating).length ? feedback.byRating : byRating,
+          total: byEvent.feedback_submitted ?? feedback.total,
         },
         ledger: {
           duplicateEventsRejected:
@@ -431,33 +535,42 @@ const requireAnalyticsAuth = (request: Request, env: Env) => {
   return valid ? null : analyticsUnauthorized();
 };
 
+type AnalyticsDashboardSummary = {
+  range?: { end?: string; key?: AnalyticsRangeKey; label?: string; start?: string };
+  funnel?: {
+    visitors?: number;
+    pageViews?: number;
+    scanUsers?: number;
+    scanStarts?: number;
+    auditUsers?: number;
+    auditsCompleted?: number;
+    checkoutUsers?: number;
+    checkoutStarts?: number;
+    purchasers?: number;
+    purchases?: number;
+  };
+  sessions?: number;
+  byEvent?: Record<string, number>;
+  byDay?: Record<string, Record<string, number>>;
+  feedback?: Partial<FeedbackSummary>;
+  updatedAt?: string;
+};
+
+const analyticsSummary = async (request: Request, env: Env) => {
+  const selectedRange = analyticsRange(new URL(request.url).searchParams.get("range"));
+  const stub = env.ANALYTICS.get(env.ANALYTICS.idFromName("pencilproof-analytics"));
+  const response = await stub.fetch(new Request(`https://analytics.internal/summary?range=${selectedRange.key}`));
+  if (!response.ok) return null;
+  return await response.json() as AnalyticsDashboardSummary;
+};
+
 const analyticsDashboard = async (request: Request, env: Env) => {
   if (request.method !== "GET") return new Response("Method not allowed", { status: 405, headers: { Allow: "GET" } });
   const authFailure = requireAnalyticsAuth(request, env);
   if (authFailure) return authFailure;
   const selectedRange = analyticsRange(new URL(request.url).searchParams.get("range"));
-  const stub = env.ANALYTICS.get(env.ANALYTICS.idFromName("pencilproof-analytics"));
-  const response = await stub.fetch(new Request(`https://analytics.internal/summary?range=${selectedRange.key}`));
-  if (!response.ok) return new Response("Analytics unavailable", { status: 502 });
-  const summary = await response.json() as {
-    range?: { end?: string; key?: AnalyticsRangeKey; label?: string; start?: string };
-    funnel?: {
-      visitors?: number;
-      pageViews?: number;
-      scanUsers?: number;
-      scanStarts?: number;
-      auditUsers?: number;
-      auditsCompleted?: number;
-      checkoutUsers?: number;
-      checkoutStarts?: number;
-      purchasers?: number;
-      purchases?: number;
-    };
-    sessions?: number;
-    byEvent?: Record<string, number>;
-    byDay?: Record<string, Record<string, number>>;
-    updatedAt?: string;
-  };
+  const summary = await analyticsSummary(request, env);
+  if (!summary) return new Response("Analytics unavailable", { status: 502 });
   const esc = (value: unknown) => String(value ?? "").replace(/[&<>\"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[char] ?? char));
   const fallback = summary.byEvent ?? {};
   const funnel = {
@@ -493,19 +606,63 @@ const analyticsDashboard = async (request: Request, env: Env) => {
   const maxTrend = Math.max(1, ...trend.map(([, count]) => count));
   const trendBars = trend.map(([bucket, count]) => `<div class="day"><div class="day-bar" style="height:${Math.max(8, Math.round((count / maxTrend) * 100))}%"><b>${count}</b></div><span>${esc(monthlyTrend ? bucket : bucket.slice(5))}</span></div>`).join("");
   const rangeLinks = ANALYTICS_RANGES.map((range) => `<a class="range ${range.key === rangeKey ? "selected" : ""}" href="/analytics?range=${range.key}">${esc(range.label)}</a>`).join("");
+  const feedback = summary.feedback ?? {};
+  const feedbackTotal = Number(feedback.total ?? 0);
+  const feedbackAverage = (value: number | null | undefined) => value === null || value === undefined ? "—" : `${value.toFixed(1)} / 5`;
+  const feedbackResponses = Array.isArray(feedback.recent) ? feedback.recent : [];
+  const feedbackWorth = FEEDBACK_WORTH_OPTIONS.map((value) => ({
+    count: Number(feedback.worthDistribution?.[String(value)] ?? 0),
+    label: value === 0 ? "$0" : `$${value.toFixed(2)}`,
+  }));
+  const maxWorth = Math.max(1, ...feedbackWorth.map((item) => item.count));
+  const feedbackWorthBars = feedbackWorth.map((item) => `<div class="worth-row"><span>${esc(item.label)}</span><div class="bar"><i style="width:${Math.round((item.count / maxWorth) * 100)}%"></i></div><b>${item.count.toLocaleString("en-US")}</b></div>`).join("");
+  const feedbackResponseRows = feedbackResponses.slice(0, 20).map((response) => `<tr><td>${esc(new Date(response.createdAt).toLocaleDateString("en-US", { dateStyle: "medium" }))}</td><td>${esc(response.ui ?? "—")}</td><td>${esc(response.service ?? "—")}</td><td>${esc(response.scanQuality ?? "—")}</td><td>${response.worth === null || response.worth === undefined ? "—" : esc(response.worth === 0 ? "$0" : `$${response.worth.toFixed(2)}`)}</td></tr>`).join("");
+  const feedbackCommentRows = feedbackResponses.filter((response) => response.comment).slice(0, 10).map((response) => `<article class="feedback-comment"><p>${esc(response.comment)}</p><small>${esc(new Date(response.createdAt).toLocaleDateString("en-US", { dateStyle: "medium" }))}</small></article>`).join("");
   const updated = summary.updatedAt && summary.updatedAt !== new Date(0).toISOString()
     ? new Date(summary.updatedAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }) + " UTC"
     : "No events yet";
   return new Response(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PencilProof analytics</title>
-<style>:root{font-family:Arial,sans-serif;color:#10284b;background:#f4f1e9}*{box-sizing:border-box}body{margin:0}.shell{max-width:1180px;margin:auto;padding:30px 20px 60px}header{display:flex;justify-content:space-between;align-items:end;gap:20px;margin-bottom:22px}h1{margin:0;font:700 clamp(30px,5vw,50px)/1 Georgia,serif}p{color:#627086;line-height:1.5}.updated{font-size:12px;color:#627086;text-align:right}.range-row{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 22px}.range{border:1px solid #c9c6bb;border-radius:999px;padding:9px 13px;color:#17365f;background:#fff;text-decoration:none;font-size:13px;font-weight:700}.range.selected{background:#15365e;color:#fff;border-color:#15365e}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}.card,.panel{background:#fff;border:1px solid #d9d6ca;border-radius:16px;padding:20px;box-shadow:0 8px 24px #10284b0d}.label{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#718096}.big{font:700 38px Georgia,serif;margin-top:8px;color:#b27a22}.card p{margin:10px 0 0;font-size:13px}.grid{display:grid;grid-template-columns:1.1fr .9fr;gap:18px}.panel h2{font:700 24px Georgia,serif;margin:0 0 8px}.subtle{font-size:13px;margin:0 0 18px}.funnel-step{display:grid;grid-template-columns:1fr auto;gap:6px 14px;margin:18px 0}.funnel-step strong,.funnel-step span{display:block}.funnel-step span{color:#718096;font-size:13px;margin-top:4px}.funnel-step>b{font:700 24px Georgia,serif;color:#b27a22}.funnel-step .bar{grid-column:1/-1}.bar{height:9px;background:#edf0f3;border-radius:20px;overflow:hidden}.bar i{display:block;height:100%;background:#c5943f;border-radius:20px}.chart{height:230px;display:flex;align-items:end;gap:8px;padding:16px 4px 0;overflow-x:auto}.day{height:100%;min-width:25px;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:end;gap:7px;font-size:10px;color:#6a7789}.day-bar{width:100%;max-width:34px;background:#15365e;border-radius:7px 7px 2px 2px;min-height:8px;display:flex;justify-content:center;color:#fff;font-size:11px;padding-top:5px}.day-bar b{font-weight:700}.definitions{margin-top:18px;background:#f8f7f2;border-left:4px solid #c5943f;padding:14px 16px}.definitions p{margin:6px 0;font-size:13px}.empty{color:#718096;font-size:14px;padding:20px 0}@media(max-width:850px){.cards{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}}@media(max-width:560px){header{display:block}.updated{text-align:left;margin-top:10px}.cards{grid-template-columns:1fr}.shell{padding:22px 14px 40px}}</style></head>
+<style>:root{font-family:Arial,sans-serif;color:#10284b;background:#f4f1e9}*{box-sizing:border-box}body{margin:0}.shell{max-width:1180px;margin:auto;padding:30px 20px 60px}header{display:flex;justify-content:space-between;align-items:end;gap:20px;margin-bottom:22px}h1{margin:0;font:700 clamp(30px,5vw,50px)/1 Georgia,serif}p{color:#627086;line-height:1.5}.updated{font-size:12px;color:#627086;text-align:right}.range-row{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 22px}.range{border:1px solid #c9c6bb;border-radius:999px;padding:9px 13px;color:#17365f;background:#fff;text-decoration:none;font-size:13px;font-weight:700}.range.selected{background:#15365e;color:#fff;border-color:#15365e}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}.card,.panel{background:#fff;border:1px solid #d9d6ca;border-radius:16px;padding:20px;box-shadow:0 8px 24px #10284b0d}.label{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#718096}.big{font:700 38px Georgia,serif;margin-top:8px;color:#b27a22}.card p{margin:10px 0 0;font-size:13px}.grid{display:grid;grid-template-columns:1.1fr .9fr;gap:18px}.panel h2{font:700 24px Georgia,serif;margin:0 0 8px}.subtle{font-size:13px;margin:0 0 18px}.funnel-step{display:grid;grid-template-columns:1fr auto;gap:6px 14px;margin:18px 0}.funnel-step strong,.funnel-step span{display:block}.funnel-step span{color:#718096;font-size:13px;margin-top:4px}.funnel-step>b{font:700 24px Georgia,serif;color:#b27a22}.funnel-step .bar{grid-column:1/-1}.bar{height:9px;background:#edf0f3;border-radius:20px;overflow:hidden}.bar i{display:block;height:100%;background:#c5943f;border-radius:20px}.chart{height:230px;display:flex;align-items:end;gap:8px;padding:16px 4px 0;overflow-x:auto}.day{height:100%;min-width:25px;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:end;gap:7px;font-size:10px;color:#6a7789}.day-bar{width:100%;max-width:34px;background:#15365e;border-radius:7px 7px 2px 2px;min-height:8px;display:flex;justify-content:center;color:#fff;font-size:11px;padding-top:5px}.day-bar b{font-weight:700}.definitions{margin-top:18px;background:#f8f7f2;border-left:4px solid #c5943f;padding:14px 16px}.definitions p{margin:6px 0;font-size:13px}.feedback-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0 20px}.feedback-metric{background:#f8f7f2;border-radius:12px;padding:14px}.feedback-metric .big{font-size:28px;margin-top:5px}.worth-row{display:grid;grid-template-columns:64px 1fr 28px;align-items:center;gap:10px;margin:12px 0;font-size:13px}.worth-row .bar{height:8px}.worth-row b{text-align:right}.table-wrap{overflow-x:auto;margin-top:12px}table{width:100%;border-collapse:collapse;font-size:13px;min-width:560px}th,td{border-bottom:1px solid #e5e2d9;padding:10px 8px;text-align:left}th{color:#718096;font-size:11px;letter-spacing:.08em;text-transform:uppercase}.feedback-actions{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-top:6px}.download{border:1px solid #c9c6bb;border-radius:999px;padding:9px 13px;color:#17365f;background:#fff;text-decoration:none;font-size:13px;font-weight:700;white-space:nowrap}.feedback-comment{border-left:3px solid #c5943f;background:#f8f7f2;padding:10px 12px;margin:10px 0}.feedback-comment p{margin:0;font-size:13px}.feedback-comment small{display:block;color:#718096;margin-top:6px}.empty{color:#718096;font-size:14px;padding:20px 0}@media(max-width:850px){.cards{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.feedback-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:560px){header{display:block}.updated{text-align:left;margin-top:10px}.cards{grid-template-columns:1fr}.feedback-grid{grid-template-columns:1fr}.feedback-actions{display:block}.download{display:inline-block;margin-top:10px}.shell{padding:22px 14px 40px}}</style></head>
 <body><main class="shell"><header><div><div class="label">PENCILPROOF / MEASUREMENT</div><h1>Traffic and conversion</h1><p>Selected period: <strong>${esc(rangeLabel)}</strong>. This dashboard is private.</p></div><div class="updated">Updated ${esc(updated)}</div></header>
 <nav class="range-row" aria-label="Analytics date range">${rangeLinks}</nav>
 <section class="cards">${funnelCards}</section>
 <section class="grid"><div class="panel"><h2>Visitor funnel</h2><p class="subtle">Unique people are counted once per selected period. Percentages compare each step with visitors.</p>${funnelStep("Visitors", `${funnel.pageViews.toLocaleString("en-US")} total page views`, funnel.visitors, funnel.visitors)}${funnelStep("Used the scan", `${funnel.scanStarts.toLocaleString("en-US")} scan starts`, funnel.scanUsers, funnel.visitors)}${funnelStep("Reached checkout", `${funnel.checkoutStarts.toLocaleString("en-US")} checkout starts`, funnel.checkoutUsers, funnel.visitors)}${funnelStep("Purchased", `${funnel.purchases.toLocaleString("en-US")} verified payment events`, funnel.purchasers, funnel.visitors)}</div>
 <div class="panel"><h2>Activity trend</h2><p class="subtle">${monthlyTrend ? "Monthly activity" : "Daily activity"} within the selected period.</p>${trendBars ? `<div class="chart">${trendBars}</div>` : `<div class="empty">No tracked activity in this period.</div>`}<div class="definitions"><strong>What “session” means</strong><p>A session is an anonymous browser visit ID. It is not a login or a person’s name. PencilProof starts a new session after 30 minutes of inactivity, so <strong>Visitors</strong> is the clearest estimate of unique browsers that visited during this period.</p><p>Page views are total page loads. “Used the scan,” “Reached checkout,” and “Purchased” are unique browsers at each step; the smaller text shows total attempts.</p></div></div></section>
+<section class="panel" style="margin-top:18px"><div class="feedback-actions"><div><h2>Customer feedback</h2><p class="subtle">Anonymous responses from the post-payment Full Quote Audit questionnaire.</p></div><a class="download" href="/analytics/feedback.csv?range=${esc(rangeKey)}">Download CSV</a></div><div class="feedback-grid"><div class="feedback-metric"><div class="label">Responses</div><div class="big">${feedbackTotal.toLocaleString("en-US")}</div></div><div class="feedback-metric"><div class="label">Average UI</div><div class="big">${feedbackAverage(feedback.averages?.ui)}</div></div><div class="feedback-metric"><div class="label">Average service</div><div class="big">${feedbackAverage(feedback.averages?.service)}</div></div><div class="feedback-metric"><div class="label">Average scan quality</div><div class="big">${feedbackAverage(feedback.averages?.scanQuality)}</div></div></div><h3>What would people pay?</h3>${feedbackWorthBars}<h3 style="margin-top:24px">Recent responses</h3>${feedbackResponseRows ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>UI</th><th>Service</th><th>Scan</th><th>Worth</th></tr></thead><tbody>${feedbackResponseRows}</tbody></table></div>` : `<div class="empty">No feedback responses in this period.</div>`}<h3 style="margin-top:24px">Written comments</h3>${feedbackCommentRows || `<div class="empty">No written comments collected yet.</div>`}</section>
 <p class="subtle" style="margin-top:22px">Completed free audits: <strong>${funnel.auditsCompleted.toLocaleString("en-US")}</strong> from <strong>${funnel.auditUsers.toLocaleString("en-US")}</strong> unique browsers. Purchases are recorded from verified Stripe payment events.</p>
 </main></body></html>`, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
+};
+
+const csvCell = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+
+const analyticsFeedbackCsv = async (request: Request, env: Env) => {
+  if (request.method !== "GET") return new Response("Method not allowed", { status: 405, headers: { Allow: "GET" } });
+  const authFailure = requireAnalyticsAuth(request, env);
+  if (authFailure) return authFailure;
+  const summary = await analyticsSummary(request, env);
+  if (!summary) return new Response("Analytics unavailable", { status: 502 });
+  const rangeKey = summary.range?.key ?? analyticsRange(new URL(request.url).searchParams.get("range")).key;
+  const responses = Array.isArray(summary.feedback?.recent) ? summary.feedback.recent : [];
+  const rows = [
+    ["created_at", "ui_rating", "service_rating", "scan_quality_rating", "worth", "written_comment"],
+    ...responses.map((response) => [
+      response.createdAt,
+      response.ui ?? "",
+      response.service ?? "",
+      response.scanQuality ?? "",
+      response.worth ?? "",
+      response.comment ?? "",
+    ]),
+  ];
+  const csv = rows.map((row) => row.map(csvCell).join(",")).join("\n") + "\n";
+  return new Response(csv, {
+    headers: {
+      "Cache-Control": "no-store",
+      "Content-Disposition": `attachment; filename="pencilproof-feedback-${rangeKey}.csv"`,
+      "Content-Type": "text/csv; charset=utf-8",
+    },
+  });
 };
 
 const handleAnalyticsRoute = async (request: Request, env: Env) => {
@@ -568,6 +725,8 @@ const handleAnalyticsRoute = async (request: Request, env: Env) => {
 export const handleRequest = async (request: Request, env: Env) =>
   (new URL(request.url).pathname === "/analytics" || new URL(request.url).pathname === "/analytics/")
     ? analyticsDashboard(request, env)
+    : new URL(request.url).pathname === "/analytics/feedback.csv"
+      ? analyticsFeedbackCsv(request, env)
     : await handleAnalyticsRoute(request, env) ?? app.fetch(request, env);
 
 export default {
