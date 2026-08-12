@@ -2,6 +2,7 @@ import app, { type Env } from "./index.ts";
 
 export { OrderStore } from "./index.ts";
 export { PhoneSessionStore } from "./index.ts";
+export { AccountStore } from "./accounts.ts";
 export type { Env } from "./index.ts";
 
 const ANALYTICS_EVENT_NAMES = [

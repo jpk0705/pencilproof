@@ -1,4 +1,7 @@
+import { accountCookie, accountOwner, accountStub, clearAccountCookie, verifyProviderToken, verifyUserSession } from "./accounts.ts";
+
 const ACCESS_COOKIE = "pp_access";
+const USER_COOKIE = "pp_user";
 const DEVICE_COOKIE = "pp_device";
 const PRODUCT_CODE = "full_quote_audit_v1";
 const DEFAULT_ACCESS_SECONDS = 60 * 60 * 24 * 30;
@@ -66,6 +69,7 @@ export interface Env {
   ANALYTICS_DASHBOARD_USERNAME?: string;
   ORDERS: DurableObjectNamespaceLike;
   ANALYTICS: DurableObjectNamespaceLike;
+  ACCOUNTS: DurableObjectNamespaceLike;
   PHONE_SESSIONS: DurableObjectNamespaceLike;
   PUBLIC_SITE_ORIGIN: string;
   SESSION_SECRET: string;
@@ -74,6 +78,9 @@ export interface Env {
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET?: string;
   GEMINI_API_KEY?: string;
+  CLERK_ISSUER?: string;
+  CLERK_JWKS_URL?: string;
+  CLERK_AUDIENCE?: string;
 }
 
 const AI_IMPORT_PROMPT = `You are PencilProof's document extraction engine for US automobile dealer buyer's orders, finance worksheets, F&I menus, lease worksheets, and payment quotes.
@@ -595,6 +602,123 @@ const readCookie = (request: Request, name: string) => {
   return null;
 };
 
+const accountCall = async (env: Env, path: string, body: Record<string, unknown>) => {
+  if (!env.ACCOUNTS) return null;
+  const response = await accountStub(env).fetch(new Request(`https://accounts.internal${path}`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  }));
+  return response.ok ? await response.json() as Record<string, unknown> : null;
+};
+
+const currentUser = async (request: Request, env: Env) =>
+  verifyUserSession(readCookie(request, USER_COOKIE), env.SESSION_SECRET);
+
+const requestGuestId = async (request: Request) => {
+  const device = readCookie(request, DEVICE_COOKIE);
+  return validDeviceId(device) ? sha256Hex(device) : null;
+};
+
+const accountAccess = async (request: Request, env: Env) => {
+  if (!env.ACCOUNTS) return null;
+  const userId = await currentUser(request, env);
+  const guestId = userId ? null : await requestGuestId(request);
+  const result = await accountCall(env, "/access", { userId, guestId });
+  const expiresAt = result?.expiresAt;
+  return typeof expiresAt === "number" && expiresAt > Math.floor(Date.now() / 1000) ? expiresAt : null;
+};
+
+const handleAccount = async (request: Request, env: Env) => {
+  const url = new URL(request.url);
+  if (url.pathname === "/api/account/session" && request.method === "POST") {
+    const body = await request.json().catch(() => ({})) as { token?: string };
+    const provider = typeof body.token === "string" ? await verifyProviderToken(body.token, env) : null;
+    if (!provider) return Response.json({ error: "invalid_account_session" }, { status: 401, headers: noStoreHeaders });
+    const userResult = await accountCall(env, "/user", { providerSubject: provider.id });
+    const user = userResult?.user as { id?: string } | undefined;
+    if (!user?.id) return Response.json({ error: "account_unavailable" }, { status: 503, headers: noStoreHeaders });
+    const guestId = await requestGuestId(request);
+    if (guestId) {
+      await accountCall(env, "/migrate", { guestId, userId: user.id });
+      const legacy = await legacyAccountOrder(request, env);
+      if (legacy) await accountCall(env, "/entitlement", {
+        userId: user.id,
+        stripeSessionId: legacy.sessionId,
+        activatedAt: legacy.createdAt,
+        exactExpiresAt: legacy.accessExpiresAt,
+      });
+    }
+    return Response.json({ ok: true, expiresAt: await accountAccess(new Request(request, { headers: new Headers(request.headers) }), env) }, { headers: { ...noStoreHeaders, "Set-Cookie": await accountCookie(user.id, env.SESSION_SECRET) } });
+  }
+  const userId = await currentUser(request, env);
+  if (!userId) return Response.json({ error: "account_required" }, { status: 401, headers: noStoreHeaders });
+  const ownerId = accountOwner(userId, null);
+  if (url.pathname === "/api/account/me" && request.method === "GET") {
+    const access = await accountAccess(request, env);
+    const result = await accountCall(env, "/audits", { ownerId, action: "list" });
+    return Response.json({ userId, expiresAt: access, audits: result?.audits ?? [] }, { headers: noStoreHeaders });
+  }
+  if (url.pathname === "/api/account/audits" && request.method === "DELETE") {
+    const body = await request.json().catch(() => ({})) as { id?: string };
+    if (!body.id || !/^[0-9a-f-]{36}$/.test(body.id)) return Response.json({ error: "invalid_audit" }, { status: 400, headers: noStoreHeaders });
+    await accountCall(env, "/audits", { ownerId, action: "delete", id: body.id });
+    return Response.json({ deleted: true }, { headers: noStoreHeaders });
+  }
+  if (url.pathname === "/api/account/delete" && request.method === "POST") {
+    await accountCall(env, "/delete-user", { userId });
+    return new Response(null, { status: 204, headers: { ...noStoreHeaders, "Set-Cookie": clearAccountCookie } });
+  }
+  return new Response("Not found", { status: 404, headers: noStoreHeaders });
+};
+
+const handleAuditStorage = async (request: Request, env: Env) => {
+  const userId = await currentUser(request, env);
+  const guestId = userId ? null : await requestGuestId(request);
+  const ownerId = accountOwner(userId, guestId);
+  if (!ownerId) return Response.json({ error: "account_or_guest_required" }, { status: 401, headers: noStoreHeaders });
+  const access = await accountAccess(request, env);
+  let permitted = Boolean(access);
+  if (!permitted && guestId) {
+    const legacy = await hasLegacyDeviceAccess(request, env);
+    permitted = legacy.allowed;
+  }
+  if (!permitted) return Response.json({ error: "active_pass_required" }, { status: 403, headers: noStoreHeaders });
+  const body = await request.json().catch(() => ({})) as { action?: string; id?: string; data?: Record<string, unknown> };
+  if (request.method === "GET") {
+    const result = await accountCall(env, "/audits", { ownerId, action: "list" });
+    return Response.json({ audits: result?.audits ?? [] }, { headers: noStoreHeaders });
+  }
+  if (request.method === "POST" && body.data && JSON.stringify(body.data).length <= 100_000) {
+    const result = await accountCall(env, "/audits", { ownerId, action: "save", data: body.data });
+    return Response.json({ id: result?.id ?? null }, { headers: noStoreHeaders });
+  }
+  if (request.method === "DELETE" && typeof body.id === "string" && /^[0-9a-f-]{36}$/.test(body.id)) {
+    await accountCall(env, "/audits", { ownerId, action: "delete", id: body.id });
+    return Response.json({ deleted: true }, { headers: noStoreHeaders });
+  }
+  return Response.json({ error: "invalid_audit_request" }, { status: 400, headers: noStoreHeaders });
+};
+
+const legacyAccountOrder = async (request: Request, env: Env) => {
+  const token = readCookie(request, ACCESS_COOKIE);
+  const deviceId = readCookie(request, DEVICE_COOKIE);
+  if (!token || !validDeviceId(deviceId)) return null;
+  const payload = await verifyAccessToken(token, env.SESSION_SECRET);
+  if (!payload || payload.did !== await sha256Hex(deviceId)) return null;
+  const response = await orderStub(payload.sid, env).fetch(new Request("https://order-store.internal/details", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ deviceHash: payload.did }),
+  }));
+  return response.ok ? await response.json() as { sessionId: string; createdAt: number; accessExpiresAt: number } : null;
+};
+
+const hasLegacyDeviceAccess = async (request: Request, env: Env): Promise<OrderRedeemResult> => {
+  const token = readCookie(request, ACCESS_COOKIE);
+  const deviceId = readCookie(request, DEVICE_COOKIE);
+  if (!token || !validDeviceId(deviceId)) return { allowed: false, reason: "not_found" };
+  const payload = await verifyAccessToken(token, env.SESSION_SECRET);
+  if (!payload || payload.did !== await sha256Hex(deviceId)) return { allowed: false, reason: "device_mismatch" };
+  return authorizeOrder(payload.sid, payload.did, env);
+};
+
 const accessSeconds = (env: Env) => {
   const configured = Number(env.ACCESS_MAX_AGE_SECONDS);
   return Number.isFinite(configured) && configured > 0
@@ -944,6 +1068,13 @@ export class OrderStore {
         );
       }
       return Response.json({ revoked: true });
+    }
+
+    if (path === "/details") {
+      const body = await request.json() as { deviceHash?: string };
+      const order = await this.state.storage.get<OrderRecord>("order");
+      if (!order || body.deviceHash !== order.deviceHash) return new Response("Not found", { status: 404 });
+      return Response.json({ sessionId: order.sessionId, createdAt: order.createdAt, accessExpiresAt: order.accessExpiresAt });
     }
 
     if (path === "/redeem" || path === "/authorize") {
@@ -1467,6 +1598,7 @@ const createCheckoutSession = async (
   env: Env,
   deviceHash: string,
   analyticsSessionId = "",
+  userId: string | null = null,
 ) => {
   const stripePriceId = typeof env.STRIPE_PRICE_ID === "string"
     ? env.STRIPE_PRICE_ID.trim()
@@ -1496,6 +1628,7 @@ const createCheckoutSession = async (
     ...( /^[A-Za-z0-9_-]{20,80}$/.test(analyticsSessionId)
       ? { "metadata[pencilproof_analytics_session]": analyticsSessionId }
       : {}),
+    ...(userId ? { "metadata[pencilproof_user_id]": userId } : {}),
     "metadata[pencilproof_device_hash]": deviceHash,
     "metadata[pencilproof_product]": PRODUCT_CODE,
     mode: "payment",
@@ -1700,6 +1833,13 @@ const verifyAndStorePaidOrder = async (
     stripeEventId,
   }, env);
   if (stored) {
+    const accountUserId = session?.metadata?.pencilproof_user_id;
+    await accountCall(env, "/entitlement", {
+      userId: /^[A-Za-z0-9_:-]{8,200}$/.test(accountUserId ?? "") ? accountUserId : null,
+      guestId: /^[a-f0-9]{64}$/.test(deviceHash) ? deviceHash : null,
+      stripeSessionId: sessionId,
+      activatedAt: createdAt,
+    });
     const analyticsSessionId = session?.metadata?.pencilproof_analytics_session;
     if (/^[A-Za-z0-9_-]{20,80}$/.test(analyticsSessionId ?? "")) {
       await recordAnalyticsEvent({
@@ -1890,10 +2030,12 @@ const handleCheckout = async (request: Request, env: Env) => {
       ? existingDeviceId
       : randomDeviceId();
     const deviceHash = await sha256Hex(deviceId);
+    const userId = await currentUser(request, env);
     const session = await createCheckoutSession(
       env,
       deviceHash,
       body.analyticsSessionId ?? "",
+      userId,
     );
     const headers = new Headers({ "Cache-Control": "no-store" });
     if (deviceId !== existingDeviceId) {
@@ -2022,6 +2164,8 @@ const hasAccess = async (
   request: Request,
   env: Env,
 ): Promise<OrderRedeemResult> => {
+  const accountExpiresAt = await accountAccess(request, env);
+  if (accountExpiresAt) return { allowed: true, expiresAt: accountExpiresAt };
   const token = readCookie(request, ACCESS_COOKIE);
   const deviceId = readCookie(request, DEVICE_COOKIE);
   if (!token || !validDeviceId(deviceId)) {
@@ -2095,6 +2239,17 @@ export const handleRequest = async (request: Request, env: Env) => {
   }
   if (url.pathname === "/api/phone-session") {
     return handlePhoneSession(request, env);
+  }
+  if (
+    url.pathname === "/api/account/session"
+    || url.pathname === "/api/account/me"
+    || url.pathname === "/api/account/audits"
+    || url.pathname === "/api/account/delete"
+  ) {
+    return handleAccount(request, env);
+  }
+  if (url.pathname === "/api/audits") {
+    return handleAuditStorage(request, env);
   }
   if (url.pathname === "/api/stripe/webhook") {
     return handleStripeWebhook(request, env);

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import {
   DEAL_IMPORT_ACCEPT,
   DEAL_CAMERA_ACCEPT,
@@ -216,6 +216,7 @@ export default function AnalyzePage() {
     worth: "",
   });
   const [auditFeedbackSent, setAuditFeedbackSent] = useState(false);
+  const savedAuditKey = useRef("");
 
   useEffect(() => {
     setIsPaidAuditHost(window.location.hostname.toLowerCase() === "audit.pencilproof.com");
@@ -761,6 +762,27 @@ export default function AnalyzePage() {
       verdict,
     };
   }, [deal]);
+
+  useEffect(() => {
+    if (!isPaidAuditHost || !analysis.hasMinimumData) return;
+    const key = deal.vehicle.trim() || JSON.stringify(deal);
+    if (key === savedAuditKey.current) return;
+    savedAuditKey.current = key;
+    void fetch("/api/audits", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data: {
+        vehicle: deal.vehicle,
+        sellingPrice: deal.sellingPrice,
+        apr: deal.apr,
+        quotedPayment: deal.quotedPayment,
+        term: deal.term,
+        calculatedPayment: analysis.calculatedPayment,
+        verdict: analysis.verdict,
+        flags: analysis.flags.map((flag) => ({ name: flag.title, tone: flag.tone, detail: flag.detail })),
+      } }),
+    }).catch(() => undefined);
+  }, [analysis, deal, isPaidAuditHost]);
 
   const submitAuditFeedback = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
