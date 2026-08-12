@@ -4,6 +4,9 @@ on:
   pull_request:
     branches: ["main"]
     paths:
+      - "app/account/page.tsx"
+      - "app/components/AccountNav.tsx"
+      - "lib/clerk-client.ts"
       - "worker/**"
       - "lib/analytics.ts"
       - "wrangler.jsonc"
