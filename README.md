@@ -38,3 +38,20 @@ npx next dev
 
 Pushes to `main` automatically build and deploy the static site through GitHub
 Pages.
+
+## Optional email campaigns
+
+The Worker has a twice-weekly campaign trigger for users who explicitly opt into
+PencilProof emails. It can send scan follow-ups, 30-Day Pass reminders, and
+car-buying tips through Resend. It does not send to people merely because they
+created an account.
+
+Configure these through Cloudflare secrets/variables; never commit them:
+
+- `RESEND_API_KEY` — secret Resend API key
+- `MARKETING_FROM_EMAIL` — verified sender, such as `PencilProof <hello@pencilproof.com>`
+- `MARKETING_REPLY_TO` — optional reply-to address
+- `MARKETING_BUSINESS_ADDRESS` — required mailing address included in email footers
+
+The schedule is Tuesday and Friday at 17:00 UTC. The scheduler remains inactive
+until the required email settings are present.
