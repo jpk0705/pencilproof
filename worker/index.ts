@@ -654,13 +654,21 @@ const handleAccount = async (request: Request, env: Env) => {
   }
   const userId = await currentUser(request, env);
   if (!userId) return withAccountCors(Response.json({ error: "account_required" }, { status: 401, headers: noStoreHeaders }), request, env);
+  if (url.pathname === "/api/account/marketing" && request.method === "GET") {
+    const result = await accountCall(env, "/marketing", { action: "status", userId });
+    return withAccountCors(Response.json({ optedIn: result?.optedIn === true }, { headers: noStoreHeaders }), request, env);
+  }
   if (url.pathname === "/api/account/marketing" && request.method === "POST") {
     const body = await request.json().catch(() => ({})) as { email?: string; optIn?: boolean };
+    if (body.optIn === false) {
+      await accountCall(env, "/marketing", { optIn: false, userId });
+      return withAccountCors(Response.json({ optedIn: false }, { headers: noStoreHeaders }), request, env);
+    }
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
     if (body.optIn !== true || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(email)) {
       return withAccountCors(Response.json({ error: "invalid_marketing_preference" }, { status: 400, headers: noStoreHeaders }), request, env);
     }
-    const result = await accountCall(env, "/marketing", { userId, email });
+    const result = await accountCall(env, "/marketing", { email, optIn: true, userId });
     if (!result?.optedIn) {
       return withAccountCors(Response.json({ error: "marketing_unavailable" }, { status: 503, headers: noStoreHeaders }), request, env);
     }
@@ -670,7 +678,8 @@ const handleAccount = async (request: Request, env: Env) => {
   if (url.pathname === "/api/account/me" && request.method === "GET") {
     const access = await accountAccess(request, env);
     const result = await accountCall(env, "/audits", { ownerId, action: "list" });
-    return Response.json({ userId, expiresAt: access, audits: result?.audits ?? [] }, { headers: noStoreHeaders });
+    const marketing = await accountCall(env, "/marketing", { action: "status", userId });
+    return Response.json({ userId, expiresAt: access, audits: result?.audits ?? [], marketingOptedIn: marketing?.optedIn === true }, { headers: noStoreHeaders });
   }
   if (url.pathname === "/api/account/audits" && request.method === "DELETE") {
     const body = await request.json().catch(() => ({})) as { id?: string };
