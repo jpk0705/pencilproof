@@ -629,6 +629,9 @@ const accountAccess = async (request: Request, env: Env) => {
 
 const handleAccount = async (request: Request, env: Env) => {
   const url = new URL(request.url);
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: accountCorsHeaders(request, env) });
+  }
   if (url.pathname === "/api/account/session" && request.method === "POST") {
     const body = await request.json().catch(() => ({})) as { token?: string };
     const provider = typeof body.token === "string" ? await verifyProviderToken(body.token, env) : null;
@@ -647,10 +650,22 @@ const handleAccount = async (request: Request, env: Env) => {
         exactExpiresAt: legacy.accessExpiresAt,
       });
     }
-    return Response.json({ ok: true, expiresAt: await accountAccess(new Request(request, { headers: new Headers(request.headers) }), env) }, { headers: { ...noStoreHeaders, "Set-Cookie": await accountCookie(user.id, env.SESSION_SECRET) } });
+    return withAccountCors(Response.json({ ok: true, expiresAt: await accountAccess(new Request(request, { headers: new Headers(request.headers) }), env) }, { headers: { ...noStoreHeaders, "Set-Cookie": await accountCookie(user.id, env.SESSION_SECRET) } }), request, env);
   }
   const userId = await currentUser(request, env);
-  if (!userId) return Response.json({ error: "account_required" }, { status: 401, headers: noStoreHeaders });
+  if (!userId) return withAccountCors(Response.json({ error: "account_required" }, { status: 401, headers: noStoreHeaders }), request, env);
+  if (url.pathname === "/api/account/marketing" && request.method === "POST") {
+    const body = await request.json().catch(() => ({})) as { email?: string; optIn?: boolean };
+    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    if (body.optIn !== true || email.length > 254 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,254}$/.test(email)) {
+      return withAccountCors(Response.json({ error: "invalid_marketing_preference" }, { status: 400, headers: noStoreHeaders }), request, env);
+    }
+    const result = await accountCall(env, "/marketing", { userId, email });
+    if (!result?.optedIn) {
+      return withAccountCors(Response.json({ error: "marketing_unavailable" }, { status: 503, headers: noStoreHeaders }), request, env);
+    }
+    return withAccountCors(Response.json({ optedIn: true }, { headers: noStoreHeaders }), request, env);
+  }
   const ownerId = accountOwner(userId, null);
   if (url.pathname === "/api/account/me" && request.method === "GET") {
     const access = await accountAccess(request, env);
@@ -1397,6 +1412,24 @@ const noStoreHeaders = {
   ].join("; "),
   "Referrer-Policy": "no-referrer",
   "X-Content-Type-Options": "nosniff",
+};
+
+const accountCorsHeaders = (request: Request, env: Env) => {
+  const origin = request.headers.get("Origin");
+  if (!origin || ![env.PUBLIC_SITE_ORIGIN, env.SITE_ORIGIN].includes(origin)) return {};
+  return {
+    "Access-Control-Allow-Credentials": "true",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+    "Access-Control-Allow-Origin": origin,
+    "Vary": "Origin",
+  };
+};
+
+const withAccountCors = (response: Response, request: Request, env: Env) => {
+  const headers = new Headers(response.headers);
+  Object.entries(accountCorsHeaders(request, env)).forEach(([key, value]) => headers.set(key, value));
+  return new Response(response.body, { headers, status: response.status, statusText: response.statusText });
 };
 
 const html = (body: string, status = 200) =>
@@ -2246,6 +2279,7 @@ export const handleRequest = async (request: Request, env: Env) => {
     url.pathname === "/api/account/session"
     || url.pathname === "/api/account/me"
     || url.pathname === "/api/account/audits"
+    || url.pathname === "/api/account/marketing"
     || url.pathname === "/api/account/delete"
   ) {
     return handleAccount(request, env);
