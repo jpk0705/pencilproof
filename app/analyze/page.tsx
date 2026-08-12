@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import {
   DEAL_IMPORT_ACCEPT,
   DEAL_CAMERA_ACCEPT,
@@ -216,6 +216,8 @@ export default function AnalyzePage() {
     worth: "",
   });
   const [auditFeedbackSent, setAuditFeedbackSent] = useState(false);
+  const savedAuditKey = useRef("");
+  const [accountPromptDismissed, setAccountPromptDismissed] = useState(false);
 
   useEffect(() => {
     setIsPaidAuditHost(window.location.hostname.toLowerCase() === "audit.pencilproof.com");
@@ -762,6 +764,27 @@ export default function AnalyzePage() {
     };
   }, [deal]);
 
+  useEffect(() => {
+    if (!isPaidAuditHost || !analysis.hasMinimumData) return;
+    const key = deal.vehicle.trim() || JSON.stringify(deal);
+    if (key === savedAuditKey.current) return;
+    savedAuditKey.current = key;
+    void fetch("/api/audits", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data: {
+        vehicle: deal.vehicle,
+        sellingPrice: deal.sellingPrice,
+        apr: deal.apr,
+        quotedPayment: deal.quotedPayment,
+        term: deal.term,
+        calculatedPayment: analysis.calculatedPayment,
+        verdict: analysis.verdict,
+        flags: analysis.flags.map((flag) => ({ name: flag.title, tone: flag.tone, detail: flag.detail })),
+      } }),
+    }).catch(() => undefined);
+  }, [analysis, deal, isPaidAuditHost]);
+
   const submitAuditFeedback = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (
@@ -1189,6 +1212,17 @@ export default function AnalyzePage() {
                 <pre>{message}</pre>
               </div>
               <button className="print-button" type="button" onClick={() => window.print()}>Print or save this Full Quote Audit</button>
+              {!accountPromptDismissed ? <section className="account-save-prompt" aria-labelledby="account-save-title">
+                <div>
+                  <p className="paid-feedback-kicker">OPTIONAL ACCOUNT</p>
+                  <h3 id="account-save-title">Save your PencilProof access</h3>
+                  <p>Create a free account to access your Pass from other devices, retrieve saved audits, and manage your audit history for 30 days.</p>
+                </div>
+                <div className="account-save-actions">
+                  <Link className="button button-primary" href="/account">Create Account</Link>
+                  <button className="button button-quiet" type="button" onClick={() => setAccountPromptDismissed(true)}>Continue Without Account</button>
+                </div>
+              </section> : null}
               <section className="paid-feedback-card" aria-labelledby="paid-feedback-title">
                 <p className="paid-feedback-kicker">ONE-MINUTE BETA CHECK-IN</p>
                 <h3 id="paid-feedback-title">How did you like your Full Quote Audit?</h3>

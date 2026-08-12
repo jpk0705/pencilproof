@@ -6,6 +6,7 @@ import "@fontsource/manrope/600.css";
 import "@fontsource/manrope/700.css";
 import "@fontsource/manrope/800.css";
 import AnalyticsBoot from "@/app/components/AnalyticsBoot";
+import OptionalClerkProvider from "@/app/components/OptionalClerkProvider";
 
 const isGitHubPages = process.env.GITHUB_ACTIONS === "true";
 
@@ -33,8 +34,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased">
-        <AnalyticsBoot />
-        {children}
+        <OptionalClerkProvider>
+          <AnalyticsBoot />
+          {children}
+        </OptionalClerkProvider>
       </body>
     </html>
   );

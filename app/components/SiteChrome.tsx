@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CHECKOUT_URL } from "@/lib/checkout";
+import AccountNav from "@/app/components/AccountNav";
 
 export function SiteNav() {
   return (
@@ -9,6 +10,7 @@ export function SiteNav() {
         <span>PencilProof</span>
       </Link>
       <div className="nav-links">
+        {process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ? <AccountNav /> : null}
         <Link href="/who-it-helps">Who it helps</Link>
         <Link href="/how-it-works">How it works</Link>
         <Link href="/what-it-checks">What it checks</Link>
