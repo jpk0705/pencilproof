@@ -4,15 +4,8 @@ on:
   push:
     branches: ["main"]
     paths:
-      - "app/**"
-      - "lib/**"
-      - "public/**"
       - "worker/**"
-      - "next-env.d.ts"
-      - "next.config.ts"
-      - "postcss.config.mjs"
-      - "scripts/prepare-ocr-assets.mjs"
-      - "tsconfig.json"
+      - "lib/analytics.ts"
       - "wrangler.jsonc"
       - "package.json"
       - "package-lock.json"
@@ -47,6 +40,44 @@ jobs:
 
       - name: Build static assets
         run: npm run build
+
+      - name: Configure Clerk DNS records
+        if: contains(github.event.head_commit.message, 'Configure Clerk DNS records')
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node <<'NODE'
+          const token = process.env.CLOUDFLARE_API_TOKEN;
+          if (!token) throw new Error("CLOUDFLARE_API_TOKEN is not configured");
+          const headers = {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          };
+          const api = async (path, options = {}) => {
+            const response = await fetch(`https://api.cloudflare.com/client/v4${path}`, { ...options, headers: { ...headers, ...(options.headers ?? {}) } });
+            const body = await response.json();
+            if (!response.ok || !body.success) throw new Error(`${options.method ?? "GET"} ${path}: ${JSON.stringify(body.errors ?? body)}`);
+            return body.result;
+          };
+          const zones = await api("/zones?name=pencilproof.com&status=active&per_page=1");
+          const zone = zones[0];
+          if (!zone?.id) throw new Error("Active pencilproof.com zone was not found");
+          const records = [
+            ["clerk", "frontend-api.clerk.services"],
+            ["accounts", "accounts.clerk.services"],
+            ["clkmail", "mail.t2owczsm1ohg.clerk.services"],
+            ["clk._domainkey", "dkim1.t2owczsm1ohg.clerk.services"],
+            ["clk2._domainkey", "dkim2.t2owczsm1ohg.clerk.services"],
+          ];
+          for (const [name, content] of records) {
+            const fullName = `${name}.pencilproof.com`;
+            const existing = await api(`/zones/${zone.id}/dns_records?type=CNAME&name=${encodeURIComponent(fullName)}&per_page=1`);
+            const payload = { type: "CNAME", name: fullName, content, ttl: 300, proxied: false };
+            if (!existing[0]) await api(`/zones/${zone.id}/dns_records`, { method: "POST", body: JSON.stringify(payload) });
+            else if (existing[0].content !== content || existing[0].proxied) await api(`/zones/${zone.id}/dns_records/${existing[0].id}`, { method: "PUT", body: JSON.stringify(payload) });
+          }
+          console.log("Clerk DNS records configured idempotently");
+          NODE
 
       - name: Deploy Worker
         uses: cloudflare/wrangler-action@v3
