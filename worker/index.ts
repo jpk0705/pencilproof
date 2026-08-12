@@ -658,7 +658,7 @@ const htmlEscape = (value: string) => value.replace(/[&<>"']/g, (character) => (
 const marketingEmailContent = (
   candidate: MarketingCandidate,
   now: number,
-  env: Env,
+  _env: Env,
 ) => {
   const lastActivityAt = Math.max(candidate.lastScanAt ?? 0, candidate.lastCheckoutAt ?? 0);
   const hasRecentUnpaidActivity = lastActivityAt > (candidate.lastPurchaseAt ?? 0)
@@ -748,7 +748,7 @@ const runMarketingCampaign = async (env: Env, scheduledTime: number) => {
   const result = await accountCall(env, "/marketing-candidates", { now });
   const candidates = marketingCandidates(result?.candidates);
   for (const candidate of candidates) {
-    if (!candidate.userId || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,254}$/.test(candidate.email)) continue;
+    if (!candidate.userId || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(candidate.email)) continue;
     const claim = await accountCall(env, "/marketing-delivery", {
       action: "claim",
       campaignKey,
@@ -828,6 +828,14 @@ const handleAccount = async (request: Request, env: Env) => {
       return withAccountCors(Response.json({ error: "marketing_unavailable" }, { status: 503, headers: noStoreHeaders }), request, env);
     }
     return withAccountCors(Response.json({ optedIn: true }, { headers: noStoreHeaders }), request, env);
+  }
+  if (url.pathname === "/api/account/marketing/activity" && request.method === "POST") {
+    const body = await request.json().catch(() => ({})) as { event?: string };
+    if (body.event !== "scan_ready" && body.event !== "checkout_started" && body.event !== "purchase_completed") {
+      return withAccountCors(Response.json({ error: "invalid_marketing_activity" }, { status: 400, headers: noStoreHeaders }), request, env);
+    }
+    await recordMarketingActivity(env, userId, body.event);
+    return withAccountCors(Response.json({ recorded: true }, { headers: noStoreHeaders }), request, env);
   }
   const ownerId = accountOwner(userId, null);
   if (url.pathname === "/api/account/me" && request.method === "GET") {
@@ -2447,6 +2455,7 @@ export const handleRequest = async (request: Request, env: Env) => {
     || url.pathname === "/api/account/me"
     || url.pathname === "/api/account/audits"
     || url.pathname === "/api/account/marketing"
+    || url.pathname === "/api/account/marketing/activity"
     || url.pathname === "/api/account/delete"
   ) {
     return handleAccount(request, env);
