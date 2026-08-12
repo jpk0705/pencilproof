@@ -14,6 +14,8 @@ export default function AccountPage() {
   const [audits, setAudits] = useState<Audit[]>([]);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const [message, setMessage] = useState("");
+  const [marketingOptedIn, setMarketingOptedIn] = useState(false);
+  const [marketingMessage, setMarketingMessage] = useState("");
 
   useEffect(() => {
     if (!configured) return;
@@ -47,9 +49,10 @@ export default function AccountPage() {
       }
       const response = await fetch("/api/account/me", { cache: "no-store" });
       if (!response.ok) return;
-      const data = await response.json() as { audits?: Audit[]; expiresAt?: number | null };
+      const data = await response.json() as { audits?: Audit[]; expiresAt?: number | null; marketingOptedIn?: boolean };
       setAudits(data.audits ?? []);
       setExpiresAt(data.expiresAt ?? null);
+      setMarketingOptedIn(data.marketingOptedIn === true);
     })();
   }, [clerk]);
 
@@ -70,6 +73,27 @@ export default function AccountPage() {
   }
 
   const days = expiresAt ? Math.max(0, Math.ceil((expiresAt * 1000 - Date.now()) / 86400000)) : 0;
+  const updateMarketingPreference = async () => {
+    setMarketingMessage("");
+    const optIn = !marketingOptedIn;
+    const emailAddress = clerk.user?.primaryEmailAddress;
+    const email = emailAddress?.emailAddress.trim().toLowerCase() ?? "";
+    if (optIn && (emailAddress?.verification?.status !== "verified" || !email)) {
+      setMarketingMessage("Verify your account email before joining the PencilProof email list.");
+      return;
+    }
+    const response = await fetch("/api/account/marketing", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(optIn ? { email, optIn: true } : { optIn: false }),
+    });
+    if (!response.ok) {
+      setMarketingMessage("We could not update your email preference. Please try again.");
+      return;
+    }
+    setMarketingOptedIn(optIn);
+  };
+
   const deleteAudit = async (id: string) => {
     await fetch("/api/account/audits", {
       method: "DELETE",
@@ -85,5 +109,5 @@ export default function AccountPage() {
     setMessage("Your account and saved PencilProof data were deleted.");
   };
 
-  return <main className="account-page shell"><header className="account-header"><div><p className="kicker">YOUR PENCILPROOF</p><h1>My Audits</h1></div><button className="nav-account-button" type="button" onClick={() => clerk.signOut()}>Sign out</button></header><section className="pass-card"><p className="kicker">PENCILPROOF 30-DAY PASS</p><h2>{days ? `${days} days remaining` : "Your 30-Day Pass has ended."}</h2><p>{days ? "Unlimited personal-use audits remain available during your pass." : "Your saved audits remain available until their individual expiration dates."}</p><Link className="button button-primary" href="/analyze">Audit another quote</Link></section><section><h2>Saved audits</h2>{audits.length ? audits.map((audit) => <article className="saved-audit" key={audit.id}><div><strong>{String(audit.data.vehicle ?? "PencilProof audit")}</strong><p>Audited {new Date(audit.createdAt * 1000).toLocaleDateString()} · available until {new Date(audit.expiresAt * 1000).toLocaleDateString()}</p></div><button type="button" onClick={() => deleteAudit(audit.id)}>Delete audit</button></article>) : <p>No saved audits yet. Your next completed audit will appear here.</p>}</section><button className="account-delete" type="button" onClick={deleteAccount}>Delete my account and data</button>{message ? <p role="status">{message}</p> : null}</main>;
+  return <main className="account-page shell"><header className="account-header"><div><p className="kicker">YOUR PENCILPROOF</p><h1>My Audits</h1></div><button className="nav-account-button" type="button" onClick={() => clerk.signOut()}>Sign out</button></header><section className="pass-card"><p className="kicker">PENCILPROOF 30-DAY PASS</p><h2>{days ? `${days} days remaining` : "Your 30-Day Pass has ended."}</h2><p>{days ? "Unlimited personal-use audits remain available during your pass." : "Your saved audits remain available until their individual expiration dates."}</p><Link className="button button-primary" href="/analyze">Audit another quote</Link></section><section className="marketing-preferences"><h2>Email preferences</h2><p>Receive optional PencilProof reminders, promotions, and useful car-buying information. You can change this preference anytime.</p><button className="button button-quiet" type="button" onClick={() => void updateMarketingPreference()}>{marketingOptedIn ? "Stop marketing emails" : "Join the PencilProof email list"}</button>{marketingMessage ? <p role="status">{marketingMessage}</p> : null}</section><section><h2>Saved audits</h2>{audits.length ? audits.map((audit) => <article className="saved-audit" key={audit.id}><div><strong>{String(audit.data.vehicle ?? "PencilProof audit")}</strong><p>Audited {new Date(audit.createdAt * 1000).toLocaleDateString()} · available until {new Date(audit.expiresAt * 1000).toLocaleDateString()}</p></div><button type="button" onClick={() => deleteAudit(audit.id)}>Delete audit</button></article>) : <p>No saved audits yet. Your next completed audit will appear here.</p>}</section><button className="account-delete" type="button" onClick={deleteAccount}>Delete my account and data</button>{message ? <p role="status">{message}</p> : null}</main>;
 }
