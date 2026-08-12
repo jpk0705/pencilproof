@@ -126,6 +126,12 @@ export class AccountStore {
     this.sql.exec(`DELETE FROM marketing_preferences WHERE user_id = ?`, userId);
     this.sql.exec(`INSERT INTO marketing_preferences VALUES (?, ?, ?, ?)`, userId, email, now, now);
   }
+  marketingOptedIn(userId: string) {
+    return this.sql.exec<{ user_id: string }>(`SELECT user_id FROM marketing_preferences WHERE user_id = ?`, userId).toArray().length > 0;
+  }
+  clearMarketingOptIn(userId: string) {
+    this.sql.exec(`DELETE FROM marketing_preferences WHERE user_id = ?`, userId);
+  }
   deleteUser(userId: string) { this.sql.exec(`DELETE FROM audits WHERE owner_id = ?`, `user:${userId}`); this.sql.exec(`DELETE FROM entitlements WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM marketing_preferences WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM users WHERE id = ?`, userId); }
   async fetch(request: Request) {
     if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
@@ -147,8 +153,14 @@ export class AccountStore {
     if (path === "/access") return json({ expiresAt: this.hasAccess(typeof body.userId === "string" ? body.userId : null, typeof body.guestId === "string" ? body.guestId : null) });
     if (path === "/marketing") {
       const userId = typeof body.userId === "string" ? body.userId : "";
+      if (!/^[A-Za-z0-9_:-]{8,200}$/.test(userId)) return json({ error: "invalid_marketing_preference" }, 400);
+      if (body.action === "status") return json({ optedIn: this.marketingOptedIn(userId) });
+      if (body.optIn === false) {
+        this.clearMarketingOptIn(userId);
+        return json({ optedIn: false });
+      }
       const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-      if (!/^[A-Za-z0-9_:-]{8,200}$/.test(userId) || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(email) || email.length > 254) return json({ error: "invalid_marketing_preference" }, 400);
+      if (body.optIn !== true || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(email) || email.length > 254) return json({ error: "invalid_marketing_preference" }, 400);
       this.setMarketingOptIn(userId, email); return json({ optedIn: true });
     }
     if (path === "/audits") {
