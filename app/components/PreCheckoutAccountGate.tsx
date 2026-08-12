@@ -127,7 +127,7 @@ export default function PreCheckoutAccountGate({ onContinue }: Props) {
         ) : null}
         <label className="pre-checkout-consent">
           <input type="checkbox" checked={marketingOptIn} onChange={(event) => setMarketingOptIn(event.target.checked)} disabled={busy} />
-          <span>Optional: email me PencilProof reminders, promotions, and useful car-buying information. Unsubscribe anytime.</span>
+          <span>Optional: email me PencilProof reminders, promotions, and useful car-buying information. Change this preference later from My Audits.</span>
         </label>
         {clerkError || !configured ? (
           <p className="pre-checkout-message">Account setup is temporarily unavailable. You can continue securely as a guest.</p>
