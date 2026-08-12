@@ -657,7 +657,7 @@ const handleAccount = async (request: Request, env: Env) => {
   if (url.pathname === "/api/account/marketing" && request.method === "POST") {
     const body = await request.json().catch(() => ({})) as { email?: string; optIn?: boolean };
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-    if (body.optIn !== true || email.length > 254 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,254}$/.test(email)) {
+    if (body.optIn !== true || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(email)) {
       return withAccountCors(Response.json({ error: "invalid_marketing_preference" }, { status: 400, headers: noStoreHeaders }), request, env);
     }
     const result = await accountCall(env, "/marketing", { userId, email });
