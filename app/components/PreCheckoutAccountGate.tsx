@@ -113,18 +113,13 @@ export default function PreCheckoutAccountGate({ onContinue }: Props) {
             {busy ? "Preparing checkout…" : "Continue to secure checkout"}
           </button>
         ) : (
-          <button className="button button-primary" type="button" onClick={() => clerk?.openSignUp({})} disabled={busy || !configured || clerkError}>
-            Create free account
+          <button className="button button-primary" type="button" onClick={() => clerk?.openSignIn({})} disabled={busy || !configured || clerkError}>
+            Sign in
           </button>
         )}
         <button className="button button-quiet" type="button" onClick={continueAsGuest} disabled={busy}>
           Continue as guest
         </button>
-        {!accountReady && clerk ? (
-          <button className="pre-checkout-signin" type="button" onClick={() => clerk.openSignIn({})} disabled={busy}>
-            Already have an account? Sign in
-          </button>
-        ) : null}
         <label className="pre-checkout-consent">
           <input type="checkbox" checked={marketingOptIn} onChange={(event) => setMarketingOptIn(event.target.checked)} disabled={busy} />
           <span>Optional: email me PencilProof reminders, promotions, and useful car-buying information. Change this preference later from My Audits.</span>
