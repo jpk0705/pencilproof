@@ -25,6 +25,7 @@ import {
 import { track } from "@/lib/analytics";
 import VehiclePhoto from "@/app/components/VehiclePhoto";
 import PhoneCameraBridge from "@/app/components/PhoneCameraBridge";
+import PreCheckoutAccountGate from "@/app/components/PreCheckoutAccountGate";
 
 type Deal = {
   vehicle: string;
@@ -218,6 +219,7 @@ export default function AnalyzePage() {
   const [auditFeedbackSent, setAuditFeedbackSent] = useState(false);
   const savedAuditKey = useRef("");
   const [accountPromptDismissed, setAccountPromptDismissed] = useState(false);
+  const [pendingCheckout, setPendingCheckout] = useState<unknown | null>(null);
 
   useEffect(() => {
     setIsPaidAuditHost(window.location.hostname.toLowerCase() === "audit.pencilproof.com");
@@ -311,10 +313,21 @@ export default function AnalyzePage() {
     };
   }, [deal]);
 
-  const openCheckout = (payload: unknown) => {
+  const startCheckout = (payload: unknown) => {
     track({ event: "checkout_started" });
     window.name = createQuoteHandoffEnvelope(payload);
     window.location.assign(CHECKOUT_URL);
+  };
+
+  const openCheckout = (payload: unknown) => {
+    setPendingCheckout(payload);
+  };
+
+  const continueCheckout = () => {
+    if (pendingCheckout === null) return;
+    const payload = pendingCheckout;
+    setPendingCheckout(null);
+    startCheckout(payload);
   };
 
   const importDealFile = async (file: File) => {
@@ -828,13 +841,15 @@ export default function AnalyzePage() {
         <span className="privacy-chip">Your deal inputs stay in this browser · <a href="mailto:support@pencilproof.com">Contact support</a></span>
       </nav>
 
+      {pendingCheckout !== null ? <PreCheckoutAccountGate onContinue={continueCheckout} /> : null}
+
       <header className="analyzer-header shell">
         <div>
           <p className="kicker">{isPaidAuditHost ? "PRIVACY-FIRST FULL QUOTE AUDIT FOR CAR BUYERS" : "FREE QUOTE SCAN FOR CAR BUYERS"}</p>
           <h1>Review the quote before you sign.</h1>
           <p>{isPaidAuditHost
             ? "Upload the dealer's quote or enter the figures yourself. Then test the down payment, term, desired APR, trade, and optional products while the dealership works on its official revision."
-            : "Upload the dealer's quote or enter the figures yourself. Confirm what PencilProof found, then continue to secure checkout. The complete audit opens only after payment."}</p>
+            : "Upload the dealer's quote or enter the figures yourself. Confirm what PencilProof found, choose an optional account or continue as a guest, then continue to secure checkout. The complete audit opens only after payment."}</p>
           <p className="analyzer-founder">Built by an automotive professional with experience as a salesperson, sales manager, and finance manager.</p>
         </div>
         {isPaidAuditHost ? (
@@ -934,7 +949,7 @@ export default function AnalyzePage() {
               <div>
                 <p className="eyebrow">REQUIRED CHECK</p>
                 <h3 id="import-verification-title">Confirm the imported values</h3>
-                <p>PencilProof found a draft, not a guaranteed transcription. Compare each value with the document and correct anything marked “Needs review.” {isPaidAuditHost ? "After confirmation, the audit will use these figures." : "After confirmation, secure checkout opens; the full audit remains locked until payment."}</p>
+                <p>PencilProof found a draft, not a guaranteed transcription. Compare each value with the document and correct anything marked “Needs review.” {isPaidAuditHost ? "After confirmation, the audit will use these figures." : "After confirmation, you can create an account or continue as a guest before secure checkout; the full audit remains locked until payment."}</p>
               </div>
               <div className="verification-legend" aria-label="Confidence legend">
                 <span className="confidence-high">High confidence</span>
