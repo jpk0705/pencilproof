@@ -85,6 +85,7 @@ export class AccountStore {
     this.sql.exec(`CREATE INDEX IF NOT EXISTS entitlements_owner ON entitlements(user_id, guest_id, status)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS audits (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, data TEXT NOT NULL)`);
     this.sql.exec(`CREATE INDEX IF NOT EXISTS audits_owner ON audits(owner_id, expires_at)`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS marketing_preferences (user_id TEXT PRIMARY KEY, email TEXT NOT NULL, opted_in_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`);
   }
   private purge() { this.sql.exec(`DELETE FROM audits WHERE expires_at <= ?`, isoNow()); }
   user(providerSubject: string) {
@@ -120,7 +121,12 @@ export class AccountStore {
   audits(ownerId: string) { this.purge(); return this.sql.exec<{ id: string; created_at: number; expires_at: number; data: string }>(`SELECT id, created_at, expires_at, data FROM audits WHERE owner_id = ? ORDER BY created_at DESC`, ownerId).toArray().map((row) => ({ id: row.id, ownerId, createdAt: row.created_at, expiresAt: row.expires_at, data: JSON.parse(row.data) })); }
   saveAudit(ownerId: string, data: Record<string, unknown>) { this.purge(); const now = isoNow(); const id = crypto.randomUUID(); this.sql.exec(`INSERT INTO audits VALUES (?, ?, ?, ?, ?)`, id, ownerId, now, now + 60 * 60 * 24 * 30, JSON.stringify(data)); return id; }
   deleteAudit(ownerId: string, id: string) { this.sql.exec(`DELETE FROM audits WHERE id = ? AND owner_id = ?`, id, ownerId); }
-  deleteUser(userId: string) { this.sql.exec(`DELETE FROM audits WHERE owner_id = ?`, `user:${userId}`); this.sql.exec(`DELETE FROM entitlements WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM users WHERE id = ?`, userId); }
+  setMarketingOptIn(userId: string, email: string) {
+    const now = isoNow();
+    this.sql.exec(`DELETE FROM marketing_preferences WHERE user_id = ?`, userId);
+    this.sql.exec(`INSERT INTO marketing_preferences VALUES (?, ?, ?, ?)`, userId, email, now, now);
+  }
+  deleteUser(userId: string) { this.sql.exec(`DELETE FROM audits WHERE owner_id = ?`, `user:${userId}`); this.sql.exec(`DELETE FROM entitlements WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM marketing_preferences WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM users WHERE id = ?`, userId); }
   async fetch(request: Request) {
     if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
     const path = new URL(request.url).pathname;
@@ -139,6 +145,12 @@ export class AccountStore {
       return json({ stored: true });
     }
     if (path === "/access") return json({ expiresAt: this.hasAccess(typeof body.userId === "string" ? body.userId : null, typeof body.guestId === "string" ? body.guestId : null) });
+    if (path === "/marketing") {
+      const userId = typeof body.userId === "string" ? body.userId : "";
+      const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+      if (!/^[A-Za-z0-9_:-]{8,200}$/.test(userId) || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,254}$/.test(email) || email.length > 254) return json({ error: "invalid_marketing_preference" }, 400);
+      this.setMarketingOptIn(userId, email); return json({ optedIn: true });
+    }
     if (path === "/audits") {
       const ownerId = typeof body.ownerId === "string" ? body.ownerId : "";
       if (!ownerId) return json({ error: "invalid_owner" }, 400);
