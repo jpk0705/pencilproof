@@ -1578,3 +1578,16 @@ h1 { font-weight: 700; letter-spacing: -.055em; }
 }
 .account-page{max-width:900px;margin:0 auto;padding-top:48px;padding-bottom:80px}.account-header{display:flex;justify-content:space-between;align-items:center;gap:20px}.account-page h1{margin:0}.account-page h2{margin-top:0}.pass-card{margin:28px 0 42px;padding:26px;border:1px solid #d9d6ca;border-radius:18px;background:#fff}.account-actions{display:flex;flex-wrap:wrap;gap:12px;margin:24px 0}.account-guest-note{color:#687589}.saved-audit{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 0;border-bottom:1px solid #e5e2d9}.saved-audit p{margin:6px 0 0;color:#687589;font-size:14px}.saved-audit button,.account-delete{border:0;background:transparent;color:#8b3b30;text-decoration:underline;cursor:pointer;font:inherit}.account-delete{margin-top:46px}.nav-account-button{border:0;background:transparent;color:inherit;cursor:pointer;font:inherit;padding:0}@media(max-width:600px){.saved-audit{align-items:flex-start;flex-direction:column}.account-header{align-items:flex-start}}
 .account-save-prompt{display:flex;justify-content:space-between;align-items:center;gap:22px;margin:24px 0;padding:22px;border:1px solid #d8d5cb;border-radius:16px;background:#fbfaf6}.account-save-prompt h3{margin:3px 0 8px}.account-save-prompt p:not(.paid-feedback-kicker){margin:0;color:#687589;max-width:650px}.account-save-actions{display:flex;flex-wrap:wrap;gap:10px;flex-shrink:0}@media(max-width:700px){.account-save-prompt{display:block}.account-save-actions{margin-top:16px}}
+
+.pre-checkout-account-gate{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(280px,.9fr);align-items:center;gap:28px;margin-top:24px;padding:26px 28px;border:1px solid #cfc9bc;border-radius:16px;background:#fffdf8;box-shadow:0 12px 28px rgba(11,28,37,.08)}
+.pre-checkout-account-copy h2{margin:4px 0 9px;font-family:Georgia,serif;font-size:28px;font-weight:500}
+.pre-checkout-account-copy p:not(.kicker){max-width:650px;margin:0;color:var(--muted);font-size:13px;line-height:1.55}
+.pre-checkout-account-copy .pre-checkout-privacy{margin-top:10px;color:#7b888e;font-size:11px}
+.pre-checkout-account-actions{display:grid;gap:10px}
+.pre-checkout-account-actions .button{width:100%;min-height:46px}
+.pre-checkout-signin{justify-self:center;border:0;background:transparent;color:var(--green);cursor:pointer;font:600 11px/1.4 Manrope,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;text-decoration:underline;text-underline-offset:3px}
+.pre-checkout-signin:disabled{cursor:not-allowed;opacity:.55}
+.pre-checkout-consent{display:flex;align-items:flex-start;gap:9px;margin-top:5px;color:#5f6e75;font-size:11px;line-height:1.45}
+.pre-checkout-consent input{width:16px;height:16px;flex:0 0 16px;margin-top:1px;accent-color:var(--green)}
+.pre-checkout-message{margin:0;color:#8b3b30;font-size:11px;line-height:1.45}
+@media(max-width:760px){.pre-checkout-account-gate{grid-template-columns:1fr;margin-top:18px;padding:22px}.pre-checkout-account-copy h2{font-size:25px}}
