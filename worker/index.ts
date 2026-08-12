@@ -928,7 +928,9 @@ const revokeOrder = async (
       method: "POST",
     }),
   );
-  return response.ok;
+  if (!response.ok) return false;
+  await accountCall(env, "/revoke", { stripeSessionId: revocation.sessionId });
+  return true;
 };
 
 export class OrderStore {

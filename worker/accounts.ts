@@ -116,6 +116,7 @@ export class AccountStore {
     const row = this.sql.exec<{ expires_at: number }>(`SELECT MAX(expires_at) AS expires_at FROM entitlements WHERE (user_id = ? OR guest_id = ?) AND status = 'active'`, userId, guestId).toArray()[0];
     return row?.expires_at && row.expires_at > isoNow() ? row.expires_at : null;
   }
+  revoke(stripeSessionId: string) { this.sql.exec(`UPDATE entitlements SET status = 'revoked' WHERE stripe_session_id = ?`, stripeSessionId); }
   audits(ownerId: string) { this.purge(); return this.sql.exec<{ id: string; created_at: number; expires_at: number; data: string }>(`SELECT id, created_at, expires_at, data FROM audits WHERE owner_id = ? ORDER BY created_at DESC`, ownerId).toArray().map((row) => ({ id: row.id, ownerId, createdAt: row.created_at, expiresAt: row.expires_at, data: JSON.parse(row.data) })); }
   saveAudit(ownerId: string, data: Record<string, unknown>) { this.purge(); const now = isoNow(); const id = crypto.randomUUID(); this.sql.exec(`INSERT INTO audits VALUES (?, ?, ?, ?, ?)`, id, ownerId, now, now + 60 * 60 * 24 * 30, JSON.stringify(data)); return id; }
   deleteAudit(ownerId: string, id: string) { this.sql.exec(`DELETE FROM audits WHERE id = ? AND owner_id = ?`, id, ownerId); }
@@ -147,6 +148,7 @@ export class AccountStore {
       return json({ error: "invalid_audit_action" }, 400);
     }
     if (path === "/delete-user" && typeof body.userId === "string") { this.deleteUser(body.userId); return json({ deleted: true }); }
+    if (path === "/revoke" && typeof body.stripeSessionId === "string") { this.revoke(body.stripeSessionId); return json({ revoked: true }); }
     return new Response("Not found", { status: 404 });
   }
 }
