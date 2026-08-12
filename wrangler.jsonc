@@ -28,7 +28,9 @@
     "ACCESS_MAX_AGE_SECONDS": "2592000",
     "PUBLIC_SITE_ORIGIN": "https://pencilproof.com",
     "SITE_ORIGIN": "https://audit.pencilproof.com",
-    "STRIPE_PRICE_ID": "price_1Tu1GEEopq0gcXsNeXF2QMry"
+    "STRIPE_PRICE_ID": "price_1Tu1GEEopq0gcXsNeXF2QMry",
+    "CLERK_ISSUER": "https://clerk.pencilproof.com",
+    "CLERK_JWKS_URL": "https://clerk.pencilproof.com/.well-known/jwks.json"
   },
   "durable_objects": {
     "bindings": [

@@ -37,6 +37,8 @@ jobs:
         run: npm ci
 
       - name: Build static site
+        env:
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_live_Y2xlcmsucGVuY2lscHJvb2YuY29tJA
         run: npm run build
 
       - name: Upload Pages artifact
