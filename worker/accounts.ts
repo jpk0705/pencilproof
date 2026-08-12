@@ -86,6 +86,9 @@ export class AccountStore {
     this.sql.exec(`CREATE TABLE IF NOT EXISTS audits (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, data TEXT NOT NULL)`);
     this.sql.exec(`CREATE INDEX IF NOT EXISTS audits_owner ON audits(owner_id, expires_at)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS marketing_preferences (user_id TEXT PRIMARY KEY, email TEXT NOT NULL, opted_in_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS marketing_activity (user_id TEXT PRIMARY KEY, last_scan_at INTEGER, last_checkout_at INTEGER, last_purchase_at INTEGER)`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS marketing_deliveries (user_id TEXT NOT NULL, campaign_key TEXT NOT NULL, claimed_at INTEGER NOT NULL, sent_at INTEGER, PRIMARY KEY (user_id, campaign_key))`);
+    this.sql.exec(`CREATE INDEX IF NOT EXISTS marketing_deliveries_user ON marketing_deliveries(user_id, sent_at)`);
   }
   private purge() { this.sql.exec(`DELETE FROM audits WHERE expires_at <= ?`, isoNow()); }
   user(providerSubject: string) {
@@ -123,16 +126,77 @@ export class AccountStore {
   deleteAudit(ownerId: string, id: string) { this.sql.exec(`DELETE FROM audits WHERE id = ? AND owner_id = ?`, id, ownerId); }
   setMarketingOptIn(userId: string, email: string) {
     const now = isoNow();
-    this.sql.exec(`DELETE FROM marketing_preferences WHERE user_id = ?`, userId);
-    this.sql.exec(`INSERT INTO marketing_preferences VALUES (?, ?, ?, ?)`, userId, email, now, now);
+    this.sql.exec(`INSERT OR IGNORE INTO marketing_preferences (user_id, email, opted_in_at, updated_at) VALUES (?, ?, ?, ?)`, userId, email, now, now);
+    this.sql.exec(`UPDATE marketing_preferences SET email = ?, updated_at = ? WHERE user_id = ?`, email, now, userId);
   }
   marketingOptedIn(userId: string) {
     return this.sql.exec<{ user_id: string }>(`SELECT user_id FROM marketing_preferences WHERE user_id = ?`, userId).toArray().length > 0;
   }
   clearMarketingOptIn(userId: string) {
     this.sql.exec(`DELETE FROM marketing_preferences WHERE user_id = ?`, userId);
+    this.sql.exec(`DELETE FROM marketing_activity WHERE user_id = ?`, userId);
+    this.sql.exec(`DELETE FROM marketing_deliveries WHERE user_id = ?`, userId);
   }
-  deleteUser(userId: string) { this.sql.exec(`DELETE FROM audits WHERE owner_id = ?`, `user:${userId}`); this.sql.exec(`DELETE FROM entitlements WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM marketing_preferences WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM users WHERE id = ?`, userId); }
+  marketingActivity(userId: string, event: "scan_ready" | "checkout_started" | "purchase_completed") {
+    if (!this.marketingOptedIn(userId)) return;
+    const now = isoNow();
+    this.sql.exec(`INSERT OR IGNORE INTO marketing_activity (user_id) VALUES (?)`, userId);
+    const column = event === "scan_ready"
+      ? "last_scan_at"
+      : event === "checkout_started"
+        ? "last_checkout_at"
+        : "last_purchase_at";
+    this.sql.exec(`UPDATE marketing_activity SET ${column} = ? WHERE user_id = ?`, now, userId);
+  }
+  marketingCandidates(now: number) {
+    this.sql.exec(`DELETE FROM marketing_deliveries WHERE sent_at IS NOT NULL AND sent_at <= ?`, now - 60 * 60 * 24 * 400);
+    return this.sql.exec<{
+      user_id: string;
+      email: string;
+      last_scan_at: number | null;
+      last_checkout_at: number | null;
+      last_purchase_at: number | null;
+      last_sent_at: number | null;
+      pass_expires_at: number | null;
+    }>(`
+      SELECT
+        preferences.user_id,
+        preferences.email,
+        activity.last_scan_at,
+        activity.last_checkout_at,
+        activity.last_purchase_at,
+        MAX(deliveries.sent_at) AS last_sent_at,
+        MAX(entitlements.expires_at) AS pass_expires_at
+      FROM marketing_preferences AS preferences
+      LEFT JOIN marketing_activity AS activity ON activity.user_id = preferences.user_id
+      LEFT JOIN marketing_deliveries AS deliveries ON deliveries.user_id = preferences.user_id AND deliveries.sent_at IS NOT NULL
+      LEFT JOIN entitlements ON entitlements.user_id = preferences.user_id AND entitlements.status = 'active'
+      GROUP BY preferences.user_id, preferences.email, activity.last_scan_at, activity.last_checkout_at, activity.last_purchase_at
+      HAVING MAX(deliveries.sent_at) IS NULL OR MAX(deliveries.sent_at) <= ?
+      ORDER BY COALESCE(MAX(deliveries.sent_at), 0) ASC
+      LIMIT 500
+    `, now - 60 * 60 * 24 * 3).toArray().map((row) => ({
+      email: row.email,
+      lastCheckoutAt: row.last_checkout_at,
+      lastPurchaseAt: row.last_purchase_at,
+      lastScanAt: row.last_scan_at,
+      lastSentAt: row.last_sent_at,
+      passExpiresAt: row.pass_expires_at,
+      userId: row.user_id,
+    }));
+  }
+  claimMarketingDelivery(userId: string, campaignKey: string) {
+    this.sql.exec(`INSERT OR IGNORE INTO marketing_deliveries (user_id, campaign_key, claimed_at, sent_at) VALUES (?, ?, ?, NULL)`, userId, campaignKey, isoNow());
+    return this.sql.exec<{ count: number }>(`SELECT changes() AS count`).toArray()[0]?.count === 1;
+  }
+  completeMarketingDelivery(userId: string, campaignKey: string) {
+    const now = isoNow();
+    this.sql.exec(`UPDATE marketing_deliveries SET sent_at = ? WHERE user_id = ? AND campaign_key = ? AND sent_at IS NULL`, now, userId, campaignKey);
+  }
+  releaseMarketingDelivery(userId: string, campaignKey: string) {
+    this.sql.exec(`DELETE FROM marketing_deliveries WHERE user_id = ? AND campaign_key = ? AND sent_at IS NULL`, userId, campaignKey);
+  }
+  deleteUser(userId: string) { this.sql.exec(`DELETE FROM audits WHERE owner_id = ?`, `user:${userId}`); this.sql.exec(`DELETE FROM entitlements WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM marketing_preferences WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM marketing_activity WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM marketing_deliveries WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM users WHERE id = ?`, userId); }
   async fetch(request: Request) {
     if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
     const path = new URL(request.url).pathname;
@@ -162,6 +226,26 @@ export class AccountStore {
       const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
       if (body.optIn !== true || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(email) || email.length > 254) return json({ error: "invalid_marketing_preference" }, 400);
       this.setMarketingOptIn(userId, email); return json({ optedIn: true });
+    }
+    if (path === "/marketing-activity") {
+      const userId = typeof body.userId === "string" ? body.userId : "";
+      const event = body.event;
+      if (!/^[A-Za-z0-9_:-]{8,200}$/.test(userId) || (event !== "scan_ready" && event !== "checkout_started" && event !== "purchase_completed")) return json({ error: "invalid_marketing_activity" }, 400);
+      this.marketingActivity(userId, event); return json({ recorded: true });
+    }
+    if (path === "/marketing-candidates") {
+      const now = typeof body.now === "number" && Number.isFinite(body.now) ? Math.floor(body.now) : isoNow();
+      return json({ candidates: this.marketingCandidates(now) });
+    }
+    if (path === "/marketing-delivery") {
+      const userId = typeof body.userId === "string" ? body.userId : "";
+      const campaignKey = typeof body.campaignKey === "string" ? body.campaignKey : "";
+      const action = body.action;
+      if (!/^[A-Za-z0-9_:-]{8,200}$/.test(userId) || !/^[A-Za-z0-9_:-]{1,100}$/.test(campaignKey)) return json({ error: "invalid_marketing_delivery" }, 400);
+      if (action === "claim") return json({ claimed: this.claimMarketingDelivery(userId, campaignKey) });
+      if (action === "complete") { this.completeMarketingDelivery(userId, campaignKey); return json({ completed: true }); }
+      if (action === "release") { this.releaseMarketingDelivery(userId, campaignKey); return json({ released: true }); }
+      return json({ error: "invalid_marketing_delivery_action" }, 400);
     }
     if (path === "/audits") {
       const ownerId = typeof body.ownerId === "string" ? body.ownerId : "";
