@@ -148,7 +148,7 @@ export class AccountStore {
     if (path === "/marketing") {
       const userId = typeof body.userId === "string" ? body.userId : "";
       const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-      if (!/^[A-Za-z0-9_:-]{8,200}$/.test(userId) || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,254}$/.test(email) || email.length > 254) return json({ error: "invalid_marketing_preference" }, 400);
+      if (!/^[A-Za-z0-9_:-]{8,200}$/.test(userId) || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(email) || email.length > 254) return json({ error: "invalid_marketing_preference" }, 400);
       this.setMarketingOptIn(userId, email); return json({ optedIn: true });
     }
     if (path === "/audits") {
