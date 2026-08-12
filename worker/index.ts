@@ -658,7 +658,6 @@ const htmlEscape = (value: string) => value.replace(/[&<>"']/g, (character) => (
 const marketingEmailContent = (
   candidate: MarketingCandidate,
   now: number,
-  _env: Env,
 ) => {
   const lastActivityAt = Math.max(candidate.lastScanAt ?? 0, candidate.lastCheckoutAt ?? 0);
   const hasRecentUnpaidActivity = lastActivityAt > (candidate.lastPurchaseAt ?? 0)
@@ -755,7 +754,7 @@ const runMarketingCampaign = async (env: Env, scheduledTime: number) => {
       userId: candidate.userId,
     });
     if (claim?.claimed !== true) continue;
-    const content = marketingEmailContent(candidate, now, env);
+    const content = marketingEmailContent(candidate, now);
     const sent = await sendMarketingEmail(candidate, content, env);
     await accountCall(env, "/marketing-delivery", {
       action: sent ? "complete" : "release",
