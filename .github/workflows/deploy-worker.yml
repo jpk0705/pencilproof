@@ -8,6 +8,7 @@ on:
       - "app/components/AccountNav.tsx"
       - "app/components/PhoneCameraBridge.tsx"
       - "app/components/PreCheckoutAccountGate.tsx"
+      - "app/globals.css"
       - "lib/clerk-client.ts"
       - "worker/**"
       - "lib/analytics.ts"

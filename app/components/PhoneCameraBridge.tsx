@@ -133,7 +133,7 @@ export default function PhoneCameraBridge({ disabled = false, buttonLabel = "Sca
         <div className="phone-camera-panel" role="dialog" aria-modal="true" aria-labelledby="phone-camera-title">
           <div className="phone-camera-panel-head">
             <div><p className="eyebrow">DESKTOP CAMERA BRIDGE</p><h3 id="phone-camera-title">Scan the quote with your phone</h3></div>
-            <button className="phone-camera-close" type="button" onClick={close} aria-label="Close phone camera panel">Close</button>
+            <button className="phone-camera-close" type="button" onClick={close} aria-label="Close phone camera panel" title="Close">×</button>
           </div>
           {status === "creating" ? <div className="phone-camera-loading" role="status">{message}</div> : null}
           {qrDataUrl ? (
