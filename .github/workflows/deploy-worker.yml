@@ -9,6 +9,8 @@ on:
       - "app/components/PhoneCameraBridge.tsx"
       - "app/components/PreCheckoutAccountGate.tsx"
       - "app/globals.css"
+      - "lib/vehicle-image.ts"
+      - "lib/vehicle-fuel-economy.ts"
       - "lib/clerk-client.ts"
       - "worker/**"
       - "lib/analytics.ts"

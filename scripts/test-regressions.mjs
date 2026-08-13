@@ -643,6 +643,17 @@ assert.deepEqual(outlanderIdentity, {
   displayName: "2025 Mitsubishi Outlander",
 });
 
+const blackwingIdentity = parseVehicleIdentity(
+  "2024 Cadillac CT5 V-Series Blackwing Sedan 4D",
+);
+assert.deepEqual(blackwingIdentity, {
+  year: "2024",
+  make: "Cadillac",
+  model: "CT5",
+  trim: "V-Series Blackwing",
+  displayName: "2024 Cadillac CT5",
+});
+
 const commonsImage = selectBestVehicleImage(
   [
     {

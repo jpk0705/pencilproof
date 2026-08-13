@@ -258,28 +258,36 @@ export const parseVehicleIdentity = (
   const afterMake = normalize(cleaned.slice(makeMatch.index + makeMatch[0].length));
   if (!afterMake) return null;
 
-  const modelTokens: string[] = [];
   let trim: string | undefined;
-  for (const token of afterMake.split(" ")) {
-    const normalizedToken = token.toLowerCase().replace(/[(),]/g, "");
-    if (
-      modelTokens.length > 0 &&
-      (trimAndDetailTokens.has(normalizedToken) ||
-        /^(?:[248]dr|automatic|manual|electric|diesel|gas|phev|hev)$/i.test(
-          normalizedToken,
-        ) ||
-        /^(?:v[468]|i[346]|[124]\.\d[lt]?)$/i.test(normalizedToken))
-    ) {
-      if (vehicleTrimTokens.has(normalizedToken)) {
-        trim = token.replace(/[(),]/g, "");
+  let model = "";
+  const cadillacVSeriesMatch = afterMake.match(
+    /^(CT[45])[-\s]+(V(?:-Series)?(?:\s+Blackwing)?)(?=\s|$)/i,
+  );
+  if (matchedMake === "Cadillac" && cadillacVSeriesMatch) {
+    model = formatModelToken(cadillacVSeriesMatch[1]);
+    trim = normalize(cadillacVSeriesMatch[2]);
+  } else {
+    const modelTokens: string[] = [];
+    for (const token of afterMake.split(" ")) {
+      const normalizedToken = token.toLowerCase().replace(/[(),]/g, "");
+      if (
+        modelTokens.length > 0 &&
+        (trimAndDetailTokens.has(normalizedToken) ||
+          /^(?:[248]dr|automatic|manual|electric|diesel|gas|phev|hev)$/i.test(
+            normalizedToken,
+          ) ||
+          /^(?:v[468]|i[346]|[124]\.\d[lt]?)$/i.test(normalizedToken))
+      ) {
+        if (vehicleTrimTokens.has(normalizedToken)) {
+          trim = token.replace(/[(),]/g, "");
+        }
+        break;
       }
-      break;
+      modelTokens.push(token.replace(/[(),]/g, ""));
+      if (modelTokens.length === 3) break;
     }
-    modelTokens.push(token.replace(/[(),]/g, ""));
-    if (modelTokens.length === 3) break;
+    model = normalize(modelTokens.map(formatModelToken).join(" "));
   }
-
-  const model = normalize(modelTokens.map(formatModelToken).join(" "));
   if (!model) return null;
   const canonicalMake =
     matchedMake === "Mercedes Benz"

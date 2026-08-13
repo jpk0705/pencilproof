@@ -14,6 +14,20 @@ const normalized = (value: string) =>
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 
+const epaModelFor = (identity: VehicleIdentity) => {
+  const make = normalized(identity.make);
+  const model = normalized(identity.model);
+  const trim = normalized(identity.trim ?? "");
+  if (
+    make === "cadillac" &&
+    /^(ct4|ct5)$/.test(model) &&
+    (/\bv(?:series)?\b/.test(trim) || trim.includes("blackwing"))
+  ) {
+    return `${identity.model} V`;
+  }
+  return identity.model;
+};
+
 const readXmlField = (document: Document, name: string) =>
   document.querySelector(name)?.textContent?.trim() ?? "";
 
@@ -46,10 +60,11 @@ export const lookupVehicleFuelEconomy = async (
   if (!identity.year) return null;
 
   try {
+    const epaModel = epaModelFor(identity);
     const menuParams = new URLSearchParams({
       year: identity.year,
       make: identity.make,
-      model: identity.model,
+      model: epaModel,
     });
     const menuDocument = await getXml(
       `${API_ROOT}/menu/options?${menuParams.toString()}`,
@@ -68,15 +83,25 @@ export const lookupVehicleFuelEconomy = async (
     const trimTokens = normalized(identity.trim ?? "")
       .split(" ")
       .filter(Boolean);
+    const isBlackwing = trimTokens.includes("blackwing");
     const selected = options
       .map((option, index) => {
         const optionText = normalized(option.text);
         const trimMatch = trimTokens.length > 0 && trimTokens.every((token) =>
           optionText.includes(token),
         );
+        const blackwingEngineMatch = isBlackwing &&
+          /6 2|8 cyl|sup charg|supercharged/.test(optionText);
+        const automaticMatch = /auto/.test(optionText);
+        const manualMatch = /manual|man /.test(optionText);
         return {
           option,
-          score: (trimMatch ? 20 : 0) - index / 1000,
+          score:
+            (trimMatch ? 20 : 0) +
+            (blackwingEngineMatch ? 40 : 0) +
+            (automaticMatch ? 2 : 0) -
+            (manualMatch ? 2 : 0) -
+            index / 1000,
         };
       })
       .sort((left, right) => right.score - left.score)[0]?.option;
