@@ -2199,7 +2199,7 @@ const handleSuccess = async (request: Request, env: Env) => {
     env.SESSION_SECRET,
     maxAge,
   );
-  return redirect(`${env.SITE_ORIGIN}/full-audit/`, {
+  return redirect(`${env.SITE_ORIGIN}/analyze/secure/`, {
     "Set-Cookie": accessCookie(token, maxAge),
   });
 };
@@ -2335,17 +2335,14 @@ export const handleRequest = async (request: Request, env: Env) => {
   }
 
   const protectedPath = url.pathname === "/analyze"
-    || url.pathname === "/full-audit"
-    || url.pathname === "/full-audit/"
     || url.pathname.startsWith("/analyze/")
-    || url.pathname.startsWith("/full-audit/")
     || url.pathname.startsWith("/_next/static/chunks/app/analyze/");
   if (protectedPath) {
     const access = await hasAccess(request, env);
     if (access.allowed) {
       const assetUrl = new URL(request.url);
-      if (assetUrl.pathname === "/full-audit" || assetUrl.pathname.startsWith("/full-audit/")) {
-        assetUrl.pathname = assetUrl.pathname.replace(/^\/full-audit(?=\/|$)/, "/analyze");
+      if (assetUrl.pathname === "/analyze/secure" || assetUrl.pathname.startsWith("/analyze/secure/")) {
+        assetUrl.pathname = assetUrl.pathname.replace(/^\/analyze\/secure(?=\/|$)/, "/analyze");
       }
       const response = await env.ASSETS.fetch(new Request(assetUrl, request));
       const headers = new Headers(response.headers);

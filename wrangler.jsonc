@@ -13,9 +13,6 @@
       "/analyze",
       "/analyze/",
       "/analyze/*",
-      "/full-audit",
-      "/full-audit/",
-      "/full-audit/*",
       "/_next/static/chunks/app/analyze/*"
     ]
   },

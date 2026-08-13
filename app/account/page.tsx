@@ -27,7 +27,7 @@ export default function AccountPage() {
   const [auditPath, setAuditPath] = useState("/analyze");
 
   useEffect(() => {
-    if (window.location.hostname.toLowerCase() === "audit.pencilproof.com") setAuditPath("/full-audit/");
+    if (window.location.hostname.toLowerCase() === "audit.pencilproof.com") setAuditPath("/analyze/secure/");
   }, []);
 
   useEffect(() => {
