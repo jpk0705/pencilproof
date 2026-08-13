@@ -879,7 +879,7 @@ export default function AnalyzePage() {
             <p>Choose a digital or scanned PDF, or any image format your device can open. PencilProof reads it locally first. Small or unclear images may be enlarged and sent through PencilProof&apos;s secured vision importer for better label and number matching.</p>
           </div>
           <div className="pdf-upload-actions">
-            <PhoneCameraBridge buttonLabel="Take photo" disabled={dealImport.status === "loading"} onFile={importDealFile} />
+            <PhoneCameraBridge buttonLabel="Phone scan" disabled={dealImport.status === "loading"} onFile={importDealFile} />
             <label className={`pdf-upload-button pdf-camera-button ${dealImport.status === "loading" ? "pdf-upload-loading" : ""}`}>
               <input type="file" accept={DEAL_CAMERA_ACCEPT} capture="environment" disabled={dealImport.status === "loading"} onChange={handleDealFileChange} />
               {dealImport.status === "loading" ? "Processing…" : "Take photo"}
@@ -888,7 +888,6 @@ export default function AnalyzePage() {
               <input type="file" accept={DEAL_IMPORT_ACCEPT} disabled={dealImport.status === "loading"} onChange={handleDealFileChange} />
               Choose PDF or image
             </label>
-            <PhoneCameraBridge disabled={dealImport.status === "loading"} onFile={importDealFile} />
           </div>
         </div>
         {dealImport.status === "loading" ? (

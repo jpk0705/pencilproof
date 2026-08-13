@@ -414,7 +414,7 @@ export default function FreeQuotePreview() {
               <strong>Start with the written quote</strong>
               <p>Use a dealer-generated PDF or a bright, sharp image with the full page visible.</p>
               <div className="free-scan-upload-actions">
-                <PhoneCameraBridge buttonLabel="Take photo" onFile={handleImportedFile} />
+                <PhoneCameraBridge buttonLabel="Phone scan" onFile={handleImportedFile} />
                 <label className="button button-quiet">
                   Upload PDF or image
                   <input

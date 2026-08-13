@@ -1192,6 +1192,10 @@ footer { color: var(--brand-text); background: var(--brand-navy); border-top-col
 .form-section-title p,
 .input-field small { color: var(--brand-muted); }
 .pdf-upload-button { color: var(--brand-navy); background: var(--brand-gold); border-color: var(--brand-gold); }
+.free-scan-upload-actions .phone-camera-trigger { color: var(--brand-text); background: transparent; border-color: var(--brand-gold); }
+.free-scan-upload-actions .phone-camera-trigger:hover { color: var(--brand-navy); background: var(--brand-gold); border-color: var(--brand-gold); }
+.analyzer-page .phone-camera-trigger { color: var(--brand-navy); background: var(--brand-gold); border-color: var(--brand-gold); }
+.analyzer-page .phone-camera-trigger:hover { color: var(--brand-navy); background: #ffd86e; border-color: #ffd86e; box-shadow: 0 10px 26px rgba(246,195,67,.18); }
 .pdf-import-status { border: 1px solid var(--brand-line); }
 .pdf-status-loading { color: #c6ddf5; background: #102d50; }
 .pdf-status-success { color: var(--brand-positive); background: rgba(71,174,128,.16); }
