@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Clerk } from "@clerk/clerk-js";
 import { useEffect, useState } from "react";
-import { createLoadedClerk } from "@/lib/clerk-client";
+import { authRedirectOptions, createLoadedClerk } from "@/lib/clerk-client";
 
 const ACCOUNT_URL = "https://audit.pencilproof.com/account";
 
@@ -29,5 +29,5 @@ export default function AccountNav() {
   if (!clerk) return null;
   return clerk.user
     ? <Link href={ACCOUNT_URL}>My Audits</Link>
-    : <button className="nav-account-button" type="button" onClick={() => clerk.openSignIn({})}>Sign in</button>;
+    : <button className="nav-account-button" type="button" onClick={() => clerk.openSignIn(authRedirectOptions())}>Sign in</button>;
 }

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { Clerk } from "@clerk/clerk-js";
 import { CHECKOUT_URL } from "@/lib/checkout";
-import { createLoadedClerk } from "@/lib/clerk-client";
+import { authRedirectOptions, createLoadedClerk } from "@/lib/clerk-client";
 
 type Props = {
   onContinue: () => void;
@@ -19,12 +19,6 @@ export default function PreCheckoutAccountGate({ onContinue }: Props) {
   const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const authRedirectOptions = () => ({
-    afterSignInUrl: window.location.href,
-    afterSignUpUrl: window.location.href,
-    fallbackRedirectUrl: window.location.href,
-  });
-
   useEffect(() => {
     if (!configured) return;
     const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;

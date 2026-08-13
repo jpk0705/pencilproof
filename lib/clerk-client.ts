@@ -5,6 +5,7 @@ import { Clerk } from "@clerk/clerk-js";
 type ClerkWindow = Window & {
   __internal_ClerkUICtor?: unknown;
   __pencilProofClerkUiPromise?: Promise<void>;
+  __pencilProofClerkPromise?: Promise<Clerk>;
 };
 
 const getClerkWindow = () => window as ClerkWindow;
@@ -45,10 +46,30 @@ const loadClerkUi = async (publishableKey: string) => {
 
 export const createLoadedClerk = async (publishableKey: string) => {
   await loadClerkUi(publishableKey);
-  const instance = new Clerk(publishableKey);
-  const loadOptions = {
-    ui: { ClerkUI: getClerkWindow().__internal_ClerkUICtor },
-  } as Parameters<Clerk["load"]>[0];
-  await instance.load(loadOptions);
-  return instance;
+  const clerkWindow = getClerkWindow();
+  if (!clerkWindow.__pencilProofClerkPromise) {
+    const promise = (async () => {
+      const instance = new Clerk(publishableKey);
+      const loadOptions = {
+        ui: { ClerkUI: clerkWindow.__internal_ClerkUICtor },
+      } as Parameters<Clerk["load"]>[0];
+      await instance.load(loadOptions);
+      return instance;
+    })();
+    clerkWindow.__pencilProofClerkPromise = promise.catch((error) => {
+      delete clerkWindow.__pencilProofClerkPromise;
+      throw error;
+    });
+  }
+  return clerkWindow.__pencilProofClerkPromise;
+};
+
+export const authRedirectOptions = () => {
+  const url = window.location.href;
+  return {
+    signInForceRedirectUrl: url,
+    signUpForceRedirectUrl: url,
+    signInFallbackRedirectUrl: url,
+    signUpFallbackRedirectUrl: url,
+  };
 };

@@ -650,7 +650,7 @@ const handleAccount = async (request: Request, env: Env) => {
         exactExpiresAt: legacy.accessExpiresAt,
       });
     }
-    return withAccountCors(Response.json({ ok: true, expiresAt: await accountAccess(new Request(request, { headers: new Headers(request.headers) }), env) }, { headers: { ...noStoreHeaders, "Set-Cookie": await accountCookie(user.id, env.SESSION_SECRET) } }), request, env);
+    return withAccountCors(Response.json({ ok: true, expiresAt: await accountAccess(request, env) }, { headers: { ...noStoreHeaders, "Set-Cookie": await accountCookie(user.id, env.SESSION_SECRET) } }), request, env);
   }
   const userId = await currentUser(request, env);
   if (!userId) return withAccountCors(Response.json({ error: "account_required" }, { status: 401, headers: noStoreHeaders }), request, env);

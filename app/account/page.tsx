@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Clerk } from "@clerk/clerk-js";
 import { useEffect, useState, type ReactNode } from "react";
-import { createLoadedClerk } from "@/lib/clerk-client";
+import { authRedirectOptions, createLoadedClerk } from "@/lib/clerk-client";
 import { SiteNav } from "@/app/components/SiteChrome";
 
 type Audit = {
@@ -83,7 +83,7 @@ export default function AccountPage() {
     return shell(<main className="account-page shell"><p>Loading your PencilProof account…</p></main>);
   }
   if (!clerk.user) {
-    return shell(<main className="account-page shell"><h1>Save your PencilProof access.</h1><p>Create a free account to use your Pass on other devices and keep eligible audits for 30 days.</p><div className="account-actions"><button className="button button-primary" type="button" onClick={() => clerk.openSignUp({})}>Create account</button><button className="button button-quiet" type="button" onClick={() => clerk.openSignIn({})}>Sign in</button></div><p className="account-guest-note">No account is required. You can continue using PencilProof as a guest.</p></main>);
+    return shell(<main className="account-page shell"><h1>Save your PencilProof access.</h1><p>Create a free account to use your Pass on other devices and keep eligible audits for 30 days.</p><div className="account-actions"><button className="button button-primary" type="button" onClick={() => clerk.openSignUp(authRedirectOptions())}>Create account</button><button className="button button-quiet" type="button" onClick={() => clerk.openSignIn(authRedirectOptions())}>Sign in</button></div><p className="account-guest-note">No account is required. You can continue using PencilProof as a guest.</p></main>);
   }
 
   const days = expiresAt ? Math.max(0, Math.ceil((expiresAt * 1000 - Date.now()) / 86400000)) : 0;
