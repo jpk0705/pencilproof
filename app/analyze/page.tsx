@@ -26,6 +26,7 @@ import { track } from "@/lib/analytics";
 import VehiclePhoto from "@/app/components/VehiclePhoto";
 import PhoneCameraBridge from "@/app/components/PhoneCameraBridge";
 import PreCheckoutAccountGate from "@/app/components/PreCheckoutAccountGate";
+import AccountNav from "@/app/components/AccountNav";
 
 type Deal = {
   vehicle: string;
@@ -838,6 +839,15 @@ export default function AnalyzePage() {
     <main className="analyzer-page">
       <nav className="site-nav analyzer-nav" aria-label="Main navigation">
         <Link className="brand" href="/" aria-label="PencilProof home"><img className="brand-logo" src="/pencilproof-profile-mark.png" alt="" width="40" height="40" /><span>PencilProof</span></Link>
+        <div className="nav-links">
+          {process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ? <AccountNav /> : null}
+          <Link href="/who-it-helps">Who it helps</Link>
+          <Link href="/how-it-works">How it works</Link>
+          <Link href="/what-it-checks">What it checks</Link>
+          <Link href="/questions">Q&amp;A</Link>
+          <Link href="/pricing">Pricing</Link>
+          <Link className="nav-cta" href="/analyze">Upload your quote</Link>
+        </div>
         <span className="privacy-chip">Your deal inputs stay in this browser · <a href="mailto:support@pencilproof.com">Contact support</a></span>
       </nav>
 
@@ -869,6 +879,7 @@ export default function AnalyzePage() {
             <p>Choose a digital or scanned PDF, or any image format your device can open. PencilProof reads it locally first. Small or unclear images may be enlarged and sent through PencilProof&apos;s secured vision importer for better label and number matching.</p>
           </div>
           <div className="pdf-upload-actions">
+            <PhoneCameraBridge buttonLabel="Take photo" disabled={dealImport.status === "loading"} onFile={importDealFile} />
             <label className={`pdf-upload-button pdf-camera-button ${dealImport.status === "loading" ? "pdf-upload-loading" : ""}`}>
               <input type="file" accept={DEAL_CAMERA_ACCEPT} capture="environment" disabled={dealImport.status === "loading"} onChange={handleDealFileChange} />
               {dealImport.status === "loading" ? "Processing…" : "Take photo"}

@@ -7,7 +7,6 @@ import {
 } from "@/lib/checkout";
 import {
   DEAL_IMPORT_ACCEPT,
-  DEAL_CAMERA_ACCEPT,
   DEAL_FIELD_LABELS,
   extractDealFromFile,
   isDealImportFile,
@@ -24,6 +23,14 @@ import {
 } from "@/lib/deal-review";
 import VehiclePhoto from "@/app/components/VehiclePhoto";
 import PhoneCameraBridge from "@/app/components/PhoneCameraBridge";
+
+const feedbackWorthOptions = [
+  { value: "0-9.99", label: "$0–$9.99" },
+  { value: "10-19.99", label: "$10–$19.99" },
+  { value: "20-29.99", label: "$20–$29.99" },
+  { value: "30-39.99", label: "$30–$39.99" },
+  { value: "40+", label: "$40+" },
+] as const;
 import { track } from "@/lib/analytics";
 
 type ScanState =
@@ -71,6 +78,7 @@ export default function FreeQuotePreview() {
   const [feedbackRating, setFeedbackRating] = useState(0);
   const [feedbackCategory, setFeedbackCategory] = useState("clarity");
   const [feedbackComment, setFeedbackComment] = useState("");
+  const [feedbackWorth, setFeedbackWorth] = useState("");
   const [feedbackSent, setFeedbackSent] = useState(false);
   const manualPanelRef = useRef<HTMLDivElement>(null);
   const uploadPanelRef = useRef<HTMLDivElement>(null);
@@ -406,15 +414,7 @@ export default function FreeQuotePreview() {
               <strong>Start with the written quote</strong>
               <p>Use a dealer-generated PDF or a bright, sharp image with the full page visible.</p>
               <div className="free-scan-upload-actions">
-                <label className="button button-primary">
-                  Take photo
-                  <input
-                    type="file"
-                    accept={DEAL_CAMERA_ACCEPT}
-                    capture="environment"
-                    onChange={handleFile}
-                  />
-                </label>
+                <PhoneCameraBridge buttonLabel="Take photo" onFile={handleImportedFile} />
                 <label className="button button-quiet">
                   Upload PDF or image
                   <input
@@ -423,7 +423,6 @@ export default function FreeQuotePreview() {
                     onChange={handleFile}
                   />
                 </label>
-                <PhoneCameraBridge onFile={handleImportedFile} />
               </div>
               <small>PDF or any image format · up to 15 MB</small>
             </div>
@@ -730,12 +729,12 @@ export default function FreeQuotePreview() {
                 ) : (
                   <form onSubmit={(event) => {
                     event.preventDefault();
-                    if (!feedbackRating && !feedbackComment.trim()) return;
+                    if (!feedbackWorth) return;
                     track({
-                      category: feedbackCategory,
-                      comment: feedbackComment.trim(),
+                      category: "pre-checkout-survey",
+                      comment: JSON.stringify({ category: feedbackCategory, suggestions: feedbackComment.trim(), worthRange: feedbackWorth }),
                       event: "feedback_submitted",
-                      value: feedbackRating,
+                      value: feedbackWorth === "40+" ? 40 : Number(feedbackWorth.split("-")[0]),
                     });
                     setFeedbackSent(true);
                   }}>
@@ -761,10 +760,21 @@ export default function FreeQuotePreview() {
                       </select>
                     </label>
                     <label>
-                      <span>Optional note</span>
+                      <span>Suggestions</span>
                       <textarea maxLength={1000} value={feedbackComment} onChange={(event) => setFeedbackComment(event.target.value)} placeholder="Tell us what happened…" />
                     </label>
-                    <button className="button button-quiet" type="submit">Send feedback</button>
+                    <fieldset className="feedback-worth-fieldset">
+                      <legend>How much would this service be worth to you?</legend>
+                      <div className="feedback-worth-grid">
+                        {feedbackWorthOptions.map((option) => (
+                          <label className="feedback-worth-option" key={option.value}>
+                            <input type="radio" name="preview-feedback-worth" value={option.value} checked={feedbackWorth === option.value} onChange={() => setFeedbackWorth(option.value)} />
+                            <span>{option.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                    <button className="button button-quiet" type="submit" disabled={!feedbackWorth}>Send feedback</button>
                   </form>
                 )}
               </div>

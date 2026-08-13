@@ -126,7 +126,11 @@ export default function VehiclePhoto({
     setFuelEconomyLoading(true);
     void lookupVehicleFuelEconomy(identity, controller.signal)
       .then((result) => {
-        if (!controller.signal.aborted) setFuelEconomy(result);
+        if (!controller.signal.aborted) setFuelEconomy(result ?? {
+          label: "EPA estimate unavailable right now",
+          note: "Check FuelEconomy.gov later for the exact model and drivetrain.",
+          sourceUrl: "https://www.fueleconomy.gov/",
+        });
       })
       .finally(() => {
         if (!controller.signal.aborted) setFuelEconomyLoading(false);
@@ -205,7 +209,7 @@ export default function VehiclePhoto({
           <div className="vehicle-photo-reference-grid">
             <div>
               <span>TRIM</span>
-              <b>{identity.trim ?? "Confirm on quote"}</b>
+              <b>{identity.trim ?? "Trim not included in quote text"}</b>
             </div>
             <div>
               <span>BODY STYLE</span>

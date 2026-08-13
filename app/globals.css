@@ -370,6 +370,8 @@ footer { border-top: 1px solid var(--line); padding: 34px 0; }
 .phone-camera-trigger { min-height: 43px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 15px; border: 1px solid var(--ink); border-radius: 4px; color: var(--ink); background: transparent; font: inherit; font-size: 11px; font-weight: 900; cursor: pointer; }
 .phone-camera-trigger:hover { box-shadow: 0 6px 16px rgba(11, 28, 37, .12); transform: translateY(-1px); }
 .phone-camera-trigger:disabled { opacity: .55; cursor: wait; transform: none; }
+.phone-camera-local-input { display: none; }
+.pdf-upload-actions .pdf-camera-button { display: none; }
 .free-scan-upload-actions .phone-camera-trigger { min-height: 56px; padding: 0 17px; color: var(--ink); background: transparent; font-size: 16px; }
 .phone-camera-panel { position: fixed; z-index: 30; inset: 50% auto auto 50%; width: min(660px, calc(100vw - 30px)); max-height: calc(100vh - 30px); overflow: auto; padding: 27px; border: 1px solid rgba(16,40,75,.18); border-radius: 14px; color: #10284b; background: #fffdf8; box-shadow: 0 24px 80px rgba(6,17,38,.35); transform: translate(-50%, -50%); }
 .phone-camera-panel::before { content: ''; position: fixed; z-index: -1; inset: -100vh; background: rgba(6,17,38,.58); }
@@ -1591,3 +1593,77 @@ h1 { font-weight: 700; letter-spacing: -.055em; }
 .pre-checkout-consent input{width:16px;height:16px;flex:0 0 16px;margin-top:1px;accent-color:var(--green)}
 .pre-checkout-message{margin:0;color:#8b3b30;font-size:11px;line-height:1.45}
 @media(max-width:760px){.pre-checkout-account-gate{grid-template-columns:1fr;margin-top:18px;padding:22px}.pre-checkout-account-copy h2{font-size:25px}}
+
+/* Account and checkout surfaces stay readable on the navy analyzer theme. */
+.account-page { max-width: 960px; padding-top: 42px; padding-bottom: 72px; }
+.account-page h1,
+.account-page h2,
+.account-page h3,
+.account-page p,
+.account-page strong,
+.account-page small { color: var(--brand-text); }
+.account-page > p,
+.account-page .account-guest-note,
+.account-page .marketing-preferences > p,
+.account-page .account-empty p { color: var(--brand-muted); }
+.pass-card,
+.account-history,
+.marketing-preferences { border: 1px solid var(--brand-line); border-radius: 16px; background: var(--brand-navy-2); box-shadow: 0 16px 40px rgba(0,0,0,.16); }
+.pass-card { margin: 26px 0 30px; padding: 26px; }
+.pass-card .kicker,
+.account-section-heading .kicker,
+.saved-audit-badge { color: var(--brand-gold); }
+.pass-card h2 { margin: 5px 0 9px; color: var(--brand-text); }
+.pass-card p:not(.kicker) { color: var(--brand-muted); }
+.account-history { padding: 24px 26px; }
+.account-section-heading { display: flex; align-items: end; justify-content: space-between; gap: 18px; }
+.account-section-heading h2 { margin: 4px 0 0; }
+.account-section-heading > span { color: var(--brand-gold); font-size: 12px; font-weight: 800; }
+.saved-audit { padding: 20px 0; border-bottom-color: var(--brand-line); }
+.saved-audit:last-child { border-bottom: 0; }
+.saved-audit-copy { display: grid; gap: 5px; }
+.saved-audit-copy strong { font-size: 16px; }
+.saved-audit-copy p { margin: 0; color: var(--brand-muted); font-size: 13px; }
+.saved-audit-copy small { color: #aebbd0; font-size: 11px; }
+.saved-audit-badge { width: fit-content; font-size: 9px; font-weight: 900; letter-spacing: .12em; }
+.saved-audit button,
+.account-delete { color: #ffd0c3; }
+.account-empty { padding: 24px 0 4px; }
+.account-empty strong { display: block; margin-bottom: 6px; }
+.account-empty .text-link { display: inline-block; margin-top: 8px; color: var(--brand-gold); }
+.marketing-preferences { margin-top: 22px; padding: 24px 26px; }
+.marketing-preferences h2 { margin-top: 0; }
+.account-delete { margin-top: 30px; }
+.pre-checkout-account-gate { color: var(--brand-text); background: var(--brand-navy-2); border-color: var(--brand-line); }
+.pre-checkout-account-gate h2,
+.pre-checkout-account-gate strong { color: var(--brand-text); }
+.pre-checkout-account-gate p:not(.kicker) { color: var(--brand-muted); }
+.pre-checkout-account-gate .pre-checkout-privacy { color: #aebbd0; }
+.pre-checkout-account-gate .pre-checkout-consent { color: #c6d2e2; }
+
+/* Paid routes must be checked by the Worker before any matching static asset. */
+.analyzer-nav .nav-links { display: flex; }
+.analyzer-nav .nav-links > a { color: var(--brand-muted); }
+.analyzer-nav .nav-links > a:hover { color: var(--brand-text); }
+.analyzer-nav .privacy-chip { display: none; }
+.analyzer-page .paid-feedback-card { display: none; }
+.feedback-worth-fieldset { margin: 16px 0 0; padding: 0; border: 0; }
+.feedback-worth-fieldset legend { margin-bottom: 8px; color: var(--brand-text); font-size: 12px; font-weight: 800; }
+.feedback-worth-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.feedback-worth-option { position: relative; cursor: pointer; }
+.feedback-worth-option input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.feedback-worth-option span { display: grid; min-height: 42px; place-items: center; padding: 5px 4px; border: 1px solid var(--brand-line); border-radius: 5px; color: var(--brand-muted); background: rgba(255,255,255,.05); font-size: 11px; font-weight: 800; text-align: center; }
+.feedback-worth-option input:checked + span { color: var(--brand-navy); background: var(--brand-gold); border-color: var(--brand-gold); }
+.feedback-worth-option input:focus-visible + span { outline: 3px solid var(--brand-gold); outline-offset: 2px; }
+.feedback-card button:disabled { cursor: not-allowed; opacity: .5; }
+.free-scan-results { display: flex; flex-direction: column; }
+.free-scan-results .feedback-card { order: 2; }
+.free-scan-results .free-unlock { order: 3; }
+
+@media(max-width:760px){
+  .account-history,
+  .marketing-preferences { padding: 20px; }
+  .account-section-heading { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .saved-audit { align-items: flex-start; flex-direction: column; }
+  .feedback-worth-grid { grid-template-columns: 1fr 1fr; }
+}
