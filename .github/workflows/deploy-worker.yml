@@ -54,23 +54,6 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: deploy --config wrangler.jsonc
 
-      - name: Purge protected analyzer cache
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: |
-          zone_id=$(curl --fail --silent --show-error \
-            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            --header "Content-Type: application/json" \
-            "https://api.cloudflare.com/client/v4/zones?name=pencilproof.com&status=active&per_page=1" \
-            | jq -r '.result[0].id')
-          test -n "${zone_id}" -a "${zone_id}" != "null"
-          curl --fail --silent --show-error --request POST \
-            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            --header "Content-Type: application/json" \
-            --data '{"files":["https://audit.pencilproof.com/analyze/","https://audit.pencilproof.com/analyze"]}' \
-            "https://api.cloudflare.com/client/v4/zones/${zone_id}/purge_cache" \
-            | jq -e '.success == true'
-
 # Deployment trigger: keep Worker deployment attached to main updates.
 # Deployment trigger: refresh after Gemini model routing fix.
 # Deployment trigger: refresh after enabled-model discovery fix.

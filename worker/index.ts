@@ -2339,7 +2339,17 @@ export const handleRequest = async (request: Request, env: Env) => {
     || url.pathname.startsWith("/_next/static/chunks/app/analyze/");
   if (protectedPath) {
     const access = await hasAccess(request, env);
-    if (access.allowed) return env.ASSETS.fetch(request);
+    if (access.allowed) {
+      const response = await env.ASSETS.fetch(request);
+      const headers = new Headers(response.headers);
+      headers.set("Cache-Control", "private, no-store, max-age=0");
+      headers.set("Vary", "Cookie");
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      });
+    }
     const location = access.reason === "revoked"
       ? `${env.SITE_ORIGIN}/recover?reason=revoked`
       : `${env.SITE_ORIGIN}/handoff?reason=access_required`;
