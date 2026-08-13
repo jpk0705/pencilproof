@@ -635,10 +635,10 @@ const handleAccount = async (request: Request, env: Env) => {
   if (url.pathname === "/api/account/session" && request.method === "POST") {
     const body = await request.json().catch(() => ({})) as { token?: string };
     const provider = typeof body.token === "string" ? await verifyProviderToken(body.token, env) : null;
-    if (!provider) return Response.json({ error: "invalid_account_session" }, { status: 401, headers: noStoreHeaders });
+    if (!provider) return withAccountCors(Response.json({ error: "invalid_account_session" }, { status: 401, headers: noStoreHeaders }), request, env);
     const userResult = await accountCall(env, "/user", { providerSubject: provider.id });
     const user = userResult?.user as { id?: string } | undefined;
-    if (!user?.id) return Response.json({ error: "account_unavailable" }, { status: 503, headers: noStoreHeaders });
+    if (!user?.id) return withAccountCors(Response.json({ error: "account_unavailable" }, { status: 503, headers: noStoreHeaders }), request, env);
     const guestId = await requestGuestId(request);
     if (guestId) {
       await accountCall(env, "/migrate", { guestId, userId: user.id });

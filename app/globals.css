@@ -1587,6 +1587,7 @@ h1 { font-weight: 700; letter-spacing: -.055em; }
 .account-save-prompt{display:flex;justify-content:space-between;align-items:center;gap:22px;margin:24px 0;padding:22px;border:1px solid #d8d5cb;border-radius:16px;background:#fbfaf6}.account-save-prompt h3{margin:3px 0 8px}.account-save-prompt p:not(.paid-feedback-kicker){margin:0;color:#687589;max-width:650px}.account-save-actions{display:flex;flex-wrap:wrap;gap:10px;flex-shrink:0}@media(max-width:700px){.account-save-prompt{display:block}.account-save-actions{margin-top:16px}}
 
 .pre-checkout-account-gate{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(280px,.9fr);align-items:center;gap:28px;margin-top:24px;padding:26px 28px;border:1px solid #cfc9bc;border-radius:16px;background:#fffdf8;box-shadow:0 12px 28px rgba(11,28,37,.08)}
+.checkout-gate-anchor { scroll-margin-top: 76px; }
 .pre-checkout-account-copy h2{margin:4px 0 9px;font-family:Georgia,serif;font-size:28px;font-weight:500}
 .pre-checkout-account-copy p:not(.kicker){max-width:650px;margin:0;color:var(--muted);font-size:13px;line-height:1.55}
 .pre-checkout-account-copy .pre-checkout-privacy{margin-top:10px;color:#7b888e;font-size:11px}

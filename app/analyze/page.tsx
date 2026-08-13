@@ -74,6 +74,16 @@ type PendingImport = {
   sourceType?: "pdf" | "image";
 };
 
+type CheckoutPayload = {
+  fields: Partial<Deal>;
+  confidence: PendingImport["confidence"];
+  fileName: string;
+  offerMatrix: DealOfferMatrix | null;
+  selectedOfferId: string | null;
+};
+
+const PENDING_CHECKOUT_KEY = "pencilproof:pending-checkout";
+
 const auditFeedbackRatings = [
   { value: 1, label: "Very poor" },
   { value: 2, label: "Poor" },
@@ -220,7 +230,8 @@ export default function AnalyzePage() {
   const [auditFeedbackSent, setAuditFeedbackSent] = useState(false);
   const savedAuditKey = useRef("");
   const [accountPromptDismissed, setAccountPromptDismissed] = useState(false);
-  const [pendingCheckout, setPendingCheckout] = useState<unknown | null>(null);
+  const [pendingCheckout, setPendingCheckout] = useState<CheckoutPayload | null>(null);
+  const checkoutGateRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setIsPaidAuditHost(
@@ -232,6 +243,43 @@ export default function AnalyzePage() {
   useEffect(() => () => {
     if (importSource?.url) URL.revokeObjectURL(importSource.url);
   }, [importSource]);
+
+  useEffect(() => {
+    if (!pendingCheckout) return;
+    sessionStorage.setItem(PENDING_CHECKOUT_KEY, JSON.stringify(pendingCheckout));
+    const scrollTimer = window.setTimeout(() => {
+      checkoutGateRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+    return () => window.clearTimeout(scrollTimer);
+  }, [pendingCheckout]);
+
+  useEffect(() => {
+    const saved = sessionStorage.getItem(PENDING_CHECKOUT_KEY);
+    if (!saved) return;
+    try {
+      const payload = JSON.parse(saved) as CheckoutPayload;
+      if (!payload.fields || !Object.keys(payload.fields).length) return;
+      setPendingCheckout(payload);
+      setPendingImport({
+        fields: payload.fields,
+        confidence: payload.confidence ?? {},
+        fileName: payload.fileName ?? "your quote scan",
+      });
+      setOfferMatrix(payload.offerMatrix ?? null);
+      const selectedOffer = payload.offerMatrix && payload.selectedOfferId
+        ? payload.offerMatrix.options.find((option) => option.id === payload.selectedOfferId)
+        : undefined;
+      setSelectedOfferId(selectedOffer?.id ?? "");
+      setSelectedOfferType(selectedOffer?.type ?? null);
+      setDealImport({
+        status: payload.offerMatrix ? "warning" : "success",
+        message: "Your quote scan is ready. Confirm the detected values before checkout.",
+        fields: Object.keys(payload.fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]),
+      });
+    } catch {
+      sessionStorage.removeItem(PENDING_CHECKOUT_KEY);
+    }
+  }, []);
 
   useEffect(() => {
     const saved = sessionStorage.getItem(QUOTE_HANDOFF_KEY);
@@ -317,14 +365,15 @@ export default function AnalyzePage() {
     };
   }, [deal]);
 
-  const startCheckout = (payload: unknown) => {
+  const startCheckout = (payload: CheckoutPayload) => {
     track({ event: "checkout_started" });
+    sessionStorage.removeItem(PENDING_CHECKOUT_KEY);
     window.name = createQuoteHandoffEnvelope(payload);
     window.location.assign(CHECKOUT_URL);
   };
 
   const openCheckout = (payload: unknown) => {
-    setPendingCheckout(payload);
+    setPendingCheckout(payload as CheckoutPayload);
   };
 
   const continueCheckout = () => {
@@ -854,8 +903,6 @@ export default function AnalyzePage() {
         <span className="privacy-chip">Your deal inputs stay in this browser · <a href="mailto:support@pencilproof.com">Contact support</a></span>
       </nav>
 
-      {pendingCheckout !== null ? <PreCheckoutAccountGate onContinue={continueCheckout} /> : null}
-
       <header className="analyzer-header shell">
         <div>
           <p className="kicker">{isPaidAuditHost ? "PRIVACY-FIRST FULL QUOTE AUDIT FOR CAR BUYERS" : "FREE QUOTE SCAN FOR CAR BUYERS"}</p>
@@ -1054,6 +1101,7 @@ export default function AnalyzePage() {
             <div className="verification-actions">
               <button className="button button-primary" type="button" onClick={confirmPendingImport}>{isPaidAuditHost ? "Confirm values and run audit" : "Confirm values and continue to checkout"} <Arrow /></button>
             </div>
+            {pendingCheckout !== null ? <div ref={checkoutGateRef} className="checkout-gate-anchor"><PreCheckoutAccountGate onContinue={continueCheckout} /></div> : null}
           </section>
         ) : null}
         {selectedOfferType === "lease" ? (
@@ -1131,6 +1179,7 @@ export default function AnalyzePage() {
               >
                 Continue to secure checkout <Arrow />
               </button>
+              {pendingCheckout !== null ? <div ref={checkoutGateRef} className="checkout-gate-anchor"><PreCheckoutAccountGate onContinue={continueCheckout} /></div> : null}
             </div>
           ) : null}
         </form>

@@ -57,7 +57,9 @@ export const verifyProviderToken = async (token: string, env: AccountEnv) => {
   const claims = jwtPart(token, 1);
   if (!header || !claims || typeof header.kid !== "string" || typeof claims.sub !== "string") return null;
   if (typeof claims.exp !== "number" || claims.exp <= Math.floor(Date.now() / 1000)) return null;
-  if (!env.CLERK_ISSUER || claims.iss !== env.CLERK_ISSUER) return null;
+  const configuredIssuer = env.CLERK_ISSUER?.replace(/\/+$/, "");
+  const tokenIssuer = typeof claims.iss === "string" ? claims.iss.replace(/\/+$/, "") : "";
+  if (!configuredIssuer || tokenIssuer !== configuredIssuer) return null;
   if (env.CLERK_AUDIENCE && claims.aud !== env.CLERK_AUDIENCE) return null;
   if (header.alg !== "RS256" || !env.CLERK_JWKS_URL) return null;
   const response = await fetch(env.CLERK_JWKS_URL, { headers: { Accept: "application/json" } });

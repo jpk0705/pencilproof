@@ -19,6 +19,11 @@ export default function PreCheckoutAccountGate({ onContinue }: Props) {
   const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const authRedirectOptions = () => ({
+    afterSignInUrl: window.location.href,
+    afterSignUpUrl: window.location.href,
+    fallbackRedirectUrl: window.location.href,
+  });
 
   useEffect(() => {
     if (!configured) return;
@@ -113,7 +118,7 @@ export default function PreCheckoutAccountGate({ onContinue }: Props) {
             {busy ? "Preparing checkout…" : "Continue to secure checkout"}
           </button>
         ) : (
-          <button className="button button-primary" type="button" onClick={() => clerk?.openSignUp({})} disabled={busy || !configured || clerkError}>
+          <button className="button button-primary" type="button" onClick={() => clerk?.openSignUp(authRedirectOptions())} disabled={busy || !configured || clerkError}>
             Create free account
           </button>
         )}
@@ -121,7 +126,7 @@ export default function PreCheckoutAccountGate({ onContinue }: Props) {
           Continue as guest
         </button>
         {!accountReady && clerk ? (
-          <button className="pre-checkout-signin" type="button" onClick={() => clerk.openSignIn({})} disabled={busy}>
+          <button className="pre-checkout-signin" type="button" onClick={() => clerk.openSignIn(authRedirectOptions())} disabled={busy}>
             Already have an account? Sign in
           </button>
         ) : null}
