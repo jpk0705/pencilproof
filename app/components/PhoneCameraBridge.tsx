@@ -20,7 +20,6 @@ export default function PhoneCameraBridge({ disabled = false, buttonLabel = "Sca
   const [message, setMessage] = useState("");
   const [qrDataUrl, setQrDataUrl] = useState("");
   const socketRef = useRef<WebSocket | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const incomingRef = useRef<IncomingPhoto | null>(null);
   const mountedRef = useRef(true);
 
@@ -45,12 +44,6 @@ export default function PhoneCameraBridge({ disabled = false, buttonLabel = "Sca
 
   const start = async () => {
     if (disabled || status === "creating") return;
-    const isPhoneSizedDevice = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
-      || window.matchMedia("(max-width: 700px)").matches;
-    if (isPhoneSizedDevice) {
-      fileInputRef.current?.click();
-      return;
-    }
     setOpen(true);
     setStatus("creating");
     setMessage("Creating a secure camera session...");
@@ -136,19 +129,6 @@ export default function PhoneCameraBridge({ disabled = false, buttonLabel = "Sca
       <button className="phone-camera-trigger" type="button" disabled={disabled} onClick={() => void start()}>
         {buttonLabel}
       </button>
-      <input
-        ref={fileInputRef}
-        className="phone-camera-local-input"
-        type="file"
-        accept="image/*"
-        capture="environment"
-        disabled={disabled}
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          event.currentTarget.value = "";
-          if (file) void onFile(file);
-        }}
-      />
       {open ? (
         <div className="phone-camera-panel" role="dialog" aria-modal="true" aria-labelledby="phone-camera-title">
           <div className="phone-camera-panel-head">
