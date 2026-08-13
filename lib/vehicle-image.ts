@@ -3,6 +3,7 @@ export type VehicleIdentity = {
   make: string;
   model: string;
   trim?: string;
+  vin?: string;
   displayName: string;
 };
 
@@ -311,6 +312,9 @@ const makePattern = (make: string) =>
     "i",
   );
 
+export const extractVehicleVin = (rawVehicle: string) =>
+  rawVehicle.match(/\b[A-HJ-NPR-Z0-9]{17}\b/i)?.[0].toUpperCase();
+
 const formatModelToken = (token: string) => {
   if (
     /^[A-Z]{4,}$/.test(token) &&
@@ -325,6 +329,7 @@ const formatModelToken = (token: string) => {
 export const parseVehicleIdentity = (
   rawVehicle: string,
 ): VehicleIdentity | null => {
+  const vin = extractVehicleVin(rawVehicle);
   const cleaned = normalize(
     rawVehicle
       .replace(/\b(?:vin|stock)\s*(?:number|no\.?|#)?\s*[:#-]?\s*[A-HJ-NPR-Z0-9]{6,17}\b/gi, " ")
@@ -386,6 +391,7 @@ export const parseVehicleIdentity = (
     make: canonicalMake,
     model,
     ...(trim ? { trim } : {}),
+    ...(vin ? { vin } : {}),
     displayName: normalize(
       [year, canonicalMake, model].filter(Boolean).join(" "),
     ),

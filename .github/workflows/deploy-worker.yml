@@ -11,6 +11,7 @@ on:
       - "app/globals.css"
       - "lib/vehicle-image.ts"
       - "lib/vehicle-fuel-economy.ts"
+      - "lib/vehicle-vin.ts"
       - "lib/clerk-client.ts"
       - "worker/**"
       - "lib/analytics.ts"

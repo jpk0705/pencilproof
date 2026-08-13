@@ -3,12 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   buildVehicleImageSearchQueries,
+  extractVehicleVin,
   parseVehicleIdentity,
   selectBestVehicleImage,
   type CommonsPage,
   type CommonsVehicleImage,
 } from "@/lib/vehicle-image";
 import { lookupVehicleFuelEconomy, type VehicleFuelEconomy } from "@/lib/vehicle-fuel-economy";
+import { decodeVehicleVin } from "@/lib/vehicle-vin";
+import type { VehicleIdentity } from "@/lib/vehicle-image";
 
 type VehiclePhotoState =
   | { status: "idle" }
@@ -62,19 +65,46 @@ export default function VehiclePhoto({
   compact?: boolean;
 }) {
   const identity = useMemo(() => parseVehicleIdentity(vehicle), [vehicle]);
+  const [vinIdentity, setVinIdentity] = useState<VehicleIdentity | null>(null);
+  const resolvedIdentity = useMemo(() => {
+    if (!identity && !vinIdentity) return null;
+    if (!identity) return vinIdentity;
+    if (!vinIdentity) return identity;
+    return {
+      ...identity,
+      year: vinIdentity.year ?? identity.year,
+      make: vinIdentity.make || identity.make,
+      model: vinIdentity.model || identity.model,
+      trim: identity.trim ?? vinIdentity.trim,
+      displayName: vinIdentity.displayName || identity.displayName,
+    };
+  }, [identity, vinIdentity]);
   const [photo, setPhoto] = useState<VehiclePhotoState>({ status: "idle" });
   const [fuelEconomy, setFuelEconomy] = useState<VehicleFuelEconomy | null>(null);
   const [fuelEconomyLoading, setFuelEconomyLoading] = useState(false);
 
   useEffect(() => {
-    if (!identity) {
+    const vin = identity?.vin ?? extractVehicleVin(vehicle);
+    if (!vin) {
+      setVinIdentity(null);
+      return;
+    }
+    const controller = new AbortController();
+    void decodeVehicleVin(vin, controller.signal).then((decoded) => {
+      if (!controller.signal.aborted) setVinIdentity(decoded);
+    });
+    return () => controller.abort();
+  }, [identity?.vin, vehicle]);
+
+  useEffect(() => {
+    if (!resolvedIdentity) {
       setPhoto({ status: "idle" });
       setFuelEconomy(null);
       setFuelEconomyLoading(false);
       return;
     }
 
-    const cacheKey = identity.displayName.toLowerCase().replace(/\s+/g, "-");
+    const cacheKey = resolvedIdentity.displayName.toLowerCase().replace(/\s+/g, "-");
     const cached = readCachedImage(cacheKey);
     if (cached) {
       setPhoto({ status: "ready", image: cached });
@@ -85,7 +115,7 @@ export default function VehiclePhoto({
     setPhoto({ status: "loading" });
 
     const load = async () => {
-      for (const query of buildVehicleImageSearchQueries(identity)) {
+      for (const query of buildVehicleImageSearchQueries(resolvedIdentity)) {
         try {
           const response = await fetch(commonsSearchUrl(query), {
             signal: controller.signal,
@@ -96,7 +126,7 @@ export default function VehiclePhoto({
           };
           const selected = selectBestVehicleImage(
             Object.values(result.query?.pages ?? {}),
-            identity,
+            resolvedIdentity,
           );
           if (selected) {
             cacheImage(cacheKey, selected);
@@ -112,10 +142,10 @@ export default function VehiclePhoto({
 
     void load();
     return () => controller.abort();
-  }, [identity]);
+  }, [resolvedIdentity]);
 
   useEffect(() => {
-    if (!identity?.year) {
+    if (!resolvedIdentity?.year) {
       setFuelEconomy(null);
       setFuelEconomyLoading(false);
       return;
@@ -124,7 +154,7 @@ export default function VehiclePhoto({
     const controller = new AbortController();
     setFuelEconomy(null);
     setFuelEconomyLoading(true);
-    void lookupVehicleFuelEconomy(identity, controller.signal)
+    void lookupVehicleFuelEconomy(resolvedIdentity, controller.signal)
       .then((result) => {
         if (!controller.signal.aborted) setFuelEconomy(result ?? {
           label: "EPA estimate unavailable right now",
@@ -136,9 +166,9 @@ export default function VehiclePhoto({
         if (!controller.signal.aborted) setFuelEconomyLoading(false);
       });
     return () => controller.abort();
-  }, [identity]);
+  }, [resolvedIdentity]);
 
-  if (!identity) return null;
+  if (!resolvedIdentity) return null;
 
   const className = [
     "vehicle-photo",
@@ -153,7 +183,7 @@ export default function VehiclePhoto({
       <div className={`${className} vehicle-photo-loading`} aria-live="polite">
         <div aria-hidden="true" />
         <p>
-          <strong>{identity.displayName}</strong>
+          <strong>{resolvedIdentity.displayName}</strong>
           <span>Finding a representative vehicle photo…</span>
         </p>
       </div>
@@ -168,7 +198,7 @@ export default function VehiclePhoto({
     <figure className={className}>
       <img
         src={image?.imageUrl ?? LOCAL_FALLBACK_IMAGE}
-        alt={`${isFallback ? "Representative" : "Photo of"} a ${identity.displayName}`}
+        alt={`${isFallback ? "Representative" : "Photo of"} a ${resolvedIdentity.displayName}`}
         loading="lazy"
         onError={(event) => {
           if (!isFallback) {
@@ -180,7 +210,7 @@ export default function VehiclePhoto({
       <figcaption>
         <div className="vehicle-photo-header">
           <span className="vehicle-photo-kicker">VEHICLE MATCH</span>
-          <strong>{identity.displayName}</strong>
+          <strong>{resolvedIdentity.displayName}</strong>
           <span>
             {isFallback
               ? "Representative vehicle image · Actual trim and color may vary"
@@ -190,15 +220,15 @@ export default function VehiclePhoto({
         <div className="vehicle-photo-match-grid" aria-label="Detected vehicle details">
           <div>
             <span>YEAR</span>
-            <b>{identity.year ?? "Not detected"}</b>
+            <b>{resolvedIdentity.year ?? "Not detected"}</b>
           </div>
           <div>
             <span>MAKE</span>
-            <b>{identity.make}</b>
+            <b>{resolvedIdentity.make}</b>
           </div>
           <div>
             <span>MODEL</span>
-            <b>{identity.model}</b>
+            <b>{resolvedIdentity.model}</b>
           </div>
         </div>
         <div className="vehicle-photo-reference">
@@ -209,11 +239,11 @@ export default function VehiclePhoto({
           <div className="vehicle-photo-reference-grid">
             <div>
               <span>TRIM</span>
-              <b>{identity.trim ?? "Trim not included in quote text"}</b>
+              <b>{resolvedIdentity.trim ?? "Trim not included in quote text"}</b>
             </div>
             <div>
               <span>BODY STYLE</span>
-              <b>{bodyStyleFor(identity.model)}</b>
+              <b>{bodyStyleFor(resolvedIdentity.model)}</b>
             </div>
             <div className="vehicle-photo-reference-wide">
               <span>EPA FUEL ECONOMY</span>

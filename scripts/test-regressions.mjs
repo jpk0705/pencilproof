@@ -630,6 +630,7 @@ assert.deepEqual(rav4Identity, {
   make: "Toyota",
   model: "RAV4",
   trim: "XLE Premium",
+  vin: "2T3A1RFV0PC123456",
   displayName: "2026 Toyota RAV4",
 });
 
