@@ -45,7 +45,9 @@ export default function PhoneCameraBridge({ disabled = false, buttonLabel = "Sca
 
   const start = async () => {
     if (disabled || status === "creating") return;
-    if (window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0) {
+    const isPhoneSizedDevice = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+      || window.matchMedia("(max-width: 700px)").matches;
+    if (isPhoneSizedDevice) {
       fileInputRef.current?.click();
       return;
     }
