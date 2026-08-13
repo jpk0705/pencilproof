@@ -602,6 +602,7 @@ assert.deepEqual(navigatorIdentity, {
   year: "2022",
   make: "Lincoln",
   model: "Navigator",
+  trim: "Black Label",
   displayName: "2022 Lincoln Navigator",
 });
 assert.deepEqual(buildVehicleImageSearchQueries(navigatorIdentity), [
@@ -628,7 +629,7 @@ assert.deepEqual(rav4Identity, {
   year: "2026",
   make: "Toyota",
   model: "RAV4",
-  trim: "XLE",
+  trim: "XLE Premium",
   displayName: "2026 Toyota RAV4",
 });
 

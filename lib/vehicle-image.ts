@@ -107,6 +107,32 @@ const trimAndDetailTokens = new Set([
   "rwd",
   "base",
   "black",
+  "blackwing",
+  "v-series",
+  "label",
+  "high",
+  "country",
+  "king",
+  "ranch",
+  "wildtrak",
+  "badlands",
+  "tremor",
+  "raptor",
+  "wilderness",
+  "willys",
+  "rubicon",
+  "z71",
+  "zr2",
+  "type",
+  "r-line",
+  "competition",
+  "plaid",
+  "calligraphy",
+  "prestige",
+  "signature",
+  "luxury",
+  "technology",
+  "advanced",
   "cvt",
   "denali",
   "elite",
@@ -153,6 +179,33 @@ const trimAndDetailTokens = new Set([
 
 const vehicleTrimTokens = new Set([
   "base",
+  "black",
+  "blackwing",
+  "v-series",
+  "label",
+  "high",
+  "country",
+  "king",
+  "ranch",
+  "wildtrak",
+  "badlands",
+  "tremor",
+  "raptor",
+  "wilderness",
+  "willys",
+  "rubicon",
+  "z71",
+  "zr2",
+  "type",
+  "r-line",
+  "competition",
+  "plaid",
+  "calligraphy",
+  "prestige",
+  "signature",
+  "luxury",
+  "technology",
+  "advanced",
   "denali",
   "elite",
   "ex",
@@ -190,6 +243,36 @@ const vehicleTrimTokens = new Set([
   "xle",
   "xlt",
   "xse",
+]);
+
+const trimContinuationTokens = new Set([
+  ...vehicleTrimTokens,
+  "series",
+  "line",
+  "edition",
+  "package",
+  "group",
+  "plus",
+  "max",
+  "performance",
+  "appearance",
+]);
+
+const bodyStyleTokens = new Set([
+  "sedan",
+  "coupe",
+  "convertible",
+  "hatchback",
+  "wagon",
+  "roadster",
+  "suv",
+  "utility",
+  "pickup",
+  "truck",
+  "van",
+  "minivan",
+  "4d",
+  "2d",
 ]);
 
 const excludedImageTerms =
@@ -260,34 +343,35 @@ export const parseVehicleIdentity = (
 
   let trim: string | undefined;
   let model = "";
-  const cadillacVSeriesMatch = afterMake.match(
-    /^(CT[45])[-\s]+(V(?:-Series)?(?:\s+Blackwing)?)(?=\s|$)/i,
-  );
-  if (matchedMake === "Cadillac" && cadillacVSeriesMatch) {
-    model = formatModelToken(cadillacVSeriesMatch[1]);
-    trim = normalize(cadillacVSeriesMatch[2]);
-  } else {
-    const modelTokens: string[] = [];
-    for (const token of afterMake.split(" ")) {
-      const normalizedToken = token.toLowerCase().replace(/[(),]/g, "");
-      if (
-        modelTokens.length > 0 &&
-        (trimAndDetailTokens.has(normalizedToken) ||
-          /^(?:[248]dr|automatic|manual|electric|diesel|gas|phev|hev)$/i.test(
-            normalizedToken,
-          ) ||
-          /^(?:v[468]|i[346]|[124]\.\d[lt]?)$/i.test(normalizedToken))
-      ) {
-        if (vehicleTrimTokens.has(normalizedToken)) {
-          trim = token.replace(/[(),]/g, "");
-        }
-        break;
-      }
-      modelTokens.push(token.replace(/[(),]/g, ""));
-      if (modelTokens.length === 3) break;
+  const modelTokens: string[] = [];
+  const trimTokens: string[] = [];
+  for (const token of afterMake.split(" ")) {
+    const cleanToken = token.replace(/[(),]/g, "");
+    const normalizedToken = cleanToken.toLowerCase();
+    const isHardStop =
+      bodyStyleTokens.has(normalizedToken) ||
+      /^(?:[248]dr|automatic|manual|electric|diesel|gas|phev|hev)$/i.test(
+        normalizedToken,
+      ) ||
+      /^(?:v[468]|i[346]|[124]\.\d[lt]?)$/i.test(normalizedToken);
+
+    if (trimTokens.length > 0) {
+      if (isHardStop || !trimContinuationTokens.has(normalizedToken)) break;
+      trimTokens.push(cleanToken);
+      continue;
     }
-    model = normalize(modelTokens.map(formatModelToken).join(" "));
+
+    if (modelTokens.length > 0 && isHardStop) break;
+    if (modelTokens.length > 0 && vehicleTrimTokens.has(normalizedToken)) {
+      trimTokens.push(cleanToken);
+      continue;
+    }
+
+    modelTokens.push(cleanToken);
+    if (modelTokens.length === 3) break;
   }
+  model = normalize(modelTokens.map(formatModelToken).join(" "));
+  if (trimTokens.length > 0) trim = normalize(trimTokens.join(" "));
   if (!model) return null;
   const canonicalMake =
     matchedMake === "Mercedes Benz"
