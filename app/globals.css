@@ -1641,6 +1641,14 @@ h1 { font-weight: 700; letter-spacing: -.055em; }
 .pre-checkout-account-gate .pre-checkout-privacy { color: #aebbd0; }
 .pre-checkout-account-gate .pre-checkout-consent { color: #c6d2e2; }
 
+/* The optional account prompt is rendered after a paid audit and must use the
+   same dark surface as the rest of the authenticated analyzer. */
+.account-save-prompt { color: var(--brand-text); background: var(--brand-navy-2); border-color: var(--brand-line); box-shadow: 0 16px 40px rgba(0,0,0,.16); }
+.account-save-prompt h3 { color: var(--brand-text); }
+.account-save-prompt p:not(.paid-feedback-kicker) { color: var(--brand-muted); }
+.account-save-actions .button-quiet { color: var(--brand-text); border-color: var(--brand-line); background: transparent; }
+.account-save-actions .button-quiet:hover { color: var(--brand-text); background: rgba(255,255,255,.06); }
+
 /* Paid routes must be checked by the Worker before any matching static asset. */
 .analyzer-nav .nav-links { display: flex; }
 .analyzer-nav .nav-links > a { color: var(--brand-muted); }
