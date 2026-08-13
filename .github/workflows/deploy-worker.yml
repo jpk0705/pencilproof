@@ -6,6 +6,7 @@ on:
     paths:
       - "app/account/page.tsx"
       - "app/components/AccountNav.tsx"
+      - "app/components/PhoneCameraBridge.tsx"
       - "app/components/PreCheckoutAccountGate.tsx"
       - "lib/clerk-client.ts"
       - "worker/**"
