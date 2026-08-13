@@ -660,7 +660,7 @@ test("a verified webhook records one order and binds recovery to its browser", a
   assert.equal(successResponse.status, 303);
   assert.equal(
     successResponse.headers.get("Location"),
-    "https://audit.pencilproof.com/analyze/",
+    "https://audit.pencilproof.com/full-audit/",
   );
   assert.match(successResponse.headers.get("Set-Cookie") ?? "", /^pp_access=/);
 
@@ -1021,7 +1021,7 @@ test("a localized paid session with the exact price receives access", async () =
   assert.equal(response.status, 303);
   assert.equal(
     response.headers.get("Location"),
-    "https://audit.pencilproof.com/analyze/",
+    "https://audit.pencilproof.com/full-audit/",
   );
   assert.match(cookie, /^pp_access=/);
   assert.match(cookie, /HttpOnly/);

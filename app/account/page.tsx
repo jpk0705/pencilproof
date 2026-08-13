@@ -24,6 +24,11 @@ export default function AccountPage() {
   const [message, setMessage] = useState("");
   const [marketingOptedIn, setMarketingOptedIn] = useState(false);
   const [marketingMessage, setMarketingMessage] = useState("");
+  const [auditPath, setAuditPath] = useState("/analyze");
+
+  useEffect(() => {
+    if (window.location.hostname.toLowerCase() === "audit.pencilproof.com") setAuditPath("/full-audit/");
+  }, []);
 
   useEffect(() => {
     if (!configured) return;
@@ -69,10 +74,10 @@ export default function AccountPage() {
   const shell = (content: ReactNode) => <><SiteNav />{content}</>;
 
   if (!configured) {
-    return shell(<main className="account-page shell"><h1>Accounts are being prepared.</h1><p>PencilProof remains fully usable as a guest.</p><Link className="button button-primary" href="/analyze">Audit another quote</Link></main>);
+    return shell(<main className="account-page shell"><h1>Accounts are being prepared.</h1><p>PencilProof remains fully usable as a guest.</p><Link className="button button-primary" href={auditPath}>Audit another quote</Link></main>);
   }
   if (clerkError) {
-    return shell(<main className="account-page shell"><h1>Account sign-in is temporarily unavailable.</h1><p>PencilProof remains fully usable as a guest. Please try again later if you want to save your access and audits.</p><Link className="button button-primary" href="/analyze">Continue as a guest</Link></main>);
+    return shell(<main className="account-page shell"><h1>Account sign-in is temporarily unavailable.</h1><p>PencilProof remains fully usable as a guest. Please try again later if you want to save your access and audits.</p><Link className="button button-primary" href={auditPath}>Continue as a guest</Link></main>);
   }
   if (!clerk) {
     return shell(<main className="account-page shell"><p>Loading your PencilProof account…</p></main>);
@@ -130,7 +135,7 @@ export default function AccountPage() {
         <p className="kicker">PENCILPROOF 30-DAY PASS</p>
         <h2>{days ? `${days} days remaining` : "Your 30-Day Pass has ended."}</h2>
         <p>{days ? "Unlimited personal-use audits remain available during your pass." : "Your paid audit history remains available until each audit expires."}</p>
-        <Link className="button button-primary" href="/analyze">Audit another quote</Link>
+        <Link className="button button-primary" href={auditPath}>Audit another quote</Link>
       </section>
 
       <section className="account-history" aria-labelledby="audit-history-title">
@@ -142,7 +147,7 @@ export default function AccountPage() {
             <div className="saved-audit-copy"><span className="saved-audit-badge">FULL QUOTE AUDIT</span><strong>{vehicle}</strong><p>{verdict}</p><small>Completed {date(audit.createdAt)} · available until {date(audit.expiresAt)}</small></div>
             <button type="button" onClick={() => void deleteAudit(audit.id)}>Delete</button>
           </article>;
-        }) : <div className="account-empty"><strong>No paid audits yet.</strong><p>Your completed Full Quote Audits will appear here automatically.</p><Link className="text-link" href="/analyze">Start a quote scan →</Link></div>}
+        }) : <div className="account-empty"><strong>No paid audits yet.</strong><p>Your completed Full Quote Audits will appear here automatically.</p><Link className="text-link" href={auditPath}>Start a quote scan →</Link></div>}
       </section>
 
       <section className="marketing-preferences"><h2>Email preferences</h2><p>Receive optional PencilProof reminders, promotions, and useful car-buying information. You can change this preference anytime.</p><button className="button button-quiet" type="button" onClick={() => void updateMarketingPreference()}>{marketingOptedIn ? "Stop marketing emails" : "Join the PencilProof email list"}</button>{marketingMessage ? <p role="status">{marketingMessage}</p> : null}</section>

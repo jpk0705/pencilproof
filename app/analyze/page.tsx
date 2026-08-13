@@ -223,7 +223,10 @@ export default function AnalyzePage() {
   const [pendingCheckout, setPendingCheckout] = useState<unknown | null>(null);
 
   useEffect(() => {
-    setIsPaidAuditHost(window.location.hostname.toLowerCase() === "audit.pencilproof.com");
+    setIsPaidAuditHost(
+      window.location.hostname.toLowerCase() === "audit.pencilproof.com"
+      && (window.location.pathname === "/full-audit" || window.location.pathname.startsWith("/full-audit/")),
+    );
   }, []);
 
   useEffect(() => () => {
@@ -846,7 +849,7 @@ export default function AnalyzePage() {
           <Link href="/what-it-checks">What it checks</Link>
           <Link href="/questions">Q&amp;A</Link>
           <Link href="/pricing">Pricing</Link>
-          <Link className="nav-cta" href="/analyze">Upload your quote</Link>
+          <Link className="nav-cta" href={isPaidAuditHost ? "/full-audit/" : "/analyze"}>Upload your quote</Link>
         </div>
         <span className="privacy-chip">Your deal inputs stay in this browser · <a href="mailto:support@pencilproof.com">Contact support</a></span>
       </nav>
