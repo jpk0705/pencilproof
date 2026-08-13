@@ -896,7 +896,6 @@ export default function AnalyzePage() {
           <Link href="/who-it-helps">Who it helps</Link>
           <Link href="/how-it-works">How it works</Link>
           <Link href="/what-it-checks">What it checks</Link>
-          <Link href="/questions">Q&amp;A</Link>
           <Link href="/pricing">Pricing</Link>
           <Link className="nav-cta" href={isPaidAuditHost ? "/analyze/secure/" : "/analyze"}>Upload your quote</Link>
         </div>

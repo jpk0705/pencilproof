@@ -28,6 +28,6 @@ export default function AccountNav() {
 
   if (!clerk) return null;
   return clerk.user
-    ? <Link href={ACCOUNT_URL}>My Audits</Link>
+    ? <Link className="nav-account-link" href={ACCOUNT_URL}>My Audits</Link>
     : <button className="nav-account-button" type="button" onClick={() => clerk.openSignIn(authRedirectOptions())}>Sign in</button>;
 }

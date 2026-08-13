@@ -21,7 +21,7 @@ export default function Home() {
             <Link className="button button-primary" href="/analyze">
               Upload PDF or image <Arrow />
             </Link>
-            <Link className="button button-quiet" href="/how-it-works#sample-audit">Learn how it works</Link>
+            <Link className="button button-quiet" href="/who-it-helps">Who it helps</Link>
           </div>
           <p className="hero-caution">No payment required to review the scan. Your document is read locally first, and you decide whether the complete audit is useful.</p>
           <div className="proof-row" aria-label="Product highlights">
