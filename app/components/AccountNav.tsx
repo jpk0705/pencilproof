@@ -9,25 +9,33 @@ const ACCOUNT_URL = "https://audit.pencilproof.com/account";
 
 export default function AccountNav() {
   const [clerk, setClerk] = useState<Clerk | null>(null);
+  const [signedIn, setSignedIn] = useState(false);
 
   useEffect(() => {
     const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
     if (!publishableKey) return;
 
     let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
     void createLoadedClerk(publishableKey)
       .then((instance) => {
-        if (!cancelled) setClerk(instance);
+        if (cancelled) return;
+        setClerk(instance);
+        setSignedIn(Boolean(instance.user));
+        unsubscribe = instance.addListener(() => {
+          if (!cancelled) setSignedIn(Boolean(instance.user));
+        });
       })
       .catch(() => undefined);
 
     return () => {
       cancelled = true;
+      unsubscribe?.();
     };
   }, []);
 
   if (!clerk) return null;
-  return clerk.user
+  return signedIn
     ? <Link className="nav-account-link" href={ACCOUNT_URL}>My Audits</Link>
     : <button className="nav-account-button" type="button" onClick={() => clerk.openSignIn(authRedirectOptions())}>Sign in</button>;
 }
