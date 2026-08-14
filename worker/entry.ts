@@ -732,4 +732,5 @@ export const handleRequest = async (request: Request, env: Env) =>
 
 export default {
   fetch: handleRequest,
+  scheduled: app.scheduled,
 };
