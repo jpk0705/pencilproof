@@ -1514,6 +1514,10 @@ h1 { font-weight: 700; letter-spacing: -.055em; }
 .check-list { gap: 12px; }
 .check-list article { padding: 21px; border-radius: var(--radius-sm); }
 .pricing-reassurance .check-list { gap: 10px; }
+.pricing-reassurance {
+  width: min(1280px, calc(100% - 48px));
+  padding-inline: clamp(18px, 2.8vw, 34px);
+}
 .faq-grid { gap: 28px 26px; }
 
 .footer-grid { grid-template-columns: minmax(170px, .85fr) minmax(230px, 1fr) minmax(360px, 1.65fr); gap: 28px; }
