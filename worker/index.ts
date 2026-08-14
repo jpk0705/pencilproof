@@ -841,7 +841,7 @@ const sendMarketingEmail = async (
   const accountUrl = `${env.SITE_ORIGIN}/account/`;
   const unsubscribeToken = await createEmailUnsubscribeToken(candidate.email, env.SESSION_SECRET);
   const unsubscribeUrl = `${env.SITE_ORIGIN}/api/email/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`;
-  const html = `<p style="color:#667085;font-size:12px">ADVERTISEMENT</p>${content.html}<p><a href="${env.PUBLIC_SITE_ORIGIN}/analyze">Open PencilProof</a></p><hr><p style="color:#667085;font-size:12px">You are receiving this because you created a PencilProof account or provided your email to PencilProof. <a href="${unsubscribeUrl}">Unsubscribe</a> or <a href="${accountUrl}">manage email preferences</a>.</p><p style="color:#667085;font-size:12px">${htmlEscape(businessAddress)}</p>`;
+  const html = `${content.html}<p><a href="${env.PUBLIC_SITE_ORIGIN}/analyze">Open PencilProof</a></p><hr><p style="color:#667085;font-size:12px">This is a promotional email from PencilProof. You are receiving it because you created a PencilProof account or provided your email to PencilProof. <a href="${unsubscribeUrl}">Unsubscribe</a> or <a href="${accountUrl}">manage email preferences</a>.</p><p style="color:#667085;font-size:12px">${htmlEscape(businessAddress)}</p>`;
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -853,7 +853,7 @@ const sendMarketingEmail = async (
       html,
       reply_to: env.MARKETING_REPLY_TO?.trim() || undefined,
       subject: content.subject,
-      text: `ADVERTISEMENT\n\n${text}\n\nOpen PencilProof: ${env.PUBLIC_SITE_ORIGIN}/analyze\nUnsubscribe: ${unsubscribeUrl}\nManage email preferences: ${accountUrl}\n\n${businessAddress}`,
+      text: `${text}\n\nOpen PencilProof: ${env.PUBLIC_SITE_ORIGIN}/analyze\n\nThis is a promotional email from PencilProof. You are receiving it because you created a PencilProof account or provided your email to PencilProof.\nUnsubscribe: ${unsubscribeUrl}\nManage email preferences: ${accountUrl}\n\n${businessAddress}`,
       to: [candidate.email],
     }),
   });
