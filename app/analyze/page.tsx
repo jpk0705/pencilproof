@@ -26,6 +26,7 @@ import { track } from "@/lib/analytics";
 import VehiclePhoto from "@/app/components/VehiclePhoto";
 import PhoneCameraBridge from "@/app/components/PhoneCameraBridge";
 import PreCheckoutAccountGate from "@/app/components/PreCheckoutAccountGate";
+import PreCheckoutFeedback, { hasCompletedPreCheckoutFeedback, markPreCheckoutFeedbackCompleted } from "@/app/components/PreCheckoutFeedback";
 import AccountNav from "@/app/components/AccountNav";
 
 type Deal = {
@@ -228,6 +229,7 @@ export default function AnalyzePage() {
     worth: "",
   });
   const [auditFeedbackSent, setAuditFeedbackSent] = useState(false);
+  const [preCheckoutFeedbackCompleted, setPreCheckoutFeedbackCompleted] = useState<boolean | null>(null);
   const savedAuditKey = useRef("");
   const [accountPromptDismissed, setAccountPromptDismissed] = useState(false);
   const [pendingCheckout, setPendingCheckout] = useState<CheckoutPayload | null>(null);
@@ -243,6 +245,10 @@ export default function AnalyzePage() {
   useEffect(() => () => {
     if (importSource?.url) URL.revokeObjectURL(importSource.url);
   }, [importSource]);
+
+  useEffect(() => {
+    setPreCheckoutFeedbackCompleted(hasCompletedPreCheckoutFeedback());
+  }, []);
 
   useEffect(() => {
     if (!pendingCheckout) return;
@@ -870,6 +876,7 @@ export default function AnalyzePage() {
       event: "feedback_submitted",
       value: auditFeedback.scanQuality,
     });
+    markPreCheckoutFeedbackCompleted();
     setAuditFeedbackSent(true);
   };
 
@@ -1100,6 +1107,7 @@ export default function AnalyzePage() {
             <div className="verification-actions">
               <button className="button button-primary" type="button" onClick={confirmPendingImport}>{isPaidAuditHost ? "Confirm values and run audit" : "Confirm values and continue to checkout"} <Arrow /></button>
             </div>
+            {preCheckoutFeedbackCompleted === false ? <PreCheckoutFeedback onCompleted={() => setPreCheckoutFeedbackCompleted(true)} /> : null}
             {pendingCheckout !== null ? <div ref={checkoutGateRef} className="checkout-gate-anchor"><PreCheckoutAccountGate onContinue={continueCheckout} /></div> : null}
           </section>
         ) : null}
@@ -1299,7 +1307,7 @@ export default function AnalyzePage() {
                   <button className="button button-quiet" type="button" onClick={() => setAccountPromptDismissed(true)}>Continue Without Account</button>
                 </div>
               </section> : null}
-              <section className="paid-feedback-card" aria-labelledby="paid-feedback-title">
+              {isPaidAuditHost && preCheckoutFeedbackCompleted === false ? <section className="paid-feedback-card" aria-labelledby="paid-feedback-title">
                 <p className="paid-feedback-kicker">ONE-MINUTE BETA CHECK-IN</p>
                 <h3 id="paid-feedback-title">How did you like your Full Quote Audit?</h3>
                 <p className="paid-feedback-intro">Your answers help us improve the experience. This is anonymous—please do not include your name, VIN, or quote details.</p>
@@ -1384,7 +1392,7 @@ export default function AnalyzePage() {
                     </button>
                   </form>
                 )}
-              </section>
+              </section> : null}
             </> : (
               <div className="empty-audit">
                 <strong>Your audit will appear here.</strong>

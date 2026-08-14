@@ -16,7 +16,6 @@ export default function PreCheckoutAccountGate({ onContinue }: Props) {
   const [clerk, setClerk] = useState<Clerk | null>(null);
   const [clerkError, setClerkError] = useState(false);
   const [accountReady, setAccountReady] = useState(false);
-  const [marketingOptOut, setMarketingOptOut] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   useEffect(() => {
@@ -69,17 +68,6 @@ export default function PreCheckoutAccountGate({ onContinue }: Props) {
       });
       if (!sessionResponse.ok) throw new Error("account_session");
 
-      if (marketingOptOut) {
-        if (!email) throw new Error("email_required");
-        const marketingResponse = await fetch(accountEndpoint("/api/account/marketing"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ email, optIn: false }),
-        });
-        if (!marketingResponse.ok) throw new Error("marketing");
-      }
-
       await fetch(accountEndpoint("/api/account/marketing/activity"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -88,12 +76,8 @@ export default function PreCheckoutAccountGate({ onContinue }: Props) {
       }).catch(() => undefined);
 
       onContinue();
-    } catch (error) {
-      setMessage(
-        error instanceof Error && error.message === "email_required"
-          ? "Add an email address before changing your email preference."
-          : "We could not finish account setup. You can continue securely as a guest.",
-      );
+    } catch {
+      setMessage("We could not finish account setup. You can continue securely as a guest.");
       setBusy(false);
     }
   };
@@ -129,10 +113,6 @@ export default function PreCheckoutAccountGate({ onContinue }: Props) {
             Already have an account? Sign in
           </button>
         ) : null}
-        <label className="pre-checkout-consent">
-          <input type="checkbox" checked={marketingOptOut} onChange={(event) => setMarketingOptOut(event.target.checked)} disabled={busy} />
-          <span>Do not email me PencilProof reminders, promotions, or helpful car-buying information. Change this preference later from My Audits.</span>
-        </label>
         {clerkError || !configured ? (
           <p className="pre-checkout-message">Account setup is temporarily unavailable. You can continue securely as a guest.</p>
         ) : null}
