@@ -946,6 +946,14 @@ export default function AnalyzePage() {
             </label>
           </div>
         </div>
+        {!isPaidAuditHost ? <div className="scan-benefits" aria-label="What you get from the free scan">
+          <p className="scan-benefits-kicker">WHAT YOU&apos;LL GET BEFORE CHECKOUT</p>
+          <div className="scan-benefits-grid">
+            <div><strong>01</strong><span><b>Detected values</b> vehicle, payment, APR, fees, products, and trade details.</span></div>
+            <div><strong>02</strong><span><b>Value check</b> compare what the document says with the math PencilProof can calculate.</span></div>
+            <div><strong>03</strong><span><b>Clear next step</b> decide whether the complete $39 audit is useful before paying.</span></div>
+          </div>
+        </div> : null}
         {dealImport.status === "loading" ? (
           <div className="pdf-import-progress" role="status" aria-live="polite">
             <div className="pdf-import-progress-heading">

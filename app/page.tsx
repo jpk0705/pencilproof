@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { SiteFooter, SiteNav } from "@/app/components/SiteChrome";
+import SampleAuditDemo from "@/app/components/SampleAuditDemo";
 
 const Arrow = () => <span aria-hidden="true">→</span>;
 
@@ -11,11 +12,11 @@ export default function Home() {
       <section className="hero shell">
         <div className="hero-copy">
           <div className="eyebrow"><span /> PRIVACY-FIRST FULL QUOTE AUDIT FOR CAR BUYERS</div>
-          <h1>Understand the numbers before you sign.</h1>
+          <h1>See the real cost before you sign.</h1>
           <p className="hero-lede">
-            PencilProof helps you review the quote you were handed—starting with the
-            math, not the pressure. See the price, APR, fees, products, trade, and
-            payment in one calm, readable audit.
+            Upload your dealer quote and get a free scan of the payment, APR, fees,
+            optional products, trade, and vehicle details. Then decide whether the
+            complete Full Quote Audit is worth it before you pay.
           </p>
           <div className="hero-actions">
             <Link className="button button-primary" href="/analyze">
@@ -23,47 +24,16 @@ export default function Home() {
             </Link>
             <Link className="text-link" href="/who-it-helps">Who it helps <Arrow /></Link>
           </div>
-          <p className="hero-caution">No payment required to review the scan. Your document is read locally first, and you decide whether the complete audit is useful.</p>
+          <p className="hero-caution">No payment is required to see the detected values. Your document is read locally first, and you decide whether the complete audit is useful.</p>
           <div className="proof-row" aria-label="Product highlights">
             <span><b>Free scan first</b> before checkout</span>
-            <span><b>No dealership affiliation</b> independent education</span>
+            <span><b>Top issues in one view</b> clear next questions</span>
             <span><b>One-time audit</b> no recurring subscription</span>
             <span><b>Private by design</b> local reading first</span>
           </div>
         </div>
 
-        <div className="deal-card hero-deal-card" aria-label="Sample Full Quote Audit preview">
-          <div className="deal-card-head">
-            <div>
-              <p>SAMPLE FULL QUOTE AUDIT</p>
-              <h2>2026 Toyota RAV4 XLE Premium</h2>
-            </div>
-            <div className="sample-status"><strong>4</strong><span>areas worth reviewing</span></div>
-          </div>
-          <div className="deal-metrics">
-            <div><span>Dealer quote</span><strong>$740/mo</strong></div>
-            <div><span>Calculated payment</span><strong>$703/mo</strong></div>
-            <div><span>Products financed</span><strong>$4,189</strong></div>
-          </div>
-          <div className="flag-list">
-            <div className="flag flag-warn">
-              <span className="flag-icon">!</span>
-              <p><b>3 products add about $74/month</b><small>A service contract, GAP, and an appearance add-on are included in the loan.</small></p>
-            </div>
-            <div className="flag flag-warn">
-              <span className="flag-icon">!</span>
-              <p><b>Quoted payment is $36.59/month higher</b><small>Quote: $739.95. Entered figures: $703.36. Ask the dealer to explain the variance.</small></p>
-            </div>
-            <div className="flag flag-good">
-              <span className="flag-icon">✓</span>
-              <p><b>Dealer-ready response included</b><small>Ask for the exact amount financed, first-payment date, and an itemized buyer&apos;s order.</small></p>
-            </div>
-          </div>
-          <div className="deal-card-foot">
-            <span>Example based on entered figures.</span>
-            <Link href="/how-it-works#sample-audit">See what&apos;s inside <Arrow /></Link>
-          </div>
-        </div>
+        <SampleAuditDemo />
       </section>
 
       <section className="brand-value-section" aria-labelledby="brand-value-title">
