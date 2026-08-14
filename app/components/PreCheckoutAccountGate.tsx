@@ -82,6 +82,13 @@ export default function PreCheckoutAccountGate({ onContinue }: Props) {
         if (!marketingResponse.ok) throw new Error("marketing");
       }
 
+      await fetch(accountEndpoint("/api/account/marketing/activity"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ event: "scan_ready" }),
+      }).catch(() => undefined);
+
       onContinue();
     } catch (error) {
       setMessage(

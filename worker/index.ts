@@ -81,6 +81,10 @@ export interface Env {
   CLERK_ISSUER?: string;
   CLERK_JWKS_URL?: string;
   CLERK_AUDIENCE?: string;
+  RESEND_API_KEY?: string;
+  MARKETING_FROM_EMAIL?: string;
+  MARKETING_REPLY_TO?: string;
+  MARKETING_BUSINESS_ADDRESS?: string;
 }
 
 const AI_IMPORT_PROMPT = `You are PencilProof's document extraction engine for US automobile dealer buyer's orders, finance worksheets, F&I menus, lease worksheets, and payment quotes.
@@ -610,6 +614,156 @@ const accountCall = async (env: Env, path: string, body: Record<string, unknown>
   return response.ok ? await response.json() as Record<string, unknown> : null;
 };
 
+const recordMarketingActivity = async (
+  env: Env,
+  userId: string | null,
+  event: "scan_ready" | "checkout_started" | "purchase_completed",
+) => {
+  if (!userId) return;
+  await accountCall(env, "/marketing-activity", { event, userId });
+};
+
+type MarketingCandidate = {
+  email: string;
+  lastCheckoutAt: number | null;
+  lastPurchaseAt: number | null;
+  lastScanAt: number | null;
+  lastSentAt: number | null;
+  passExpiresAt: number | null;
+  userId: string;
+};
+
+const marketingCandidates = (value: unknown): MarketingCandidate[] =>
+  Array.isArray(value)
+    ? value.filter((candidate): candidate is Record<string, unknown> => Boolean(candidate && typeof candidate === "object"))
+      .map((candidate) => ({
+        email: typeof candidate.email === "string" ? candidate.email : "",
+        lastCheckoutAt: typeof candidate.lastCheckoutAt === "number" ? candidate.lastCheckoutAt : null,
+        lastPurchaseAt: typeof candidate.lastPurchaseAt === "number" ? candidate.lastPurchaseAt : null,
+        lastScanAt: typeof candidate.lastScanAt === "number" ? candidate.lastScanAt : null,
+        lastSentAt: typeof candidate.lastSentAt === "number" ? candidate.lastSentAt : null,
+        passExpiresAt: typeof candidate.passExpiresAt === "number" ? candidate.passExpiresAt : null,
+        userId: typeof candidate.userId === "string" ? candidate.userId : "",
+      }))
+    : [];
+
+const htmlEscape = (value: string) => value.replace(/[&<>"']/g, (character) => ({
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+}[character] ?? character));
+
+const marketingEmailContent = (
+  candidate: MarketingCandidate,
+  now: number,
+) => {
+  const lastActivityAt = Math.max(candidate.lastScanAt ?? 0, candidate.lastCheckoutAt ?? 0);
+  const hasRecentUnpaidActivity = lastActivityAt > (candidate.lastPurchaseAt ?? 0)
+    && lastActivityAt >= now - 60 * 60 * 24 * 14;
+  const hasActivePass = (candidate.passExpiresAt ?? 0) > now;
+  const day = new Date(now * 1000).getUTCDay();
+
+  if (hasRecentUnpaidActivity) {
+    return {
+      subject: "Your PencilProof audit is waiting",
+      text: [
+        "You started checking a dealer quote with PencilProof but did not finish checkout.",
+        "Return to PencilProof to continue reviewing the deal. No subscription is required.",
+      ],
+      html: "<p>You started checking a dealer quote with PencilProof but did not finish checkout.</p><p>Return to PencilProof to continue reviewing the deal. No subscription is required.</p>",
+    };
+  }
+
+  if (candidate.lastPurchaseAt && !hasActivePass) {
+    return {
+      subject: "Ready for another PencilProof 30-Day Pass?",
+      text: [
+        "Your previous PencilProof Pass has ended.",
+        "Get another one-time 30-Day Pass whenever you are ready to review a new dealer quote.",
+      ],
+      html: "<p>Your previous PencilProof Pass has ended.</p><p>Get another one-time 30-Day Pass whenever you are ready to review a new dealer quote.</p>",
+    };
+  }
+
+  const tip = day === 2
+    ? {
+      subject: "PencilProof tip: review the amount financed",
+      text: "A low monthly payment can hide a longer term or expensive add-ons. Compare the amount financed, APR, term, and total of payments—not only the payment.",
+      html: "<p>A low monthly payment can hide a longer term or expensive add-ons.</p><p>Compare the amount financed, APR, term, and total of payments—not only the payment.</p>",
+    }
+    : {
+      subject: "PencilProof tip: ask for every fee in writing",
+      text: "Ask the dealership to itemize the selling price, taxes, government fees, documentation fee, and every optional product before you sign.",
+      html: "<p>Ask the dealership to itemize the selling price, taxes, government fees, documentation fee, and every optional product before you sign.</p>",
+    };
+
+  return tip;
+};
+
+const sendMarketingEmail = async (
+  candidate: MarketingCandidate,
+  content: { subject: string; text: string | string[]; html: string },
+  env: Env,
+) => {
+  const apiKey = env.RESEND_API_KEY?.trim();
+  const from = env.MARKETING_FROM_EMAIL?.trim();
+  const businessAddress = env.MARKETING_BUSINESS_ADDRESS?.trim();
+  if (!apiKey || !from || !businessAddress) return false;
+  const text = Array.isArray(content.text) ? content.text.join("\n\n") : content.text;
+  const accountUrl = `${env.SITE_ORIGIN}/account/`;
+  const html = `${content.html}<p><a href="${env.PUBLIC_SITE_ORIGIN}/analyze">Open PencilProof</a></p><hr><p style="color:#667085;font-size:12px">You received this because you opted into PencilProof emails. <a href="${accountUrl}">Manage email preferences</a>.</p><p style="color:#667085;font-size:12px">${htmlEscape(businessAddress)}</p>`;
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from,
+      html,
+      reply_to: env.MARKETING_REPLY_TO?.trim() || undefined,
+      subject: content.subject,
+      text: `${text}\n\nOpen PencilProof: ${env.PUBLIC_SITE_ORIGIN}/analyze\nManage email preferences: ${accountUrl}\n\n${businessAddress}`,
+      to: [candidate.email],
+    }),
+  });
+  if (response.ok) return true;
+  console.error("Marketing email send failed", {
+    status: response.status,
+    userId: candidate.userId,
+  });
+  return false;
+};
+
+const runMarketingCampaign = async (env: Env, scheduledTime: number) => {
+  if (!env.RESEND_API_KEY || !env.MARKETING_FROM_EMAIL || !env.MARKETING_BUSINESS_ADDRESS) {
+    console.warn("Marketing campaign skipped: email configuration is incomplete");
+    return;
+  }
+  const now = Math.floor(scheduledTime / 1000);
+  const campaignKey = `${new Date(scheduledTime).toISOString().slice(0, 10)}:${new Date(scheduledTime).getUTCDay()}`;
+  const result = await accountCall(env, "/marketing-candidates", { now });
+  const candidates = marketingCandidates(result?.candidates);
+  for (const candidate of candidates) {
+    if (!candidate.userId || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(candidate.email)) continue;
+    const claim = await accountCall(env, "/marketing-delivery", {
+      action: "claim",
+      campaignKey,
+      userId: candidate.userId,
+    });
+    if (claim?.claimed !== true) continue;
+    const content = marketingEmailContent(candidate, now);
+    const sent = await sendMarketingEmail(candidate, content, env);
+    await accountCall(env, "/marketing-delivery", {
+      action: sent ? "complete" : "release",
+      campaignKey,
+      userId: candidate.userId,
+    });
+  }
+};
+
 const currentUser = async (request: Request, env: Env) =>
   verifyUserSession(readCookie(request, USER_COOKIE), env.SESSION_SECRET);
 
@@ -673,6 +827,14 @@ const handleAccount = async (request: Request, env: Env) => {
       return withAccountCors(Response.json({ error: "marketing_unavailable" }, { status: 503, headers: noStoreHeaders }), request, env);
     }
     return withAccountCors(Response.json({ optedIn: true }, { headers: noStoreHeaders }), request, env);
+  }
+  if (url.pathname === "/api/account/marketing/activity" && request.method === "POST") {
+    const body = await request.json().catch(() => ({})) as { event?: string };
+    if (body.event !== "scan_ready" && body.event !== "checkout_started" && body.event !== "purchase_completed") {
+      return withAccountCors(Response.json({ error: "invalid_marketing_activity" }, { status: 400, headers: noStoreHeaders }), request, env);
+    }
+    await recordMarketingActivity(env, userId, body.event);
+    return withAccountCors(Response.json({ recorded: true }, { headers: noStoreHeaders }), request, env);
   }
   const ownerId = accountOwner(userId, null);
   if (url.pathname === "/api/account/me" && request.method === "GET") {
@@ -1878,12 +2040,14 @@ const verifyAndStorePaidOrder = async (
   }, env);
   if (stored) {
     const accountUserId = session?.metadata?.pencilproof_user_id;
+    const validAccountUserId = /^[A-Za-z0-9_:-]{8,200}$/.test(accountUserId ?? "") ? accountUserId : null;
     await accountCall(env, "/entitlement", {
-      userId: /^[A-Za-z0-9_:-]{8,200}$/.test(accountUserId ?? "") ? accountUserId : null,
+      userId: validAccountUserId,
       guestId: /^[a-f0-9]{64}$/.test(deviceHash) ? deviceHash : null,
       stripeSessionId: sessionId,
       activatedAt: createdAt,
     });
+    await recordMarketingActivity(env, validAccountUserId, "purchase_completed");
     const analyticsSessionId = session?.metadata?.pencilproof_analytics_session;
     if (/^[A-Za-z0-9_-]{20,80}$/.test(analyticsSessionId ?? "")) {
       await recordAnalyticsEvent({
@@ -2075,6 +2239,7 @@ const handleCheckout = async (request: Request, env: Env) => {
       : randomDeviceId();
     const deviceHash = await sha256Hex(deviceId);
     const userId = await currentUser(request, env);
+    await recordMarketingActivity(env, userId, "checkout_started");
     const session = await createCheckoutSession(
       env,
       deviceHash,
@@ -2289,6 +2454,7 @@ export const handleRequest = async (request: Request, env: Env) => {
     || url.pathname === "/api/account/me"
     || url.pathname === "/api/account/audits"
     || url.pathname === "/api/account/marketing"
+    || url.pathname === "/api/account/marketing/activity"
     || url.pathname === "/api/account/delete"
   ) {
     return handleAccount(request, env);
@@ -2368,4 +2534,7 @@ export const handleRequest = async (request: Request, env: Env) => {
 
 export default {
   fetch: handleRequest,
+  scheduled: (controller: { scheduledTime: number }, env: Env, context: { waitUntil(promise: Promise<unknown>): void }) => {
+    context.waitUntil(runMarketingCampaign(env, controller.scheduledTime));
+  },
 };

@@ -4,6 +4,9 @@
   "name": "pencilproof-audit",
   "main": "./worker/entry.ts",
   "compatibility_date": "2026-07-26",
+  "triggers": {
+    "crons": ["0 17 * * 2,5"]
+  },
   "keep_vars": true,
   "assets": {
     "directory": "./out",
