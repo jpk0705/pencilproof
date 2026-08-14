@@ -766,7 +766,7 @@ footer { border-top: 1px solid var(--line); padding: 34px 0; }
   .verification-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 680px) {
-  .shell, .site-nav { width: min(100% - 36px, 1280px); }.site-nav { height: 70px; gap: 10px; }.nav-links > a:not(.nav-cta) { display: none; }.nav-links { flex: 0 0 auto; gap: 0; }.nav-cta { min-height: 34px; padding: 8px 10px; font-size: 11px; line-height: 1.1; white-space: nowrap; }
+  .shell, .site-nav { width: min(100% - 36px, 1280px); }.site-nav { height: 70px; gap: 10px; }.nav-links > a:not(.nav-cta):not(.nav-account-link) { display: none; }.nav-links { flex: 0 0 auto; gap: 0; }.nav-cta { min-height: 34px; padding: 8px 10px; font-size: 11px; line-height: 1.1; white-space: nowrap; }
   h1 { font-size: clamp(44px, 12.5vw, 52px); line-height: 1.02; }
   .analyzer-header h1 { font-size: clamp(42px, 12vw, 50px); }
   .section h2,
