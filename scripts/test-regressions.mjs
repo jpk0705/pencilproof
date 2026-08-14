@@ -49,6 +49,8 @@ const phonePageSource = await readFile(join(projectRoot, "app/phone/page.tsx"), 
 const analyzeSource = await readFile(join(projectRoot, "app/analyze/page.tsx"), "utf8");
 const phoneWorkerSource = await readFile(join(projectRoot, "worker/index.ts"), "utf8");
 const wranglerSource = await readFile(join(projectRoot, "wrangler.jsonc"), "utf8");
+const accountSystemSource = await readFile(join(projectRoot, "docs/account-system.md"), "utf8");
+const readmeSource = await readFile(join(projectRoot, "README.md"), "utf8");
 assert.match(phoneBridgeSource, /Scan with phone/);
 assert.match(phoneBridgeSource, /QRCode\.toDataURL/);
 assert.match(phoneBridgeSource, /photo-start/);
@@ -63,6 +65,15 @@ assert.match(analyzeSource, /paid-audit-questionnaire/);
 assert.match(phoneWorkerSource, /class PhoneSessionStore/);
 assert.match(phoneWorkerSource, /PHONE_SESSIONS/);
 assert.match(wranglerSource, /"PhoneSessionStore"/);
+assert.match(wranglerSource, /"0 17 \* \* 2,5"/);
+assert.match(phoneWorkerSource, /List-Unsubscribe/);
+assert.match(phoneWorkerSource, /MARKETING_BUSINESS_ADDRESS/);
+assert.match(phoneWorkerSource, /MARKETING_ALERT_EMAIL/);
+assert.match(phoneWorkerSource, /Delivery failures/);
+assert.match(readmeSource, /Hannah at PencilProof <support@pencilproof\.com>/);
+assert.match(readmeSource, /MARKETING_ALERT_EMAIL/);
+assert.match(accountSystemSource, /Apple Service ID/);
+assert.match(accountSystemSource, /Google login has been used successfully/);
 
 for (const name of ["quote.webp", "quote.gif", "quote.avif", "quote.heic", "quote.tiff", "quote.bmp"]) {
   assert.equal(isDealImportFile({ name, type: "" }), true, `${name} should be accepted as an image`);
