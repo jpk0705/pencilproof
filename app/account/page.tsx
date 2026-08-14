@@ -23,6 +23,10 @@ export default function AccountPage() {
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const [message, setMessage] = useState("");
   const [auditPath, setAuditPath] = useState("/analyze");
+  const [showDeletePrompt, setShowDeletePrompt] = useState(false);
+  const [deleteReason, setDeleteReason] = useState("");
+  const [deleteDetails, setDeleteDetails] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   useEffect(() => {
     if (window.location.hostname.toLowerCase() === "audit.pencilproof.com") setAuditPath("/analyze/secure/");
@@ -93,11 +97,14 @@ export default function AccountPage() {
     setAudits((current) => current.filter((audit) => audit.id !== id));
   };
 
-  const deleteAccount = async () => {
+  const confirmDeleteAccount = async () => {
     if (!window.confirm("Delete your PencilProof account and saved audit data?")) return;
+    setDeleteBusy(true);
     await fetch("/api/account/delete", { method: "POST" });
     await clerk.signOut();
     setMessage("Your account and saved PencilProof data were deleted.");
+    setShowDeletePrompt(false);
+    setDeleteBusy(false);
   };
 
   return shell(
@@ -126,7 +133,28 @@ export default function AccountPage() {
         }) : <div className="account-empty"><strong>No paid audits yet.</strong><p>Your completed Full Quote Audits will appear here automatically.</p><Link className="text-link" href={auditPath}>Start a quote scan →</Link></div>}
       </section>
 
-      <button className="account-delete" type="button" onClick={() => void deleteAccount()}>Delete my account and data</button>
+      {showDeletePrompt ? (
+        <section className="delete-account-prompt" aria-labelledby="delete-account-prompt-title">
+          <p className="kicker">BEFORE YOU GO</p>
+          <h2 id="delete-account-prompt-title">Why are you deleting your account?</h2>
+          <p>Your answer is optional and helps us improve PencilProof. You can leave it blank and continue.</p>
+          <label htmlFor="delete-reason">Reason</label>
+          <select id="delete-reason" value={deleteReason} onChange={(event) => setDeleteReason(event.target.value)}>
+            <option value="">Choose a reason (optional)</option>
+            <option value="completed purchase">I completed my car purchase</option>
+            <option value="did not use service">I did not use the service</option>
+            <option value="site trouble">I had trouble using the site</option>
+            <option value="not needed anymore">I do not need PencilProof anymore</option>
+            <option value="other">Other</option>
+          </select>
+          <label htmlFor="delete-details">Additional feedback (optional)</label>
+          <textarea id="delete-details" value={deleteDetails} onChange={(event) => setDeleteDetails(event.target.value)} placeholder="Tell us more, if you would like to." rows={3} />
+          <div className="delete-account-actions">
+            <button className="button button-quiet" type="button" onClick={() => setShowDeletePrompt(false)} disabled={deleteBusy}>Keep my account</button>
+            <button className="button button-danger" type="button" onClick={() => void confirmDeleteAccount()} disabled={deleteBusy}>{deleteBusy ? "Deleting…" : "Continue to delete"}</button>
+          </div>
+        </section>
+      ) : <button className="account-delete" type="button" onClick={() => setShowDeletePrompt(true)}>Delete my account and data</button>}
       {message ? <p role="status">{message}</p> : null}
     </main>,
   );

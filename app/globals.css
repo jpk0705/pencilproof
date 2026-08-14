@@ -1640,6 +1640,19 @@ h1 { font-weight: 700; letter-spacing: -.055em; }
 .account-empty strong { display: block; margin-bottom: 6px; }
 .account-empty .text-link { display: inline-block; margin-top: 8px; color: var(--brand-gold); }
 .account-delete { margin-top: 30px; }
+.delete-account-prompt { margin-top: 30px; padding: 24px 26px; border: 1px solid var(--brand-line); border-radius: 16px; background: var(--brand-navy-2); box-shadow: 0 16px 40px rgba(0,0,0,.16); }
+.delete-account-prompt h2 { margin: 5px 0 9px; }
+.delete-account-prompt > p:not(.kicker) { margin: 0 0 18px; color: var(--brand-muted); }
+.delete-account-prompt label { display: block; margin: 14px 0 6px; color: var(--brand-text); font-size: 12px; font-weight: 800; }
+.delete-account-prompt select,
+.delete-account-prompt textarea { width: 100%; border: 1px solid var(--brand-line); border-radius: 8px; padding: 11px 12px; color: var(--brand-text); background: var(--brand-navy); font: inherit; font-size: 13px; }
+.delete-account-prompt textarea { resize: vertical; min-height: 84px; }
+.delete-account-prompt select:focus-visible,
+.delete-account-prompt textarea:focus-visible { outline: 3px solid var(--brand-gold); outline-offset: 2px; }
+.delete-account-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.delete-account-actions .button { width: auto; min-height: 44px; }
+.button-danger { border: 1px solid #d68172; color: #fff4f0; background: #8b3b30; }
+.button-danger:hover { background: #a84a3b; }
 .pre-checkout-account-gate { color: var(--brand-text); background: var(--brand-navy-2); border-color: var(--brand-line); }
 .pre-checkout-account-gate h2,
 .pre-checkout-account-gate strong { color: var(--brand-text); }
@@ -1683,6 +1696,9 @@ h1 { font-weight: 700; letter-spacing: -.055em; }
   .account-section-heading { align-items: flex-start; flex-direction: column; gap: 4px; }
   .saved-audit { align-items: flex-start; flex-direction: column; }
   .feedback-worth-grid { grid-template-columns: 1fr 1fr; }
+  .delete-account-prompt { padding: 20px; }
+  .delete-account-actions { flex-direction: column-reverse; }
+  .delete-account-actions .button { width: 100%; }
 }
 
 @media (max-width: 680px) {
