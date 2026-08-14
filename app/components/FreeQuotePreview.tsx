@@ -31,6 +31,14 @@ const feedbackWorthOptions = [
   { value: "30-39.99", label: "$30–$39.99" },
   { value: "40+", label: "$40+" },
 ] as const;
+
+const feedbackWorthValue = (range: string) => {
+  if (range === "0-9.99") return 0;
+  if (range === "10-19.99") return 9.99;
+  if (range === "20-29.99") return 19.99;
+  if (range === "30-39.99") return 29.99;
+  return 39.99;
+};
 import { track } from "@/lib/analytics";
 
 type ScanState =
@@ -729,12 +737,22 @@ export default function FreeQuotePreview() {
                 ) : (
                   <form onSubmit={(event) => {
                     event.preventDefault();
-                    if (!feedbackWorth) return;
+                    if (!feedbackRating || !feedbackWorth) return;
                     track({
-                      category: "pre-checkout-survey",
-                      comment: JSON.stringify({ category: feedbackCategory, suggestions: feedbackComment.trim(), worthRange: feedbackWorth }),
+                      category: feedbackCategory,
+                      comment: JSON.stringify({
+                        category: feedbackCategory,
+                        comment: feedbackComment.trim(),
+                        phase: "pre-checkout",
+                        rating: feedbackRating,
+                        scanQuality: feedbackRating,
+                        service: feedbackRating,
+                        ui: feedbackRating,
+                        worth: feedbackWorthValue(feedbackWorth),
+                        worthRange: feedbackWorth,
+                      }),
                       event: "feedback_submitted",
-                      value: feedbackWorth === "40+" ? 40 : Number(feedbackWorth.split("-")[0]),
+                      value: feedbackRating,
                     });
                     setFeedbackSent(true);
                   }}>
@@ -774,7 +792,7 @@ export default function FreeQuotePreview() {
                         ))}
                       </div>
                     </fieldset>
-                    <button className="button button-quiet" type="submit" disabled={!feedbackWorth}>Send feedback</button>
+                    <button className="button button-quiet" type="submit" disabled={!feedbackRating || !feedbackWorth}>Send feedback</button>
                   </form>
                 )}
               </div>

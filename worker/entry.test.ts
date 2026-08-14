@@ -161,7 +161,7 @@ test("analytics feedback export uses dashboard authentication", async () => {
   );
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("Content-Type"), "text/csv; charset=utf-8");
-  assert.match(await response.text(), /"created_at","ui_rating","service_rating","scan_quality_rating","worth","written_comment"/);
+  assert.match(await response.text(), /"created_at","category","ui_rating","service_rating","scan_quality_rating","worth_range","worth_value","written_comment"/);
 });
 
 test("analytics routes reject the wrong method before reaching storage", async () => {

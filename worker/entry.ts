@@ -99,12 +99,14 @@ const ANALYTICS_RANGES: Array<{
 const FEEDBACK_WORTH_OPTIONS = [0, 9.99, 19.99, 29.99, 39.99] as const;
 
 type FeedbackResponse = {
+  category: string | null;
   comment: string | null;
   createdAt: string;
   scanQuality: number | null;
   service: number | null;
   ui: number | null;
   worth: number | null;
+  worthRange: string | null;
 };
 
 type FeedbackSummary = {
@@ -133,6 +135,33 @@ const feedbackNumber = (value: unknown, min: number, max: number) => {
   return Number.isFinite(number) && number >= min && number <= max ? number : null;
 };
 
+const feedbackWorthFromRange = (value: unknown) => {
+  if (value === "0-9.99") return 0;
+  if (value === "10-19.99") return 9.99;
+  if (value === "20-29.99") return 19.99;
+  if (value === "30-39.99") return 29.99;
+  if (value === "40+") return 39.99;
+  return null;
+};
+
+const feedbackWorthRange = (value: number | null) => {
+  if (value === null) return null;
+  if (value === 0) return "0-9.99";
+  if (value === 9.99) return "10-19.99";
+  if (value === 19.99) return "20-29.99";
+  if (value === 29.99) return "30-39.99";
+  if (value === 39.99) return "40+";
+  return null;
+};
+
+const feedbackWorthLabel = (value: number) => {
+  if (value === 0) return "$0-$9.99";
+  if (value === 9.99) return "$10-$19.99";
+  if (value === 19.99) return "$20-$29.99";
+  if (value === 29.99) return "$30-$39.99";
+  return "$40+";
+};
+
 const feedbackResponse = (row: FeedbackEventRow): FeedbackResponse => {
   let payload: Record<string, unknown> = {};
   if (row.comment) {
@@ -143,17 +172,21 @@ const feedbackResponse = (row: FeedbackEventRow): FeedbackResponse => {
       // Older or manually submitted feedback may be plain text.
     }
   }
+  const worth = feedbackNumber(payload.worth, 0, 39.99) ?? feedbackWorthFromRange(payload.worthRange);
+  const rating = feedbackNumber(payload.rating, 1, 5) ?? feedbackNumber(row.rating, 1, 5);
   return {
-    comment: typeof payload.comment === "string"
-      ? limitedText(payload.comment, 1000)
+    category: limitedText(payload.category, 40) ?? limitedText(row.category, 40),
+    comment: typeof payload.comment === "string" || typeof payload.suggestions === "string"
+      ? limitedText(typeof payload.comment === "string" ? payload.comment : payload.suggestions, 1000)
       : row.comment && Object.keys(payload).length === 0
         ? limitedText(row.comment, 1000)
         : null,
     createdAt: row.received_at,
-    scanQuality: feedbackNumber(payload.scanQuality, 1, 5) ?? feedbackNumber(row.rating, 1, 5),
-    service: feedbackNumber(payload.service, 1, 5),
-    ui: feedbackNumber(payload.ui, 1, 5),
-    worth: feedbackNumber(payload.worth, 0, 39.99),
+    scanQuality: feedbackNumber(payload.scanQuality, 1, 5) ?? rating,
+    service: feedbackNumber(payload.service, 1, 5) ?? rating,
+    ui: feedbackNumber(payload.ui, 1, 5) ?? rating,
+    worth,
+    worthRange: limitedText(payload.worthRange, 20) ?? feedbackWorthRange(worth),
   };
 };
 
@@ -186,7 +219,11 @@ const summarizeFeedback = (rows: FeedbackEventRow[]): FeedbackSummary => {
       service: average(responses.map((response) => response.service)),
       ui: average(responses.map((response) => response.ui)),
     },
-    byCategory: { "paid-audit-questionnaire": responses.length },
+    byCategory: responses.reduce<Record<string, number>>((categories, response) => {
+      const category = response.category ?? "other";
+      categories[category] = (categories[category] ?? 0) + 1;
+      return categories;
+    }, {}),
     byRating: Object.fromEntries(ratingCounts),
     recent: responses.slice(0, ANALYTICS_MAX_FEEDBACK),
     total: responses.length,
@@ -613,11 +650,11 @@ const analyticsDashboard = async (request: Request, env: Env) => {
   const feedbackResponses = Array.isArray(feedback.recent) ? feedback.recent : [];
   const feedbackWorth = FEEDBACK_WORTH_OPTIONS.map((value) => ({
     count: Number(feedback.worthDistribution?.[String(value)] ?? 0),
-    label: value === 0 ? "$0" : `$${value.toFixed(2)}`,
+    label: feedbackWorthLabel(value),
   }));
   const maxWorth = Math.max(1, ...feedbackWorth.map((item) => item.count));
   const feedbackWorthBars = feedbackWorth.map((item) => `<div class="worth-row"><span>${esc(item.label)}</span><div class="bar"><i style="width:${Math.round((item.count / maxWorth) * 100)}%"></i></div><b>${item.count.toLocaleString("en-US")}</b></div>`).join("");
-  const feedbackResponseRows = feedbackResponses.slice(0, 20).map((response) => `<tr><td>${esc(new Date(response.createdAt).toLocaleDateString("en-US", { dateStyle: "medium" }))}</td><td>${esc(response.ui ?? "—")}</td><td>${esc(response.service ?? "—")}</td><td>${esc(response.scanQuality ?? "—")}</td><td>${response.worth === null || response.worth === undefined ? "—" : esc(response.worth === 0 ? "$0" : `$${response.worth.toFixed(2)}`)}</td></tr>`).join("");
+  const feedbackResponseRows = feedbackResponses.slice(0, 20).map((response) => `<tr><td>${esc(new Date(response.createdAt).toLocaleDateString("en-US", { dateStyle: "medium" }))}</td><td>${esc(response.category ?? "other")}</td><td>${esc(response.ui ?? "—")}</td><td>${esc(response.service ?? "—")}</td><td>${esc(response.scanQuality ?? "—")}</td><td>${esc(response.worthRange ? feedbackWorthLabel(response.worth ?? 0) : "—")}</td></tr>`).join("");
   const feedbackCommentRows = feedbackResponses.filter((response) => response.comment).slice(0, 10).map((response) => `<article class="feedback-comment"><p>${esc(response.comment)}</p><small>${esc(new Date(response.createdAt).toLocaleDateString("en-US", { dateStyle: "medium" }))}</small></article>`).join("");
   const updated = summary.updatedAt && summary.updatedAt !== new Date(0).toISOString()
     ? new Date(summary.updatedAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }) + " UTC"
@@ -630,7 +667,7 @@ const analyticsDashboard = async (request: Request, env: Env) => {
 <section class="cards">${funnelCards}</section>
 <section class="grid"><div class="panel"><h2>Visitor funnel</h2><p class="subtle">Unique people are counted once per selected period. Percentages compare each step with visitors.</p>${funnelStep("Visitors", `${funnel.pageViews.toLocaleString("en-US")} total page views`, funnel.visitors, funnel.visitors)}${funnelStep("Used the scan", `${funnel.scanStarts.toLocaleString("en-US")} scan starts`, funnel.scanUsers, funnel.visitors)}${funnelStep("Reached checkout", `${funnel.checkoutStarts.toLocaleString("en-US")} checkout starts`, funnel.checkoutUsers, funnel.visitors)}${funnelStep("Purchased", `${funnel.purchases.toLocaleString("en-US")} verified payment events`, funnel.purchasers, funnel.visitors)}</div>
 <div class="panel"><h2>Activity trend</h2><p class="subtle">${monthlyTrend ? "Monthly activity" : "Daily activity"} within the selected period.</p>${trendBars ? `<div class="chart">${trendBars}</div>` : `<div class="empty">No tracked activity in this period.</div>`}<div class="definitions"><strong>What “session” means</strong><p>A session is an anonymous browser visit ID. It is not a login or a person’s name. PencilProof starts a new session after 30 minutes of inactivity, so <strong>Visitors</strong> is the clearest estimate of unique browsers that visited during this period.</p><p>Page views are total page loads. “Used the scan,” “Reached checkout,” and “Purchased” are unique browsers at each step; the smaller text shows total attempts.</p></div></div></section>
-<section class="panel" style="margin-top:18px"><div class="feedback-actions"><div><h2>Customer feedback</h2><p class="subtle">Anonymous responses from the post-payment Full Quote Audit questionnaire.</p></div><a class="download" href="/analytics/feedback.csv?range=${esc(rangeKey)}">Download CSV</a></div><div class="feedback-grid"><div class="feedback-metric"><div class="label">Responses</div><div class="big">${feedbackTotal.toLocaleString("en-US")}</div></div><div class="feedback-metric"><div class="label">Average UI</div><div class="big">${feedbackAverage(feedback.averages?.ui)}</div></div><div class="feedback-metric"><div class="label">Average service</div><div class="big">${feedbackAverage(feedback.averages?.service)}</div></div><div class="feedback-metric"><div class="label">Average scan quality</div><div class="big">${feedbackAverage(feedback.averages?.scanQuality)}</div></div></div><h3>What would people pay?</h3>${feedbackWorthBars}<h3 style="margin-top:24px">Recent responses</h3>${feedbackResponseRows ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>UI</th><th>Service</th><th>Scan</th><th>Worth</th></tr></thead><tbody>${feedbackResponseRows}</tbody></table></div>` : `<div class="empty">No feedback responses in this period.</div>`}<h3 style="margin-top:24px">Written comments</h3>${feedbackCommentRows || `<div class="empty">No written comments collected yet.</div>`}</section>
+<section class="panel" style="margin-top:18px"><div class="feedback-actions"><div><h2>Customer feedback</h2><p class="subtle">Anonymous responses from the quote survey, before or after checkout.</p></div><a class="download" href="/analytics/feedback.csv?range=${esc(rangeKey)}">Download CSV</a></div><div class="feedback-grid"><div class="feedback-metric"><div class="label">Responses</div><div class="big">${feedbackTotal.toLocaleString("en-US")}</div></div><div class="feedback-metric"><div class="label">Average UI</div><div class="big">${feedbackAverage(feedback.averages?.ui)}</div></div><div class="feedback-metric"><div class="label">Average service</div><div class="big">${feedbackAverage(feedback.averages?.service)}</div></div><div class="feedback-metric"><div class="label">Average scan quality</div><div class="big">${feedbackAverage(feedback.averages?.scanQuality)}</div></div></div><h3>What would people pay?</h3>${feedbackWorthBars}<h3 style="margin-top:24px">Recent responses</h3>${feedbackResponseRows ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Topic</th><th>UI</th><th>Service</th><th>Scan</th><th>Worth</th></tr></thead><tbody>${feedbackResponseRows}</tbody></table></div>` : `<div class="empty">No feedback responses in this period.</div>`}<h3 style="margin-top:24px">Written comments</h3>${feedbackCommentRows || `<div class="empty">No written comments collected yet.</div>`}</section>
 <p class="subtle" style="margin-top:22px">Completed free audits: <strong>${funnel.auditsCompleted.toLocaleString("en-US")}</strong> from <strong>${funnel.auditUsers.toLocaleString("en-US")}</strong> unique browsers. Purchases are recorded from verified Stripe payment events.</p>
 </main></body></html>`, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
 };
@@ -646,12 +683,14 @@ const analyticsFeedbackCsv = async (request: Request, env: Env) => {
   const rangeKey = summary.range?.key ?? analyticsRange(new URL(request.url).searchParams.get("range")).key;
   const responses = Array.isArray(summary.feedback?.recent) ? summary.feedback.recent : [];
   const rows = [
-    ["created_at", "ui_rating", "service_rating", "scan_quality_rating", "worth", "written_comment"],
+    ["created_at", "category", "ui_rating", "service_rating", "scan_quality_rating", "worth_range", "worth_value", "written_comment"],
     ...responses.map((response) => [
       response.createdAt,
+      response.category ?? "",
       response.ui ?? "",
       response.service ?? "",
       response.scanQuality ?? "",
+      response.worthRange ?? "",
       response.worth ?? "",
       response.comment ?? "",
     ]),

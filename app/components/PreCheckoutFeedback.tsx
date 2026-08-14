@@ -13,6 +13,14 @@ const worthOptions = [
   { value: "40+", label: "$40+" },
 ] as const;
 
+const worthValue = (range: string) => {
+  if (range === "0-9.99") return 0;
+  if (range === "10-19.99") return 9.99;
+  if (range === "20-29.99") return 19.99;
+  if (range === "30-39.99") return 29.99;
+  return 39.99;
+};
+
 type Props = {
   onCompleted?: () => void;
 };
@@ -35,12 +43,22 @@ export default function PreCheckoutFeedback({ onCompleted }: Props) {
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!worth) return;
+    if (!rating || !worth) return;
     track({
-      category: "pre-checkout-survey",
-      comment: JSON.stringify({ category, rating, suggestions: suggestions.trim(), worthRange: worth }),
+      category,
+      comment: JSON.stringify({
+        category,
+        comment: suggestions.trim(),
+        phase: "pre-checkout",
+        rating,
+        scanQuality: rating,
+        service: rating,
+        ui: rating,
+        worth: worthValue(worth),
+        worthRange: worth,
+      }),
       event: "feedback_submitted",
-      value: worth === "40+" ? 40 : Number(worth.split("-")[0]),
+      value: rating,
     });
     markPreCheckoutFeedbackCompleted();
     setSent(true);
@@ -94,7 +112,7 @@ export default function PreCheckoutFeedback({ onCompleted }: Props) {
               ))}
             </div>
           </fieldset>
-          <button className="button button-quiet" type="submit" disabled={!worth}>Send feedback</button>
+          <button className="button button-quiet" type="submit" disabled={!rating || !worth}>Send feedback</button>
         </form>
       )}
     </section>

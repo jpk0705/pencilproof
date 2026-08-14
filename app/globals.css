@@ -1110,6 +1110,11 @@ h3,
 .feedback-card { background: #10264a; border-color: var(--brand-line); }
 .feedback-card > div:first-child > strong { color: var(--brand-text); }
 .feedback-card > div:first-child > p { color: var(--brand-muted); }
+.analyzer-page .feedback-card .feedback-rating button { color: #aebbd0; }
+.analyzer-page .feedback-card .feedback-rating button.selected { color: var(--brand-gold); }
+.analyzer-page .feedback-card .button-quiet { color: var(--brand-text); border-color: var(--brand-line); background: rgba(255,255,255,.06); }
+.analyzer-page .feedback-card .button-quiet:hover { color: var(--brand-navy); border-color: var(--brand-gold); background: var(--brand-gold); }
+.analyzer-page .feedback-card .button-quiet:disabled { color: #aebbd0; border-color: var(--brand-line); background: rgba(255,255,255,.04); opacity: .8; }
 .feedback-thanks { color: var(--brand-positive); }
 .free-scan-note { color: var(--brand-muted); background: #07132a; border-top-color: var(--brand-line); }
 
