@@ -1032,6 +1032,8 @@ h3,
 .deal-card-foot a { color: var(--brand-text); }
 .sample-status { color: var(--brand-navy); background: var(--brand-gold-soft); border-color: rgba(246,195,67,.55); }
 .sample-status strong { color: var(--brand-gold); }
+.sample-question-callout { color: var(--brand-navy); background: #eef3e3; }
+.sample-question-callout span { color: #405066; }
 .flag { border-color: var(--brand-line); background: rgba(255,255,255,.035); }
 .flag-warn .flag-icon { color: var(--brand-navy); background: var(--brand-gold); }
 .flag-good .flag-icon { color: var(--brand-navy); background: var(--brand-positive); }
