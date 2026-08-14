@@ -42,9 +42,9 @@ Pages.
 ## Optional email campaigns
 
 The Worker has a twice-weekly campaign trigger for users who explicitly opt into
-PencilProof emails. It can send scan follow-ups, 30-Day Pass reminders, and
-car-buying tips through Resend. It does not send to people merely because they
-created an account.
+PencilProof emails. It rotates unfinished-audit reminders, 30-Day Pass offers,
+PencilProof benefits, promotions, and practical car-buying information through
+Resend. It does not send to people merely because they created an account.
 
 Configure these through Cloudflare secrets/variables; never commit them:
 

@@ -655,7 +655,7 @@ const htmlEscape = (value: string) => value.replace(/[&<>"']/g, (character) => (
   "'": "&#39;",
 }[character] ?? character));
 
-const marketingEmailContent = (
+const legacyMarketingEmailContent = (
   candidate: MarketingCandidate,
   now: number,
 ) => {
@@ -700,6 +700,127 @@ const marketingEmailContent = (
     };
 
   return tip;
+};
+
+type MarketingEmailContent = { subject: string; text: string | string[]; html: string };
+
+const marketingRotationIndex = (now: number, length: number) =>
+  Math.floor(now / (60 * 60 * 24 * 3)) % length;
+
+const marketingEmailContent = (
+  candidate: MarketingCandidate,
+  now: number,
+): MarketingEmailContent => {
+  const lastActivityAt = Math.max(candidate.lastScanAt ?? 0, candidate.lastCheckoutAt ?? 0);
+  const hasRecentUnpaidActivity = lastActivityAt > (candidate.lastPurchaseAt ?? 0)
+    && lastActivityAt >= now - 60 * 60 * 24 * 14;
+  const hasActivePass = (candidate.passExpiresAt ?? 0) > now;
+
+  const unfinishedAuditMessages: MarketingEmailContent[] = [
+    {
+      subject: "Your PencilProof audit is waiting",
+      text: [
+        "You started checking a dealer quote with PencilProof but did not finish checkout.",
+        "Return to PencilProof to continue reviewing the deal. No subscription is required.",
+      ],
+      html: "<p>You started checking a dealer quote with PencilProof but did not finish checkout.</p><p>Return to PencilProof to continue reviewing the deal. No subscription is required.</p>",
+    },
+    {
+      subject: "Before you sign, finish checking the quote",
+      text: [
+        "Your saved quote review is still waiting in PencilProof.",
+        "Use it to compare the amount financed, APR, term, trade equity, and optional products before you make a decision.",
+      ],
+      html: "<p>Your saved quote review is still waiting in PencilProof.</p><p>Use it to compare the amount financed, APR, term, trade equity, and optional products before you make a decision.</p>",
+    },
+    {
+      subject: "A second look can change the deal",
+      text: [
+        "PencilProof helps turn a dealer quote into a clearer list of numbers and questions.",
+        "Open your unfinished review when you have a minute, then decide whether the full audit is useful for this purchase.",
+      ],
+      html: "<p>PencilProof helps turn a dealer quote into a clearer list of numbers and questions.</p><p>Open your unfinished review when you have a minute, then decide whether the full audit is useful for this purchase.</p>",
+    },
+    {
+      subject: "Still shopping for the right numbers?",
+      text: [
+        "Your PencilProof quote review has not been purchased yet.",
+        "Start with the free review and unlock the one-time 30-Day Pass only if you want the complete audit and saved access.",
+      ],
+      html: "<p>Your PencilProof quote review has not been purchased yet.</p><p>Start with the free review and unlock the one-time 30-Day Pass only if you want the complete audit and saved access.</p>",
+    },
+  ];
+
+  const expiredPassMessages: MarketingEmailContent[] = [
+    {
+      subject: "Ready for another PencilProof 30-Day Pass?",
+      text: [
+        "Your previous PencilProof Pass has ended.",
+        "Get another one-time 30-Day Pass whenever you are ready to review a new dealer quote.",
+      ],
+      html: "<p>Your previous PencilProof Pass has ended.</p><p>Get another one-time 30-Day Pass whenever you are ready to review a new dealer quote.</p>",
+    },
+    {
+      subject: "Keep your next dealer quote easier to compare",
+      text: [
+        "PencilProof is available whenever a new quote lands in your inbox or on the dealership desk.",
+        "A one-time 30-Day Pass gives you time to revisit the audit while you shop.",
+      ],
+      html: "<p>PencilProof is available whenever a new quote lands in your inbox or on the dealership desk.</p><p>A one-time 30-Day Pass gives you time to revisit the audit while you shop.</p>",
+    },
+  ];
+
+  const generalMessages: MarketingEmailContent[] = [
+    {
+      subject: "What PencilProof helps you see before signing",
+      text: [
+        "PencilProof organizes the selling price, fees, APR, term, trade equity, payment, and optional products into a clearer review.",
+        "The goal is simple: help you know what to ask before you sign.",
+      ],
+      html: "<p>PencilProof organizes the selling price, fees, APR, term, trade equity, payment, and optional products into a clearer review.</p><p>The goal is simple: help you know what to ask before you sign.</p>",
+    },
+    {
+      subject: "PencilProof benefit: see beyond the monthly payment",
+      text: [
+        "A lower monthly payment may come from a longer term or added products.",
+        "Compare the amount financed, APR, term, and total of payments—not only the payment.",
+      ],
+      html: "<p>A lower monthly payment may come from a longer term or added products.</p><p>Compare the amount financed, APR, term, and total of payments—not only the payment.</p>",
+    },
+    {
+      subject: "PencilProof tip: ask for every fee in writing",
+      text: "Ask the dealership to itemize the selling price, taxes, government fees, documentation fee, and every optional product before you sign.",
+      html: "<p>Ask the dealership to itemize the selling price, taxes, government fees, documentation fee, and every optional product before you sign.</p>",
+    },
+    {
+      subject: "PencilProof tip: separate the car from the add-ons",
+      text: [
+        "Review the vehicle price and financing first, then evaluate service contracts, GAP, maintenance, protection products, and accessories one by one.",
+        "You should be able to say yes or no to each item independently.",
+      ],
+      html: "<p>Review the vehicle price and financing first, then evaluate service contracts, GAP, maintenance, protection products, and accessories one by one.</p><p>You should be able to say yes or no to each item independently.</p>",
+    },
+    {
+      subject: "A free way to start reviewing your next quote",
+      text: [
+        "Upload the dealer's quote to PencilProof for a free first review.",
+        "If you want the complete audit, the 30-Day Pass is a one-time purchase with no subscription.",
+      ],
+      html: "<p>Upload the dealer's quote to PencilProof for a free first review.</p><p>If you want the complete audit, the 30-Day Pass is a one-time purchase with no subscription.</p>",
+    },
+    {
+      subject: "A simple car-buying question to ask today",
+      text: [
+        "Ask: 'Which numbers change if I remove every optional product?'",
+        "That question can make the base vehicle deal, financing cost, and add-on prices easier to compare.",
+      ],
+      html: "<p>Ask: 'Which numbers change if I remove every optional product?'</p><p>That question can make the base vehicle deal, financing cost, and add-on prices easier to compare.</p>",
+    },
+  ];
+
+  if (hasRecentUnpaidActivity) return unfinishedAuditMessages[marketingRotationIndex(now, unfinishedAuditMessages.length)];
+  if (candidate.lastPurchaseAt && !hasActivePass) return expiredPassMessages[marketingRotationIndex(now, expiredPassMessages.length)];
+  return generalMessages[marketingRotationIndex(now, generalMessages.length)];
 };
 
 const sendMarketingEmail = async (
