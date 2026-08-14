@@ -966,8 +966,26 @@ const verifyEmailUnsubscribeToken = async (token: string, secret: string) => {
   }
 };
 
-const currentUser = async (request: Request, env: Env) =>
-  verifyUserSession(readCookie(request, USER_COOKIE), env.SESSION_SECRET);
+const currentUser = async (request: Request, env: Env) => {
+  const sessionUser = await verifyUserSession(
+    readCookie(request, USER_COOKIE),
+    env.SESSION_SECRET,
+  );
+  if (sessionUser) return sessionUser;
+
+  // Native clients cannot rely on browser cookies. Accept a Clerk bearer
+  // token and resolve it to PencilProof's internal account id so the same
+  // account-scoped routes work on iOS and Android without weakening the
+  // existing signed-cookie path used by the website.
+  const authorization = request.headers.get("Authorization") ?? "";
+  const token = authorization.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
+  if (!token) return null;
+  const provider = await verifyProviderToken(token, env);
+  if (!provider) return null;
+  const result = await accountCall(env, "/user", { providerSubject: provider.id });
+  const user = result?.user as { id?: unknown } | undefined;
+  return typeof user?.id === "string" ? user.id : null;
+};
 
 const requestGuestId = async (request: Request) => {
   const device = readCookie(request, DEVICE_COOKIE);

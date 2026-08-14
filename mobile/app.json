@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "PencilProof",
+    "slug": "pencilproof",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "pencilproof",
+    "userInterfaceStyle": "dark",
+    "plugins": [
+      ["expo-image-picker", { "cameraPermission": "PencilProof uses your camera to capture a dealer quote.", "microphonePermission": false, "photosPermission": "PencilProof uses your photos to read a dealer quote." }]
+    ],
+    "ios": {
+      "bundleIdentifier": "com.pencilproof.mobile",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.pencilproof.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#061126"
+      }
+    },
+    "extra": {
+      "apiBaseUrl": "https://audit.pencilproof.com"
+    }
+  }
+}

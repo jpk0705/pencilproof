@@ -725,4 +725,9 @@ for (const [fileName, sellingPrice, apr, term, payment] of fixtureExpectations) 
 }
 assert.equal(fixtureExpectations.length, 6);
 
+const workerSource = await readFile(join(projectRoot, "worker", "index.ts"), "utf8");
+assert.match(workerSource, /Native clients cannot rely on browser cookies/);
+assert.match(workerSource, /authorization\.match\(\/\^Bearer\\s\+\(\.\+\)\$\/i\)/);
+assert.match(workerSource, /accountCall\(env, "\/user", \{ providerSubject: provider\.id \}\)/);
+
 console.log("PencilProof regression checks passed.");

@@ -1,0 +1,11 @@
+node_modules/
+.expo/
+.env
+.env.*
+!.env.example
+dist/
+.expo-export-validation/
+.expo-export-validation-ios/
+*.p8
+*.p12
+*.mobileprovision
