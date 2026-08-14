@@ -14,7 +14,7 @@ export function SiteNav() {
         <Link href="/how-it-works">How it works</Link>
         <Link href="/what-it-checks">What it checks</Link>
         <Link href="/pricing">Pricing</Link>
-        {process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ? <AccountNav /> : null}
+        <AccountNav />
         <Link className="nav-cta" href="/analyze">Upload your quote</Link>
       </div>
     </nav>

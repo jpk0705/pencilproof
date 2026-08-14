@@ -52,7 +52,7 @@ export default function AccountNav() {
   }, []);
 
   if (!clerk) {
-    return <button className="nav-account-button" type="button" disabled aria-label="Sign in loading">Sign in</button>;
+    return <Link className="nav-account-link" href={ACCOUNT_URL} aria-label="Sign in">Sign in</Link>;
   }
   return signedIn
     ? <Link className="nav-account-link" href={ACCOUNT_URL}>My Audits</Link>
