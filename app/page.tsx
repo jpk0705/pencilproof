@@ -19,7 +19,7 @@ export default function Home() {
           </p>
           <div className="hero-actions">
             <Link className="button button-primary" href="/analyze">
-              Upload PDF or image <Arrow />
+              Review your quote free <Arrow />
             </Link>
             <Link className="text-link" href="/who-it-helps">Who it helps <Arrow /></Link>
           </div>
