@@ -50,9 +50,10 @@ and unsubscribed addresses are kept on a suppression list.
 Configure these through Cloudflare secrets/variables; never commit them:
 
 - `RESEND_API_KEY` — secret Resend API key
-- `MARKETING_FROM_EMAIL` — verified sender, such as `PencilProof <hello@pencilproof.com>`
+- `MARKETING_FROM_EMAIL` — verified sender, such as `Hannah at PencilProof <support@pencilproof.com>`
 - `MARKETING_REPLY_TO` — optional reply-to address
 - `MARKETING_BUSINESS_ADDRESS` — required compliant mailing address included in email footers; use a business address, a USPS-registered PO box, or a properly registered commercial private mailbox, not a home address unless you choose to use it
+- `MARKETING_ALERT_EMAIL` — destination for campaign configuration and delivery-failure alerts
 
 The schedule is Tuesday and Friday at 17:00 UTC. The scheduler remains inactive
 until the required email settings are present.

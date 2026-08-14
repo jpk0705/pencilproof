@@ -85,6 +85,7 @@ export interface Env {
   MARKETING_FROM_EMAIL?: string;
   MARKETING_REPLY_TO?: string;
   MARKETING_BUSINESS_ADDRESS?: string;
+  MARKETING_ALERT_EMAIL?: string;
 }
 
 const AI_IMPORT_PROMPT = `You are PencilProof's document extraction engine for US automobile dealer buyer's orders, finance worksheets, F&I menus, lease worksheets, and payment quotes.
@@ -869,15 +870,48 @@ const sendMarketingEmail = async (
   return false;
 };
 
+const sendMarketingAlert = async (env: Env, subject: string, message: string) => {
+  const apiKey = env.RESEND_API_KEY?.trim();
+  const from = env.MARKETING_FROM_EMAIL?.trim();
+  const alertEmail = env.MARKETING_ALERT_EMAIL?.trim();
+  if (!apiKey || !from || !alertEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(alertEmail)) return false;
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from,
+        subject: `PencilProof campaign alert: ${subject}`,
+        text: `${message}\n\nThis alert is for PencilProof campaign operations only.`,
+        to: [alertEmail],
+      }),
+    });
+    if (response.ok) return true;
+    console.error("Marketing alert send failed", { status: response.status, subject });
+  } catch (error) {
+    console.error("Marketing alert request failed", { error: String(error), subject });
+  }
+  return false;
+};
+
 const runMarketingCampaign = async (env: Env, scheduledTime: number) => {
   if (!env.RESEND_API_KEY || !env.MARKETING_FROM_EMAIL || !env.MARKETING_BUSINESS_ADDRESS) {
     console.warn("Marketing campaign skipped: email configuration is incomplete");
+    await sendMarketingAlert(
+      env,
+      "Configuration incomplete",
+      "A scheduled campaign was skipped because RESEND_API_KEY, MARKETING_FROM_EMAIL, or MARKETING_BUSINESS_ADDRESS is missing.",
+    );
     return;
   }
   const now = Math.floor(scheduledTime / 1000);
   const campaignKey = `${new Date(scheduledTime).toISOString().slice(0, 10)}:${new Date(scheduledTime).getUTCDay()}`;
   const result = await accountCall(env, "/marketing-candidates", { now });
   const candidates = marketingCandidates(result?.candidates);
+  let failedDeliveries = 0;
   for (const candidate of candidates) {
     if (!candidate.userId || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(candidate.email)) continue;
     const claim = await accountCall(env, "/marketing-delivery", {
@@ -893,6 +927,14 @@ const runMarketingCampaign = async (env: Env, scheduledTime: number) => {
       campaignKey,
       userId: candidate.userId,
     });
+    if (!sent) failedDeliveries += 1;
+  }
+  if (failedDeliveries > 0) {
+    await sendMarketingAlert(
+      env,
+      "Delivery failures",
+      `${failedDeliveries} campaign email${failedDeliveries === 1 ? "" : "s"} failed during the ${campaignKey} run. Failed deliveries were released for a later retry.`,
+    );
   }
 };
 

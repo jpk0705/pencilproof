@@ -6,6 +6,20 @@ PencilProof keeps the existing guest/device flow. Accounts are an optional conve
 
 The implementation uses Clerk's browser SDK for the customer-facing identity flow. Enable Google, Apple, Facebook, and passwordless email verification in the Clerk instance. Clerk owns provider linking and verified-identity rules; PencilProof never matches accounts by email.
 
+The PencilProof sign-in and sign-up buttons open Clerk's hosted identity UI, so
+the provider buttons are controlled by Clerk configuration rather than by a
+PencilProof-specific OAuth implementation. Apple login is not complete until
+the following external setup is finished in the production Clerk instance:
+
+1. Enable Apple under the social connections/provider settings.
+2. Add the Apple Service ID, Team ID, Key ID, and private key in Clerk.
+3. Confirm Clerk's Apple callback/return URLs are registered in Apple Developer.
+4. Test a new sign-in and a returning sign-in on desktop and mobile.
+
+Google login has been used successfully in production. Apple, Facebook, and
+passwordless email still require explicit provider verification before they
+should be described as live customer login options.
+
 Set these values as production secrets/variables in the Worker and build environment:
 
 - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` — build-time public key
