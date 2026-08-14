@@ -51,11 +51,12 @@ export default function AccountPage() {
     if (!clerk?.user) return;
     void (async () => {
       const token = await clerk.session?.getToken();
+      const email = clerk.user?.primaryEmailAddress?.emailAddress.trim().toLowerCase() ?? "";
       if (token) {
         await fetch("/api/account/session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token }),
+          body: JSON.stringify({ email, token }),
         });
       }
       const response = await fetch("/api/account/me", { cache: "no-store" });
@@ -92,14 +93,14 @@ export default function AccountPage() {
     const optIn = !marketingOptedIn;
     const emailAddress = clerk.user?.primaryEmailAddress;
     const email = emailAddress?.emailAddress.trim().toLowerCase() ?? "";
-    if (optIn && (emailAddress?.verification?.status !== "verified" || !email)) {
-      setMarketingMessage("Verify your account email before joining the PencilProof email list.");
+    if (!email) {
+      setMarketingMessage("Add an email address before changing your email preference.");
       return;
     }
     const response = await fetch("/api/account/marketing", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(optIn ? { email, optIn: true } : { optIn: false }),
+      body: JSON.stringify({ email, optIn }),
     });
     if (!response.ok) {
       setMarketingMessage("We could not update your email preference. Please try again.");
@@ -150,7 +151,7 @@ export default function AccountPage() {
         }) : <div className="account-empty"><strong>No paid audits yet.</strong><p>Your completed Full Quote Audits will appear here automatically.</p><Link className="text-link" href={auditPath}>Start a quote scan →</Link></div>}
       </section>
 
-      <section className="marketing-preferences"><h2>Email preferences</h2><p>Receive optional PencilProof reminders, promotions, and useful car-buying information. You can change this preference anytime.</p><button className="button button-quiet" type="button" onClick={() => void updateMarketingPreference()}>{marketingOptedIn ? "Stop marketing emails" : "Join the PencilProof email list"}</button>{marketingMessage ? <p role="status">{marketingMessage}</p> : null}</section>
+      <section className="marketing-preferences"><h2>Email preferences</h2><p>PencilProof may send reminders, promotions, and helpful car-buying information. You can stop these emails anytime.</p><button className="button button-quiet" type="button" onClick={() => void updateMarketingPreference()}>{marketingOptedIn ? "Stop marketing emails" : "Restart marketing emails"}</button>{marketingMessage ? <p role="status">{marketingMessage}</p> : null}</section>
       <button className="account-delete" type="button" onClick={() => void deleteAccount()}>Delete my account and data</button>
       {message ? <p role="status">{message}</p> : null}
     </main>,

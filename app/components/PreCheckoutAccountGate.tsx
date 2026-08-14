@@ -16,7 +16,7 @@ export default function PreCheckoutAccountGate({ onContinue }: Props) {
   const [clerk, setClerk] = useState<Clerk | null>(null);
   const [clerkError, setClerkError] = useState(false);
   const [accountReady, setAccountReady] = useState(false);
-  const [marketingOptIn, setMarketingOptIn] = useState(false);
+  const [marketingOptOut, setMarketingOptOut] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   useEffect(() => {
@@ -60,24 +60,22 @@ export default function PreCheckoutAccountGate({ onContinue }: Props) {
     try {
       const token = await clerk.session.getToken();
       if (!token) throw new Error("account_session");
+      const email = clerk.user.primaryEmailAddress?.emailAddress.trim().toLowerCase() ?? "";
       const sessionResponse = await fetch(accountEndpoint("/api/account/session"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ token }),
+        body: JSON.stringify({ email, token }),
       });
       if (!sessionResponse.ok) throw new Error("account_session");
 
-      if (marketingOptIn) {
-        const emailAddress = clerk.user.primaryEmailAddress;
-        const email = emailAddress?.emailAddress.trim().toLowerCase() ?? "";
-        const verified = emailAddress?.verification?.status === "verified";
-        if (!verified || !email) throw new Error("email_verification");
+      if (marketingOptOut) {
+        if (!email) throw new Error("email_required");
         const marketingResponse = await fetch(accountEndpoint("/api/account/marketing"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ email, optIn: true }),
+          body: JSON.stringify({ email, optIn: false }),
         });
         if (!marketingResponse.ok) throw new Error("marketing");
       }
@@ -92,8 +90,8 @@ export default function PreCheckoutAccountGate({ onContinue }: Props) {
       onContinue();
     } catch (error) {
       setMessage(
-        error instanceof Error && error.message === "email_verification"
-          ? "Verify your email before joining the PencilProof email list."
+        error instanceof Error && error.message === "email_required"
+          ? "Add an email address before changing your email preference."
           : "We could not finish account setup. You can continue securely as a guest.",
       );
       setBusy(false);
@@ -132,8 +130,8 @@ export default function PreCheckoutAccountGate({ onContinue }: Props) {
           </button>
         ) : null}
         <label className="pre-checkout-consent">
-          <input type="checkbox" checked={marketingOptIn} onChange={(event) => setMarketingOptIn(event.target.checked)} disabled={busy} />
-          <span>Optional: email me PencilProof reminders, promotions, and useful car-buying information. Change this preference later from My Audits.</span>
+          <input type="checkbox" checked={marketingOptOut} onChange={(event) => setMarketingOptOut(event.target.checked)} disabled={busy} />
+          <span>Do not email me PencilProof reminders, promotions, or helpful car-buying information. Change this preference later from My Audits.</span>
         </label>
         {clerkError || !configured ? (
           <p className="pre-checkout-message">Account setup is temporarily unavailable. You can continue securely as a guest.</p>

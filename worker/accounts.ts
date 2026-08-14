@@ -88,9 +88,12 @@ export class AccountStore {
     this.sql.exec(`CREATE TABLE IF NOT EXISTS audits (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, data TEXT NOT NULL)`);
     this.sql.exec(`CREATE INDEX IF NOT EXISTS audits_owner ON audits(owner_id, expires_at)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS marketing_preferences (user_id TEXT PRIMARY KEY, email TEXT NOT NULL, opted_in_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS email_contacts (user_id TEXT PRIMARY KEY, email TEXT NOT NULL, added_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS marketing_suppressions (email TEXT PRIMARY KEY, suppressed_at INTEGER NOT NULL)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS marketing_activity (user_id TEXT PRIMARY KEY, last_scan_at INTEGER, last_checkout_at INTEGER, last_purchase_at INTEGER)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS marketing_deliveries (user_id TEXT NOT NULL, campaign_key TEXT NOT NULL, claimed_at INTEGER NOT NULL, sent_at INTEGER, PRIMARY KEY (user_id, campaign_key))`);
     this.sql.exec(`CREATE INDEX IF NOT EXISTS marketing_deliveries_user ON marketing_deliveries(user_id, sent_at)`);
+    this.sql.exec(`INSERT OR IGNORE INTO email_contacts (user_id, email, added_at, updated_at) SELECT user_id, email, opted_in_at, updated_at FROM marketing_preferences`);
   }
   private purge() { this.sql.exec(`DELETE FROM audits WHERE expires_at <= ?`, isoNow()); }
   user(providerSubject: string) {
@@ -126,21 +129,39 @@ export class AccountStore {
   audits(ownerId: string) { this.purge(); return this.sql.exec<{ id: string; created_at: number; expires_at: number; data: string }>(`SELECT id, created_at, expires_at, data FROM audits WHERE owner_id = ? ORDER BY created_at DESC`, ownerId).toArray().map((row) => ({ id: row.id, ownerId, createdAt: row.created_at, expiresAt: row.expires_at, data: JSON.parse(row.data) })); }
   saveAudit(ownerId: string, data: Record<string, unknown>) { this.purge(); const now = isoNow(); const id = crypto.randomUUID(); this.sql.exec(`INSERT INTO audits VALUES (?, ?, ?, ?, ?)`, id, ownerId, now, now + 60 * 60 * 24 * 30, JSON.stringify(data)); return id; }
   deleteAudit(ownerId: string, id: string) { this.sql.exec(`DELETE FROM audits WHERE id = ? AND owner_id = ?`, id, ownerId); }
+  saveEmailContact(userId: string, email: string) {
+    const now = isoNow();
+    this.sql.exec(`INSERT OR IGNORE INTO email_contacts (user_id, email, added_at, updated_at) VALUES (?, ?, ?, ?)`, userId, email, now, now);
+    this.sql.exec(`UPDATE email_contacts SET email = ?, updated_at = ? WHERE user_id = ?`, email, now, userId);
+  }
+  marketingEnabled(userId: string) {
+    return this.sql.exec<{ user_id: string }>(`
+      SELECT contacts.user_id
+      FROM email_contacts AS contacts
+      LEFT JOIN marketing_suppressions AS suppressions ON lower(suppressions.email) = lower(contacts.email)
+      WHERE contacts.user_id = ? AND suppressions.email IS NULL
+    `, userId).toArray().length > 0;
+  }
   setMarketingOptIn(userId: string, email: string) {
+    this.saveEmailContact(userId, email);
+    this.sql.exec(`DELETE FROM marketing_suppressions WHERE lower(email) = lower(?)`, email);
     const now = isoNow();
     this.sql.exec(`INSERT OR IGNORE INTO marketing_preferences (user_id, email, opted_in_at, updated_at) VALUES (?, ?, ?, ?)`, userId, email, now, now);
     this.sql.exec(`UPDATE marketing_preferences SET email = ?, updated_at = ? WHERE user_id = ?`, email, now, userId);
   }
   marketingOptedIn(userId: string) {
-    return this.sql.exec<{ user_id: string }>(`SELECT user_id FROM marketing_preferences WHERE user_id = ?`, userId).toArray().length > 0;
+    return this.marketingEnabled(userId);
   }
-  clearMarketingOptIn(userId: string) {
+  suppressMarketingEmail(email: string) {
+    this.sql.exec(`INSERT OR REPLACE INTO marketing_suppressions (email, suppressed_at) VALUES (?, ?)`, email, isoNow());
+    this.sql.exec(`DELETE FROM marketing_preferences WHERE lower(email) = lower(?)`, email);
+  }
+  clearMarketingOptIn(userId: string, email: string) {
+    this.saveEmailContact(userId, email);
+    this.suppressMarketingEmail(email);
     this.sql.exec(`DELETE FROM marketing_preferences WHERE user_id = ?`, userId);
-    this.sql.exec(`DELETE FROM marketing_activity WHERE user_id = ?`, userId);
-    this.sql.exec(`DELETE FROM marketing_deliveries WHERE user_id = ?`, userId);
   }
   marketingActivity(userId: string, event: "scan_ready" | "checkout_started" | "purchase_completed") {
-    if (!this.marketingOptedIn(userId)) return;
     const now = isoNow();
     this.sql.exec(`INSERT OR IGNORE INTO marketing_activity (user_id) VALUES (?)`, userId);
     const column = event === "scan_ready"
@@ -169,10 +190,12 @@ export class AccountStore {
         activity.last_purchase_at,
         MAX(deliveries.sent_at) AS last_sent_at,
         MAX(entitlements.expires_at) AS pass_expires_at
-      FROM marketing_preferences AS preferences
+      FROM email_contacts AS preferences
       LEFT JOIN marketing_activity AS activity ON activity.user_id = preferences.user_id
       LEFT JOIN marketing_deliveries AS deliveries ON deliveries.user_id = preferences.user_id AND deliveries.sent_at IS NOT NULL
       LEFT JOIN entitlements ON entitlements.user_id = preferences.user_id AND entitlements.status = 'active'
+      LEFT JOIN marketing_suppressions AS suppressions ON lower(suppressions.email) = lower(preferences.email)
+      WHERE suppressions.email IS NULL
       GROUP BY preferences.user_id, preferences.email, activity.last_scan_at, activity.last_checkout_at, activity.last_purchase_at
       HAVING MAX(deliveries.sent_at) IS NULL OR MAX(deliveries.sent_at) <= ?
       ORDER BY COALESCE(MAX(deliveries.sent_at), 0) ASC
@@ -198,7 +221,7 @@ export class AccountStore {
   releaseMarketingDelivery(userId: string, campaignKey: string) {
     this.sql.exec(`DELETE FROM marketing_deliveries WHERE user_id = ? AND campaign_key = ? AND sent_at IS NULL`, userId, campaignKey);
   }
-  deleteUser(userId: string) { this.sql.exec(`DELETE FROM audits WHERE owner_id = ?`, `user:${userId}`); this.sql.exec(`DELETE FROM entitlements WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM marketing_preferences WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM marketing_activity WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM marketing_deliveries WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM users WHERE id = ?`, userId); }
+  deleteUser(userId: string) { this.sql.exec(`DELETE FROM audits WHERE owner_id = ?`, `user:${userId}`); this.sql.exec(`DELETE FROM entitlements WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM marketing_preferences WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM email_contacts WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM marketing_activity WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM marketing_deliveries WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM users WHERE id = ?`, userId); }
   async fetch(request: Request) {
     if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
     const path = new URL(request.url).pathname;
@@ -206,6 +229,13 @@ export class AccountStore {
     if (path === "/user") {
       if (typeof body.providerSubject !== "string") return json({ error: "invalid_subject" }, 400);
       return json({ user: this.user(body.providerSubject) });
+    }
+    if (path === "/email-contact") {
+      const userId = typeof body.userId === "string" ? body.userId : "";
+      const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+      if (!/^[A-Za-z0-9_:-]{8,200}$/.test(userId) || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(email) || email.length > 254) return json({ error: "invalid_email_contact" }, 400);
+      this.saveEmailContact(userId, email);
+      return json({ stored: true });
     }
     if (path === "/migrate") {
       if (typeof body.guestId !== "string" || typeof body.userId !== "string") return json({ error: "invalid_migration" }, 400);
@@ -222,12 +252,20 @@ export class AccountStore {
       if (!/^[A-Za-z0-9_:-]{8,200}$/.test(userId)) return json({ error: "invalid_marketing_preference" }, 400);
       if (body.action === "status") return json({ optedIn: this.marketingOptedIn(userId) });
       if (body.optIn === false) {
-        this.clearMarketingOptIn(userId);
+        const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(email) || email.length > 254) return json({ error: "invalid_marketing_preference" }, 400);
+        this.clearMarketingOptIn(userId, email);
         return json({ optedIn: false });
       }
       const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
       if (body.optIn !== true || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(email) || email.length > 254) return json({ error: "invalid_marketing_preference" }, 400);
       this.setMarketingOptIn(userId, email); return json({ optedIn: true });
+    }
+    if (path === "/marketing-unsubscribe") {
+      const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(email) || email.length > 254) return json({ error: "invalid_unsubscribe" }, 400);
+      this.suppressMarketingEmail(email);
+      return json({ unsubscribed: true });
     }
     if (path === "/marketing-activity") {
       const userId = typeof body.userId === "string" ? body.userId : "";

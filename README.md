@@ -39,12 +39,13 @@ npx next dev
 Pushes to `main` automatically build and deploy the static site through GitHub
 Pages.
 
-## Optional email campaigns
+## Automated email campaigns
 
-The Worker has a twice-weekly campaign trigger for users who explicitly opt into
-PencilProof emails. It rotates unfinished-audit reminders, 30-Day Pass offers,
-PencilProof benefits, promotions, and practical car-buying information through
-Resend. It does not send to people merely because they created an account.
+The Worker has a twice-weekly U.S.-focused campaign trigger for users who create
+an account or provide an email address. It rotates unfinished-audit reminders,
+30-Day Pass offers, PencilProof benefits, promotions, and practical car-buying
+information through Resend. Every campaign includes a clear unsubscribe link,
+and unsubscribed addresses are kept on a suppression list.
 
 Configure these through Cloudflare secrets/variables; never commit them:
 

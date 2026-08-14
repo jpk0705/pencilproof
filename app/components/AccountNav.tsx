@@ -6,6 +6,19 @@ import { useEffect, useState } from "react";
 import { authRedirectOptions, createLoadedClerk } from "@/lib/clerk-client";
 
 const ACCOUNT_URL = "https://audit.pencilproof.com/account";
+const ACCOUNT_API_URL = "https://audit.pencilproof.com";
+
+const syncAccountContact = async (instance: Clerk) => {
+  const token = await instance.session?.getToken();
+  const email = instance.user?.primaryEmailAddress?.emailAddress.trim().toLowerCase() ?? "";
+  if (!token) return;
+  await fetch(`${ACCOUNT_API_URL}/api/account/session`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ email, token }),
+  }).catch(() => undefined);
+};
 
 export default function AccountNav() {
   const [clerk, setClerk] = useState<Clerk | null>(null);
@@ -22,8 +35,12 @@ export default function AccountNav() {
         if (cancelled) return;
         setClerk(instance);
         setSignedIn(Boolean(instance.user));
+        void syncAccountContact(instance);
         unsubscribe = instance.addListener(() => {
-          if (!cancelled) setSignedIn(Boolean(instance.user));
+          if (!cancelled) {
+            setSignedIn(Boolean(instance.user));
+            void syncAccountContact(instance);
+          }
         });
       })
       .catch(() => undefined);

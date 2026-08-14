@@ -369,6 +369,11 @@ type AccessPayload = {
   sid: string;
 };
 
+type EmailUnsubscribePayload = {
+  email: string;
+  purpose: "marketing-unsubscribe";
+};
+
 type StripeCheckoutSession = {
   amount_subtotal?: number | null;
   amount_total?: number | null;
@@ -834,7 +839,9 @@ const sendMarketingEmail = async (
   if (!apiKey || !from || !businessAddress) return false;
   const text = Array.isArray(content.text) ? content.text.join("\n\n") : content.text;
   const accountUrl = `${env.SITE_ORIGIN}/account/`;
-  const html = `${content.html}<p><a href="${env.PUBLIC_SITE_ORIGIN}/analyze">Open PencilProof</a></p><hr><p style="color:#667085;font-size:12px">You received this because you opted into PencilProof emails. <a href="${accountUrl}">Manage email preferences</a>.</p><p style="color:#667085;font-size:12px">${htmlEscape(businessAddress)}</p>`;
+  const unsubscribeToken = await createEmailUnsubscribeToken(candidate.email, env.SESSION_SECRET);
+  const unsubscribeUrl = `${env.SITE_ORIGIN}/api/email/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`;
+  const html = `<p style="color:#667085;font-size:12px">ADVERTISEMENT</p>${content.html}<p><a href="${env.PUBLIC_SITE_ORIGIN}/analyze">Open PencilProof</a></p><hr><p style="color:#667085;font-size:12px">You are receiving this because you created a PencilProof account or provided your email to PencilProof. <a href="${unsubscribeUrl}">Unsubscribe</a> or <a href="${accountUrl}">manage email preferences</a>.</p><p style="color:#667085;font-size:12px">${htmlEscape(businessAddress)}</p>`;
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -846,7 +853,7 @@ const sendMarketingEmail = async (
       html,
       reply_to: env.MARKETING_REPLY_TO?.trim() || undefined,
       subject: content.subject,
-      text: `${text}\n\nOpen PencilProof: ${env.PUBLIC_SITE_ORIGIN}/analyze\nManage email preferences: ${accountUrl}\n\n${businessAddress}`,
+      text: `ADVERTISEMENT\n\n${text}\n\nOpen PencilProof: ${env.PUBLIC_SITE_ORIGIN}/analyze\nUnsubscribe: ${unsubscribeUrl}\nManage email preferences: ${accountUrl}\n\n${businessAddress}`,
       to: [candidate.email],
     }),
   });
@@ -885,6 +892,34 @@ const runMarketingCampaign = async (env: Env, scheduledTime: number) => {
   }
 };
 
+const createEmailUnsubscribeToken = async (email: string, secret: string) => {
+  const payload = base64UrlEncode(encoder.encode(JSON.stringify({
+    email,
+    purpose: "marketing-unsubscribe",
+  } satisfies EmailUnsubscribePayload)));
+  const key = await importSigningKey(secret);
+  const signature = new Uint8Array(await crypto.subtle.sign("HMAC", key, encoder.encode(payload)));
+  return `${payload}.${base64UrlEncode(signature)}`;
+};
+
+const verifyEmailUnsubscribeToken = async (token: string, secret: string) => {
+  const [payload, signature, extra] = token.split(".");
+  if (!payload || !signature || extra) return null;
+  try {
+    const key = await importSigningKey(secret);
+    const valid = await crypto.subtle.verify("HMAC", key, base64UrlDecode(signature), encoder.encode(payload));
+    if (!valid) return null;
+    const parsed = JSON.parse(new TextDecoder().decode(base64UrlDecode(payload))) as Partial<EmailUnsubscribePayload>;
+    return parsed.purpose === "marketing-unsubscribe"
+      && typeof parsed.email === "string"
+      && /^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(parsed.email)
+      ? parsed.email.trim().toLowerCase()
+      : null;
+  } catch {
+    return null;
+  }
+};
+
 const currentUser = async (request: Request, env: Env) =>
   verifyUserSession(readCookie(request, USER_COOKIE), env.SESSION_SECRET);
 
@@ -908,12 +943,16 @@ const handleAccount = async (request: Request, env: Env) => {
     return new Response(null, { status: 204, headers: accountCorsHeaders(request, env) });
   }
   if (url.pathname === "/api/account/session" && request.method === "POST") {
-    const body = await request.json().catch(() => ({})) as { token?: string };
+    const body = await request.json().catch(() => ({})) as { email?: string; token?: string };
     const provider = typeof body.token === "string" ? await verifyProviderToken(body.token, env) : null;
     if (!provider) return withAccountCors(Response.json({ error: "invalid_account_session" }, { status: 401, headers: noStoreHeaders }), request, env);
     const userResult = await accountCall(env, "/user", { providerSubject: provider.id });
     const user = userResult?.user as { id?: string } | undefined;
     if (!user?.id) return withAccountCors(Response.json({ error: "account_unavailable" }, { status: 503, headers: noStoreHeaders }), request, env);
+    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(email) && email.length <= 254) {
+      await accountCall(env, "/email-contact", { email, userId: user.id });
+    }
     const guestId = await requestGuestId(request);
     if (guestId) {
       await accountCall(env, "/migrate", { guestId, userId: user.id });
@@ -935,11 +974,14 @@ const handleAccount = async (request: Request, env: Env) => {
   }
   if (url.pathname === "/api/account/marketing" && request.method === "POST") {
     const body = await request.json().catch(() => ({})) as { email?: string; optIn?: boolean };
+    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
     if (body.optIn === false) {
-      await accountCall(env, "/marketing", { optIn: false, userId });
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(email) || email.length > 254) {
+        return withAccountCors(Response.json({ error: "invalid_marketing_preference" }, { status: 400, headers: noStoreHeaders }), request, env);
+      }
+      await accountCall(env, "/marketing", { email, optIn: false, userId });
       return withAccountCors(Response.json({ optedIn: false }, { headers: noStoreHeaders }), request, env);
     }
-    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
     if (body.optIn !== true || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(email)) {
       return withAccountCors(Response.json({ error: "invalid_marketing_preference" }, { status: 400, headers: noStoreHeaders }), request, env);
     }
@@ -975,6 +1017,19 @@ const handleAccount = async (request: Request, env: Env) => {
     return new Response(null, { status: 204, headers: { ...noStoreHeaders, "Set-Cookie": clearAccountCookie } });
   }
   return new Response("Not found", { status: 404, headers: noStoreHeaders });
+};
+
+const marketingUnsubscribePage = (message: string, ok: boolean) => new Response(`<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Email preferences | PencilProof</title><style>:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#061126;color:#f5f7fb;font:16px/1.5 Arial,sans-serif}.card{width:min(560px,calc(100% - 32px));padding:40px;border:1px solid rgba(246,195,67,.42);border-radius:16px;background:#0b1b38;box-shadow:0 24px 80px rgba(0,0,0,.35)}.brand{color:#f6c343;font-weight:800;letter-spacing:.02em}h1{margin:24px 0 10px;font:500 34px/1.1 Georgia,serif}p{color:#d9e1ee}a{color:#f6c343}</style></head><body><main class="card"><div class="brand">PencilProof</div><h1>${ok ? "You are unsubscribed" : "We could not update your preferences"}</h1><p>${htmlEscape(message)}</p><p><a href="https://pencilproof.com/">Return to PencilProof</a></p></main></body></html>`, { headers: { ...noStoreHeaders, "Content-Type": "text/html; charset=utf-8" } });
+
+const handleMarketingUnsubscribe = async (request: Request, env: Env) => {
+  const token = new URL(request.url).searchParams.get("token") ?? "";
+  const email = await verifyEmailUnsubscribeToken(token, env.SESSION_SECRET);
+  if (!email) return marketingUnsubscribePage("This unsubscribe link is invalid or expired. Use the email preferences in My Audits or contact support.", false);
+  const result = await accountCall(env, "/marketing-unsubscribe", { email });
+  return result?.unsubscribed === true
+    ? marketingUnsubscribePage("You will no longer receive PencilProof promotional emails at this address.", true)
+    : marketingUnsubscribePage("We could not update your preferences. Please contact support.", false);
 };
 
 const handleAuditStorage = async (request: Request, env: Env) => {
@@ -2560,6 +2615,9 @@ export const handleRequest = async (request: Request, env: Env) => {
   }
   if (url.pathname === "/handoff" || url.pathname === "/handoff/") {
     return handoffPage();
+  }
+  if (url.pathname === "/api/email/unsubscribe" && request.method === "GET") {
+    return handleMarketingUnsubscribe(request, env);
   }
   if (url.pathname === "/api/checkout") {
     return handleCheckout(request, env);
