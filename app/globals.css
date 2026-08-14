@@ -1663,6 +1663,8 @@ h1 { font-weight: 700; letter-spacing: -.055em; }
 .analyzer-nav .nav-links > a.nav-cta { color: var(--brand-navy); background: var(--brand-gold); }
 .analyzer-nav .nav-links > a.nav-cta:hover { color: var(--brand-navy); background: #ffd86e; }
 .analyzer-nav .privacy-chip { display: none; }
+.analyzer-page .pdf-upload-actions .phone-camera-trigger { font-size: 13px; }
+.analyzer-page .pdf-upload-actions .pdf-camera-button { display: none; }
 .analyzer-page .paid-feedback-card { display: none; }
 .feedback-worth-fieldset { margin: 16px 0 0; padding: 0; border: 0; }
 .feedback-worth-fieldset legend { margin-bottom: 8px; color: var(--brand-text); font-size: 12px; font-weight: 800; }
@@ -1686,6 +1688,8 @@ h1 { font-weight: 700; letter-spacing: -.055em; }
 }
 
 @media (max-width: 680px) {
+  .analyzer-page .pdf-upload-actions .phone-camera-trigger { display: none; }
+  .analyzer-page .pdf-upload-actions .pdf-camera-button { display: inline-flex; }
   .nav-links { gap: 8px; }
   .nav-links > a:not(.nav-cta):not(.nav-account-link) { display: none; }
   .nav-account-link,
