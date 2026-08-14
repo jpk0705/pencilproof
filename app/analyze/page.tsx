@@ -892,11 +892,11 @@ export default function AnalyzePage() {
       <nav className="site-nav analyzer-nav" aria-label="Main navigation">
         <Link className="brand" href="/" aria-label="PencilProof home"><img className="brand-logo" src="/pencilproof-profile-mark.png" alt="" width="40" height="40" /><span>PencilProof</span></Link>
         <div className="nav-links">
-          {process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ? <AccountNav /> : null}
           <Link href="/who-it-helps">Who it helps</Link>
           <Link href="/how-it-works">How it works</Link>
           <Link href="/what-it-checks">What it checks</Link>
           <Link href="/pricing">Pricing</Link>
+          {process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ? <AccountNav /> : null}
           <Link className="nav-cta" href={isPaidAuditHost ? "/analyze/secure/" : "/analyze"}>Upload your quote</Link>
         </div>
         <span className="privacy-chip">Your deal inputs stay in this browser · <a href="mailto:support@pencilproof.com">Contact support</a></span>
