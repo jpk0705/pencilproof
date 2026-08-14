@@ -82,7 +82,7 @@ h1 { max-width: 690px; margin: 0; font-family: Georgia, 'Times New Roman', serif
 .sample-demo-tabs { display: flex; gap: 7px; padding: 13px 0 0; border-bottom: 1px solid var(--line); }
 .sample-demo-tabs button { padding: 7px 10px 9px; border: 0; border-bottom: 2px solid transparent; color: var(--muted); background: transparent; font: 800 10px/1.2 Manrope, ui-sans-serif, sans-serif; cursor: pointer; }
 .sample-demo-tabs button:hover,
-.sample-demo-tabs button.is-active { color: var(--ink); border-bottom-color: var(--accent); }
+.sample-demo-tabs button.is-active { color: var(--brand-gold); border-bottom-color: var(--brand-gold); }
 .sample-question-panel { padding: 21px 0 2px; }
 .sample-question-kicker { margin: 0 0 7px; color: var(--green); font-size: 8px; font-weight: 900; letter-spacing: .14em; }
 .sample-question-panel h3 { margin: 0 0 13px; font-family: Georgia, serif; font-size: 22px; font-weight: 500; line-height: 1.1; }
