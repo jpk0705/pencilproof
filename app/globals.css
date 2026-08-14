@@ -1614,11 +1614,9 @@ h1 { font-weight: 700; letter-spacing: -.055em; }
 .account-page small { color: var(--brand-text); }
 .account-page > p,
 .account-page .account-guest-note,
-.account-page .marketing-preferences > p,
 .account-page .account-empty p { color: var(--brand-muted); }
 .pass-card,
-.account-history,
-.marketing-preferences { border: 1px solid var(--brand-line); border-radius: 16px; background: var(--brand-navy-2); box-shadow: 0 16px 40px rgba(0,0,0,.16); }
+.account-history { border: 1px solid var(--brand-line); border-radius: 16px; background: var(--brand-navy-2); box-shadow: 0 16px 40px rgba(0,0,0,.16); }
 .pass-card { margin: 26px 0 30px; padding: 26px; }
 .pass-card .kicker,
 .account-section-heading .kicker,
@@ -1641,8 +1639,6 @@ h1 { font-weight: 700; letter-spacing: -.055em; }
 .account-empty { padding: 24px 0 4px; }
 .account-empty strong { display: block; margin-bottom: 6px; }
 .account-empty .text-link { display: inline-block; margin-top: 8px; color: var(--brand-gold); }
-.marketing-preferences { margin-top: 22px; padding: 24px 26px; }
-.marketing-preferences h2 { margin-top: 0; }
 .account-delete { margin-top: 30px; }
 .pre-checkout-account-gate { color: var(--brand-text); background: var(--brand-navy-2); border-color: var(--brand-line); }
 .pre-checkout-account-gate h2,
@@ -1683,7 +1679,7 @@ h1 { font-weight: 700; letter-spacing: -.055em; }
 
 @media(max-width:760px){
   .account-history,
-  .marketing-preferences { padding: 20px; }
+  .account-history { padding: 20px; }
   .account-section-heading { align-items: flex-start; flex-direction: column; gap: 4px; }
   .saved-audit { align-items: flex-start; flex-direction: column; }
   .feedback-worth-grid { grid-template-columns: 1fr 1fr; }

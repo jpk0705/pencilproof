@@ -22,8 +22,6 @@ export default function AccountPage() {
   const [audits, setAudits] = useState<Audit[]>([]);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const [message, setMessage] = useState("");
-  const [marketingOptedIn, setMarketingOptedIn] = useState(false);
-  const [marketingMessage, setMarketingMessage] = useState("");
   const [auditPath, setAuditPath] = useState("/analyze");
 
   useEffect(() => {
@@ -64,11 +62,9 @@ export default function AccountPage() {
       const data = await response.json() as {
         audits?: Audit[];
         expiresAt?: number | null;
-        marketingOptedIn?: boolean;
       };
       setAudits(data.audits ?? []);
       setExpiresAt(data.expiresAt ?? null);
-      setMarketingOptedIn(data.marketingOptedIn === true);
     })();
   }, [clerk]);
 
@@ -88,27 +84,6 @@ export default function AccountPage() {
   }
 
   const days = expiresAt ? Math.max(0, Math.ceil((expiresAt * 1000 - Date.now()) / 86400000)) : 0;
-  const updateMarketingPreference = async () => {
-    setMarketingMessage("");
-    const optIn = !marketingOptedIn;
-    const emailAddress = clerk.user?.primaryEmailAddress;
-    const email = emailAddress?.emailAddress.trim().toLowerCase() ?? "";
-    if (!email) {
-      setMarketingMessage("Add an email address before changing your email preference.");
-      return;
-    }
-    const response = await fetch("/api/account/marketing", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, optIn }),
-    });
-    if (!response.ok) {
-      setMarketingMessage("We could not update your email preference. Please try again.");
-      return;
-    }
-    setMarketingOptedIn(optIn);
-  };
-
   const deleteAudit = async (id: string) => {
     await fetch("/api/account/audits", {
       method: "DELETE",
@@ -151,7 +126,6 @@ export default function AccountPage() {
         }) : <div className="account-empty"><strong>No paid audits yet.</strong><p>Your completed Full Quote Audits will appear here automatically.</p><Link className="text-link" href={auditPath}>Start a quote scan →</Link></div>}
       </section>
 
-      <section className="marketing-preferences"><h2>Email preferences</h2><p>PencilProof may send reminders, promotions, and helpful car-buying information. You can stop these emails anytime.</p><button className="button button-quiet" type="button" onClick={() => void updateMarketingPreference()}>{marketingOptedIn ? "Stop marketing emails" : "Restart marketing emails"}</button>{marketingMessage ? <p role="status">{marketingMessage}</p> : null}</section>
       <button className="account-delete" type="button" onClick={() => void deleteAccount()}>Delete my account and data</button>
       {message ? <p role="status">{message}</p> : null}
     </main>,
