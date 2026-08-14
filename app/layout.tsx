@@ -9,6 +9,8 @@ import AnalyticsBoot from "@/app/components/AnalyticsBoot";
 import OptionalClerkProvider from "@/app/components/OptionalClerkProvider";
 
 const isGitHubPages = process.env.GITHUB_ACTIONS === "true";
+const faviconPng = "/favicon.png?v=20260813";
+const faviconSvg = "/favicon.svg?v=20260813";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://pencilproof.com"),
@@ -18,11 +20,11 @@ export const metadata: Metadata = {
   other: isGitHubPages ? undefined : { "codex-preview": "development" },
   icons: {
     icon: [
-      { url: "/favicon.png", type: "image/png", sizes: "64x64" },
-      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: faviconPng, type: "image/png", sizes: "64x64" },
+      { url: faviconSvg, type: "image/svg+xml" },
     ],
-    shortcut: "/favicon.png",
-    apple: "/favicon.png",
+    shortcut: faviconPng,
+    apple: faviconPng,
   },
 };
 
