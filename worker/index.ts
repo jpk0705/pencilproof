@@ -851,6 +851,10 @@ const sendMarketingEmail = async (
     body: JSON.stringify({
       from,
       html,
+      headers: {
+        "List-Unsubscribe": `<${unsubscribeUrl}>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      },
       reply_to: env.MARKETING_REPLY_TO?.trim() || undefined,
       subject: content.subject,
       text: `${text}\n\nOpen PencilProof: ${env.PUBLIC_SITE_ORIGIN}/analyze\n\nYou are receiving this because you created a PencilProof account or provided your email to PencilProof.\nUnsubscribe: ${unsubscribeUrl}\nManage email preferences: ${accountUrl}\n\n${businessAddress}`,
@@ -1025,6 +1029,11 @@ const marketingUnsubscribePage = (message: string, ok: boolean) => new Response(
 const handleMarketingUnsubscribe = async (request: Request, env: Env) => {
   const token = new URL(request.url).searchParams.get("token") ?? "";
   const email = await verifyEmailUnsubscribeToken(token, env.SESSION_SECRET);
+  if (request.method === "POST") {
+    if (!email) return new Response(null, { status: 400, headers: noStoreHeaders });
+    const result = await accountCall(env, "/marketing-unsubscribe", { email });
+    return new Response(null, { status: result?.unsubscribed === true ? 204 : 503, headers: noStoreHeaders });
+  }
   if (!email) return marketingUnsubscribePage("This unsubscribe link is invalid or expired. Use the email preferences in My Audits or contact support.", false);
   const result = await accountCall(env, "/marketing-unsubscribe", { email });
   return result?.unsubscribed === true
@@ -2616,7 +2625,7 @@ export const handleRequest = async (request: Request, env: Env) => {
   if (url.pathname === "/handoff" || url.pathname === "/handoff/") {
     return handoffPage();
   }
-  if (url.pathname === "/api/email/unsubscribe" && request.method === "GET") {
+  if (url.pathname === "/api/email/unsubscribe" && (request.method === "GET" || request.method === "POST")) {
     return handleMarketingUnsubscribe(request, env);
   }
   if (url.pathname === "/api/checkout") {
