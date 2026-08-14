@@ -145,6 +145,7 @@ test("analytics dashboard renders the selected range and business funnel", async
   assert.match(body, /Reached checkout/);
   assert.match(body, /Purchased/);
   assert.match(body, /Customer feedback/);
+  assert.match(body, /Account deletion reasons/);
   assert.match(body, /Average scan quality/);
   assert.match(body, /\$39\.99/);
   assert.match(body, /Written comments/);

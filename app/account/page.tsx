@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Clerk } from "@clerk/clerk-js";
 import { useEffect, useState, type ReactNode } from "react";
 import { authRedirectOptions, createLoadedClerk } from "@/lib/clerk-client";
+import { flushAnalyticsQueue, track } from "@/lib/analytics";
 import { SiteNav } from "@/app/components/SiteChrome";
 
 type Audit = {
@@ -101,6 +102,17 @@ export default function AccountPage() {
   const confirmDeleteAccount = async () => {
     if (!window.confirm("Delete your PencilProof account and saved audit data?")) return;
     setDeleteBusy(true);
+    track({
+      event: "feedback_submitted",
+      category: "account_deletion",
+      comment: JSON.stringify({
+        category: "account_deletion",
+        phase: "account-deletion",
+        reason: deleteReason.trim(),
+        comment: deleteDetails.trim(),
+      }),
+    });
+    await flushAnalyticsQueue();
     await fetch("/api/account/delete", { method: "POST" });
     await clerk.signOut();
     setMessage("Your account and saved PencilProof data were deleted.");
@@ -144,6 +156,7 @@ export default function AccountPage() {
             <option value="">Choose a reason (optional)</option>
             <option value="completed purchase">I completed my car purchase</option>
             <option value="did not use service">I did not use the service</option>
+            <option value="price too high">The price was too high</option>
             <option value="site trouble">I had trouble using the site</option>
             <option value="not needed anymore">I do not need PencilProof anymore</option>
             <option value="other">Other</option>
