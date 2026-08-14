@@ -48,7 +48,7 @@ button, input, select { font: inherit; }
 h1 { max-width: 690px; margin: 0; font-family: Georgia, 'Times New Roman', serif; font-size: clamp(54px, 5.6vw, 82px); line-height: .99; letter-spacing: -.055em; font-weight: 500; }
 .hero-lede { max-width: 640px; margin: 28px 0 0; color: var(--muted); font-size: 18px; line-height: 1.65; }
 .hero-actions { display: flex; gap: 20px; margin-top: 34px; }
-.hero-actions .text-link { align-self: center; height: 44px; margin-top: 0; border-bottom: 2px solid var(--brand-gold); padding-bottom: 5px; color: var(--brand-text); }
+.hero-actions .text-link { align-self: center; height: 30px; margin-top: 0; border-bottom: 2px solid var(--brand-gold); padding-bottom: 5px; color: var(--brand-text); }
 .button { min-height: 52px; display: inline-flex; align-items: center; justify-content: center; gap: 22px; padding: 0 24px; border: 1px solid var(--ink); border-radius: 4px; font-size: 14px; font-weight: 900; transition: transform .2s, box-shadow .2s, background .2s; }
 .button:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(11, 28, 37, .12); }
 .button-primary { background: var(--accent); }
