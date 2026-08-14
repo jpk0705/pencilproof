@@ -34,7 +34,9 @@ export default function AccountNav() {
     };
   }, []);
 
-  if (!clerk) return null;
+  if (!clerk) {
+    return <button className="nav-account-button" type="button" disabled aria-label="Sign in loading">Sign in</button>;
+  }
   return signedIn
     ? <Link className="nav-account-link" href={ACCOUNT_URL}>My Audits</Link>
     : <button className="nav-account-button" type="button" onClick={() => clerk.openSignIn(authRedirectOptions())}>Sign in</button>;
