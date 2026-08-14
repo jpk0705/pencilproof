@@ -23,6 +23,7 @@ const syncAccountContact = async (instance: Clerk) => {
 export default function AccountNav() {
   const [clerk, setClerk] = useState<Clerk | null>(null);
   const [signedIn, setSignedIn] = useState(false);
+  const [signedInEmail, setSignedInEmail] = useState("");
 
   useEffect(() => {
     const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
@@ -35,10 +36,12 @@ export default function AccountNav() {
         if (cancelled) return;
         setClerk(instance);
         setSignedIn(Boolean(instance.user));
+        setSignedInEmail(instance.user?.primaryEmailAddress?.emailAddress.trim() ?? "");
         void syncAccountContact(instance);
         unsubscribe = instance.addListener(() => {
           if (!cancelled) {
             setSignedIn(Boolean(instance.user));
+            setSignedInEmail(instance.user?.primaryEmailAddress?.emailAddress.trim() ?? "");
             void syncAccountContact(instance);
           }
         });
@@ -55,6 +58,6 @@ export default function AccountNav() {
     return <Link className="nav-account-link" href={ACCOUNT_URL} aria-label="Sign in">Sign in</Link>;
   }
   return signedIn
-    ? <Link className="nav-account-link" href={ACCOUNT_URL}>My Audits</Link>
+    ? <span className="nav-account-session"><Link className="nav-account-link" href={ACCOUNT_URL}>My Audits</Link><span className="nav-account-email" title={`Signed in as ${signedInEmail}`}>{signedInEmail || "Signed-in account"}</span></span>
     : <button className="nav-account-button" type="button" onClick={() => clerk.openSignIn(authRedirectOptions())}>Sign in</button>;
 }

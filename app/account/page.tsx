@@ -88,6 +88,7 @@ export default function AccountPage() {
   }
 
   const days = expiresAt ? Math.max(0, Math.ceil((expiresAt * 1000 - Date.now()) / 86400000)) : 0;
+  const signedInEmail = clerk.user.primaryEmailAddress?.emailAddress.trim() ?? "Signed-in account";
   const deleteAudit = async (id: string) => {
     await fetch("/api/account/audits", {
       method: "DELETE",
@@ -110,7 +111,7 @@ export default function AccountPage() {
   return shell(
     <main className="account-page shell">
       <header className="account-header">
-        <div><p className="kicker">YOUR PENCILPROOF</p><h1>My Audits</h1></div>
+        <div><p className="kicker">YOUR PENCILPROOF</p><h1>My Audits</h1><p className="account-identity"><span>Signed in as</span><strong>{signedInEmail}</strong></p></div>
         <button className="nav-account-button" type="button" onClick={() => clerk.signOut()}>Sign out</button>
       </header>
 
