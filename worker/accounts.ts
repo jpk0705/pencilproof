@@ -18,6 +18,32 @@ type User = { id: string; providerSubject: string; createdAt: number };
 export type Entitlement = { id: string; userId: string | null; guestId: string | null; stripeSessionId: string; activatedAt: number; expiresAt: number; status: string };
 export type StoredAudit = { id: string; ownerId: string; createdAt: number; expiresAt: number; data: Record<string, unknown> };
 
+type SalespersonProfile = {
+  userId: string;
+  email: string;
+  displayName: string;
+  referralCode: string;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  subscriptionStatus: string;
+  earnedCredits: number;
+  availableCredits: number;
+  createdAt: number;
+  updatedAt: number;
+};
+
+type ReferralReward = {
+  id: string;
+  referralCode: string;
+  salespersonUserId: string;
+  customerUserId: string | null;
+  customerEmail: string | null;
+  stripeSessionId: string;
+  status: "pending" | "credited";
+  createdAt: number;
+  creditedAt: number | null;
+};
+
 const b64 = (bytes: Uint8Array) => {
   let text = "";
   for (const byte of bytes) text += String.fromCharCode(byte);
@@ -93,6 +119,13 @@ export class AccountStore {
     this.sql.exec(`CREATE TABLE IF NOT EXISTS marketing_activity (user_id TEXT PRIMARY KEY, last_scan_at INTEGER, last_checkout_at INTEGER, last_purchase_at INTEGER)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS marketing_deliveries (user_id TEXT NOT NULL, campaign_key TEXT NOT NULL, claimed_at INTEGER NOT NULL, sent_at INTEGER, PRIMARY KEY (user_id, campaign_key))`);
     this.sql.exec(`CREATE INDEX IF NOT EXISTS marketing_deliveries_user ON marketing_deliveries(user_id, sent_at)`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS salesperson_profiles (user_id TEXT PRIMARY KEY, email TEXT NOT NULL, display_name TEXT NOT NULL, referral_code TEXT UNIQUE NOT NULL, stripe_customer_id TEXT, stripe_subscription_id TEXT, subscription_status TEXT NOT NULL, earned_credits INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`);
+    this.sql.exec(`CREATE INDEX IF NOT EXISTS salesperson_profiles_referral ON salesperson_profiles(referral_code)`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS referral_rewards (id TEXT PRIMARY KEY, referral_code TEXT NOT NULL, salesperson_user_id TEXT NOT NULL, customer_user_id TEXT, customer_email TEXT, stripe_session_id TEXT UNIQUE NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL, credited_at INTEGER)`);
+    this.sql.exec(`CREATE INDEX IF NOT EXISTS referral_rewards_salesperson ON referral_rewards(salesperson_user_id, status)`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS salesperson_credits (id TEXT PRIMARY KEY, source_reward_id TEXT UNIQUE NOT NULL, owner_user_id TEXT NOT NULL, amount_cents INTEGER NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL, redeemed_at INTEGER)`);
+    this.sql.exec(`CREATE INDEX IF NOT EXISTS salesperson_credits_owner ON salesperson_credits(owner_user_id, status)`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS salesperson_gifts (code TEXT PRIMARY KEY, credit_id TEXT UNIQUE NOT NULL, from_user_id TEXT NOT NULL, claimed_by_user_id TEXT, status TEXT NOT NULL, created_at INTEGER NOT NULL, claimed_at INTEGER)`);
     this.sql.exec(`INSERT OR IGNORE INTO email_contacts (user_id, email, added_at, updated_at) SELECT user_id, email, opted_in_at, updated_at FROM marketing_preferences`);
   }
   private purge() { this.sql.exec(`DELETE FROM audits WHERE expires_at <= ?`, isoNow()); }
@@ -221,7 +254,142 @@ export class AccountStore {
   releaseMarketingDelivery(userId: string, campaignKey: string) {
     this.sql.exec(`DELETE FROM marketing_deliveries WHERE user_id = ? AND campaign_key = ? AND sent_at IS NULL`, userId, campaignKey);
   }
-  deleteUser(userId: string) { this.sql.exec(`DELETE FROM audits WHERE owner_id = ?`, `user:${userId}`); this.sql.exec(`DELETE FROM entitlements WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM marketing_preferences WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM email_contacts WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM marketing_activity WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM marketing_deliveries WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM users WHERE id = ?`, userId); }
+  private newReferralCode() {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const candidate = crypto.randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase();
+      if (!this.sql.exec(`SELECT referral_code FROM salesperson_profiles WHERE referral_code = ?`, candidate).toArray().length) return candidate;
+    }
+    throw new Error("referral_code_unavailable");
+  }
+  private salespersonRow(userId: string) {
+    return this.sql.exec<{
+      user_id: string;
+      email: string;
+      display_name: string;
+      referral_code: string;
+      stripe_customer_id: string | null;
+      stripe_subscription_id: string | null;
+      subscription_status: string;
+      earned_credits: number;
+      created_at: number;
+      updated_at: number;
+    }>(`SELECT * FROM salesperson_profiles WHERE user_id = ?`, userId).toArray()[0];
+  }
+  private salespersonView(row: NonNullable<ReturnType<AccountStore["salespersonRow"]>>): SalespersonProfile {
+    return {
+      userId: row.user_id,
+      email: row.email,
+      displayName: row.display_name,
+      referralCode: row.referral_code,
+      stripeCustomerId: row.stripe_customer_id,
+      stripeSubscriptionId: row.stripe_subscription_id,
+      subscriptionStatus: row.subscription_status,
+      earnedCredits: row.earned_credits,
+      availableCredits: this.sql.exec<{ count: number }>(`SELECT COUNT(*) AS count FROM salesperson_credits WHERE owner_user_id = ? AND status = 'available'`, row.user_id).toArray()[0]?.count ?? 0,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+  salesperson(input: { action: "ensure" | "get"; userId: string; email?: string; displayName?: string }) {
+    const existing = this.salespersonRow(input.userId);
+    if (existing) {
+      if (input.action === "ensure" && input.email && input.displayName) {
+        const email = input.email.trim().toLowerCase();
+        const displayName = input.displayName.trim().slice(0, 80);
+        if (/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(email) && displayName.length >= 2) {
+          this.sql.exec(`UPDATE salesperson_profiles SET email = ?, display_name = ?, updated_at = ? WHERE user_id = ?`, email, displayName, isoNow(), input.userId);
+        }
+      }
+      return this.salespersonView(this.salespersonRow(input.userId)!);
+    }
+    if (input.action === "get") return null;
+    const email = input.email?.trim().toLowerCase() ?? "";
+    const displayName = input.displayName?.trim().slice(0, 80) ?? "";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(email) || displayName.length < 2) return null;
+    const now = isoNow();
+    this.sql.exec(`INSERT INTO salesperson_profiles (user_id, email, display_name, referral_code, stripe_customer_id, stripe_subscription_id, subscription_status, earned_credits, created_at, updated_at) VALUES (?, ?, ?, ?, NULL, NULL, 'not_started', 0, ?, ?)`, input.userId, email, displayName, this.newReferralCode(), now, now);
+    return this.salespersonView(this.salespersonRow(input.userId)!);
+  }
+  salespersonSubscription(input: { action: "activate" | "status"; userId?: string; stripeCustomerId?: string; stripeSubscriptionId?: string; status?: string }) {
+    const userId = input.userId ?? "";
+    const customerId = input.stripeCustomerId ?? "";
+    const subscriptionId = input.stripeSubscriptionId ?? "";
+    const row = userId
+      ? this.salespersonRow(userId)
+      : this.sql.exec<{ user_id: string }>(`SELECT user_id FROM salesperson_profiles WHERE stripe_customer_id = ? OR stripe_subscription_id = ?`, customerId, subscriptionId).toArray()[0]
+        ? this.salespersonRow(this.sql.exec<{ user_id: string }>(`SELECT user_id FROM salesperson_profiles WHERE stripe_customer_id = ? OR stripe_subscription_id = ?`, customerId, subscriptionId).toArray()[0].user_id)
+        : undefined;
+    if (!row) return null;
+    const status = input.status?.trim() || (input.action === "activate" ? "active" : row.subscription_status);
+    this.sql.exec(`UPDATE salesperson_profiles SET stripe_customer_id = COALESCE(NULLIF(?, ''), stripe_customer_id), stripe_subscription_id = COALESCE(NULLIF(?, ''), stripe_subscription_id), subscription_status = ?, updated_at = ? WHERE user_id = ?`, customerId, subscriptionId, status, isoNow(), row.user_id);
+    return this.salespersonView(this.salespersonRow(row.user_id)!);
+  }
+  referralReward(input: { referralCode: string; stripeSessionId: string; customerUserId?: string | null; customerEmail?: string | null }) {
+    const code = input.referralCode.trim().toUpperCase();
+    const sessionId = input.stripeSessionId.trim();
+    const existing = this.sql.exec<ReferralReward & { created_at: number; credited_at: number | null; referral_code: string; salesperson_user_id: string; customer_user_id: string | null; customer_email: string | null; stripe_session_id: string; }>(`SELECT * FROM referral_rewards WHERE stripe_session_id = ?`, sessionId).toArray()[0];
+    if (existing) {
+      const profile = this.salespersonRow(existing.salesperson_user_id);
+      return profile ? { status: existing.status, rewardId: existing.id, salespersonUserId: profile.user_id } : { status: "ignored" };
+    }
+    const profile = this.sql.exec<{ user_id: string }>(`SELECT user_id FROM salesperson_profiles WHERE referral_code = ?`, code).toArray()[0];
+    if (!profile) return { status: "unknown_referral" };
+    const salesperson = this.salespersonRow(profile.user_id);
+    if (!salesperson || salesperson.subscription_status === "canceled") return { status: "inactive_salesperson" };
+    const customerUserId = input.customerUserId?.trim() || null;
+    const customerEmail = input.customerEmail?.trim().toLowerCase() || null;
+    if (customerUserId && customerUserId === salesperson.user_id) return { status: "self_referral" };
+    if (customerEmail && customerEmail === salesperson.email.toLowerCase()) return { status: "self_referral" };
+    const rewardId = crypto.randomUUID();
+    this.sql.exec(`INSERT INTO referral_rewards (id, referral_code, salesperson_user_id, customer_user_id, customer_email, stripe_session_id, status, created_at, credited_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, NULL)`, rewardId, code, salesperson.user_id, customerUserId, customerEmail, sessionId, isoNow());
+    return { status: "pending", rewardId, salespersonUserId: salesperson.user_id };
+  }
+  confirmReferralReward(rewardId: string) {
+    const reward = this.sql.exec<{ id: string; salesperson_user_id: string; status: string }>(`SELECT id, salesperson_user_id, status FROM referral_rewards WHERE id = ?`, rewardId).toArray()[0];
+    if (!reward) return { confirmed: false };
+    if (reward.status === "credited") return { confirmed: true };
+    if (reward.status !== "pending") return { confirmed: false };
+    this.sql.exec(`UPDATE referral_rewards SET status = 'credited', credited_at = ? WHERE id = ? AND status = 'pending'`, isoNow(), rewardId);
+    this.sql.exec(`INSERT OR IGNORE INTO salesperson_credits (id, source_reward_id, owner_user_id, amount_cents, status, created_at, redeemed_at) VALUES (?, ?, ?, 2000, 'available', ?, NULL)`, crypto.randomUUID(), rewardId, reward.salesperson_user_id, isoNow());
+    this.sql.exec(`UPDATE salesperson_profiles SET earned_credits = earned_credits + 1, updated_at = ? WHERE user_id = ?`, isoNow(), reward.salesperson_user_id);
+    return { confirmed: true };
+  }
+  private newGiftCode() {
+    return `PPG-${crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase()}`;
+  }
+  redeemSalespersonCredit(userId: string) {
+    const profile = this.salespersonRow(userId);
+    if (!profile?.stripe_customer_id) return { status: "billing_not_ready" };
+    const credit = this.sql.exec<{ id: string }>(`SELECT id FROM salesperson_credits WHERE owner_user_id = ? AND status = 'available' ORDER BY created_at ASC LIMIT 1`, userId).toArray()[0];
+    if (!credit) return { status: "no_credit" };
+    this.sql.exec(`UPDATE salesperson_credits SET status = 'pending_redeem' WHERE id = ? AND status = 'available'`, credit.id);
+    return { status: "pending", creditId: credit.id, stripeCustomerId: profile.stripe_customer_id };
+  }
+  confirmSalespersonCredit(creditId: string, success: boolean) {
+    const status = success ? "redeemed" : "available";
+    this.sql.exec(`UPDATE salesperson_credits SET status = ?, redeemed_at = ? WHERE id = ? AND status = 'pending_redeem'`, status, success ? isoNow() : null, creditId);
+    return { confirmed: true };
+  }
+  giftSalespersonCredit(userId: string) {
+    const credit = this.sql.exec<{ id: string }>(`SELECT id FROM salesperson_credits WHERE owner_user_id = ? AND status = 'available' ORDER BY created_at ASC LIMIT 1`, userId).toArray()[0];
+    if (!credit) return { status: "no_credit" };
+    const code = this.newGiftCode();
+    this.sql.exec(`UPDATE salesperson_credits SET status = 'gifted' WHERE id = ? AND status = 'available'`, credit.id);
+    this.sql.exec(`INSERT INTO salesperson_gifts (code, credit_id, from_user_id, claimed_by_user_id, status, created_at, claimed_at) VALUES (?, ?, ?, NULL, 'available', ?, NULL)`, code, credit.id, userId, isoNow());
+    return { status: "created", code };
+  }
+  claimSalespersonGift(userId: string, code: string) {
+    const gift = this.sql.exec<{ code: string; credit_id: string; from_user_id: string; status: string }>(`SELECT code, credit_id, from_user_id, status FROM salesperson_gifts WHERE code = ?`, code.toUpperCase()).toArray()[0];
+    if (!gift) return { status: "gift_not_found" };
+    if (gift.from_user_id === userId) return { status: "self_gift" };
+    if (gift.status !== "available") return { status: "gift_unavailable" };
+    const profile = this.salespersonRow(userId);
+    if (!profile) return { status: "salesperson_profile_required" };
+    this.sql.exec(`UPDATE salesperson_gifts SET claimed_by_user_id = ?, status = 'claimed', claimed_at = ? WHERE code = ? AND status = 'available'`, userId, isoNow(), gift.code);
+    this.sql.exec(`UPDATE salesperson_credits SET owner_user_id = ?, status = 'available' WHERE id = ? AND status = 'gifted'`, userId, gift.credit_id);
+    return { status: "claimed" };
+  }
+  deleteUser(userId: string) { this.sql.exec(`DELETE FROM audits WHERE owner_id = ?`, `user:${userId}`); this.sql.exec(`DELETE FROM entitlements WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM marketing_preferences WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM email_contacts WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM marketing_activity WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM marketing_deliveries WHERE user_id = ?`, userId); this.sql.exec(`UPDATE referral_rewards SET customer_user_id = NULL, customer_email = NULL WHERE customer_user_id = ?`, userId); this.sql.exec(`DELETE FROM referral_rewards WHERE salesperson_user_id = ?`, userId); this.sql.exec(`DELETE FROM salesperson_profiles WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM users WHERE id = ?`, userId); }
   async fetch(request: Request) {
     if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
     const path = new URL(request.url).pathname;
@@ -286,6 +454,47 @@ export class AccountStore {
       if (action === "complete") { this.completeMarketingDelivery(userId, campaignKey); return json({ completed: true }); }
       if (action === "release") { this.releaseMarketingDelivery(userId, campaignKey); return json({ released: true }); }
       return json({ error: "invalid_marketing_delivery_action" }, 400);
+    }
+    if (path === "/salesperson") {
+      const userId = typeof body.userId === "string" ? body.userId : "";
+      if (!/^[A-Za-z0-9_:-]{8,200}$/.test(userId) || (body.action !== "get" && body.action !== "ensure")) return json({ error: "invalid_salesperson_profile" }, 400);
+      const profile = this.salesperson({ action: body.action, userId, email: typeof body.email === "string" ? body.email : undefined, displayName: typeof body.displayName === "string" ? body.displayName : undefined });
+      return profile ? json({ profile }) : json({ error: "salesperson_profile_unavailable" }, 503);
+    }
+    if (path === "/salesperson-subscription") {
+      const profile = this.salespersonSubscription({
+        action: body.action === "activate" ? "activate" : "status",
+        userId: typeof body.userId === "string" ? body.userId : undefined,
+        stripeCustomerId: typeof body.stripeCustomerId === "string" ? body.stripeCustomerId : undefined,
+        stripeSubscriptionId: typeof body.stripeSubscriptionId === "string" ? body.stripeSubscriptionId : undefined,
+        status: typeof body.status === "string" ? body.status : undefined,
+      });
+      return profile ? json({ profile }) : json({ error: "salesperson_profile_not_found" }, 404);
+    }
+    if (path === "/salesperson-credit") {
+      const userId = typeof body.userId === "string" ? body.userId : "";
+      if (!/^[A-Za-z0-9_:-]{8,200}$/.test(userId)) return json({ error: "invalid_salesperson_credit" }, 400);
+      if (body.action === "redeem") return json(this.redeemSalespersonCredit(userId));
+      if (body.action === "gift") return json(this.giftSalespersonCredit(userId));
+      if (body.action === "confirm") return json(this.confirmSalespersonCredit(typeof body.creditId === "string" ? body.creditId : "", body.success === true));
+      return json({ error: "invalid_salesperson_credit_action" }, 400);
+    }
+    if (path === "/salesperson-gift-claim") {
+      const userId = typeof body.userId === "string" ? body.userId : "";
+      const code = typeof body.code === "string" ? body.code : "";
+      if (!/^[A-Za-z0-9_:-]{8,200}$/.test(userId) || !/^PPG-[A-Z0-9]{16}$/.test(code.toUpperCase())) return json({ error: "invalid_salesperson_gift" }, 400);
+      return json(this.claimSalespersonGift(userId, code));
+    }
+    if (path === "/referral-reward") {
+      const referralCode = typeof body.referralCode === "string" ? body.referralCode : "";
+      const stripeSessionId = typeof body.stripeSessionId === "string" ? body.stripeSessionId : "";
+      if (!/^[A-Z0-9]{8,32}$/i.test(referralCode) || !/^cs_(test_|live_)?[A-Za-z0-9]+$/.test(stripeSessionId)) return json({ error: "invalid_referral_reward" }, 400);
+      return json(this.referralReward({ referralCode, stripeSessionId, customerUserId: typeof body.customerUserId === "string" ? body.customerUserId : null, customerEmail: typeof body.customerEmail === "string" ? body.customerEmail : null }));
+    }
+    if (path === "/referral-reward-confirm") {
+      const rewardId = typeof body.rewardId === "string" ? body.rewardId : "";
+      if (!/^[0-9a-f-]{36}$/i.test(rewardId)) return json({ error: "invalid_referral_reward" }, 400);
+      return json(this.confirmReferralReward(rewardId));
     }
     if (path === "/audits") {
       const ownerId = typeof body.ownerId === "string" ? body.ownerId : "";

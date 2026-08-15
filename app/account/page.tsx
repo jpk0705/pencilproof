@@ -85,7 +85,7 @@ export default function AccountPage() {
     return shell(<main className="account-page shell"><p>Loading your PencilProof account…</p></main>);
   }
   if (!clerk.user) {
-    return shell(<main className="account-page shell"><h1>Save your PencilProof access.</h1><p>Create a free account to use your Pass on other devices and keep eligible audits for 30 days.</p><div className="account-actions"><button className="button button-primary" type="button" onClick={() => clerk.openSignUp(authRedirectOptions())}>Create account</button><button className="button button-quiet" type="button" onClick={() => clerk.openSignIn(authRedirectOptions())}>Sign in</button></div><p className="account-guest-note">No account is required. You can continue using PencilProof as a guest.</p></main>);
+    return shell(<main className="account-page shell"><h1>Save your PencilProof access.</h1><p>Create a free account to use your Pass on other devices and keep eligible audits for 30 days.</p><div className="account-actions"><button className="button button-primary" type="button" onClick={() => clerk.openSignUp(authRedirectOptions())}>Create account</button><button className="button button-quiet" type="button" onClick={() => clerk.openSignIn(authRedirectOptions())}>Sign in</button></div><p className="account-guest-note">No account is required. You can continue using PencilProof as a guest.</p><section className="account-support" aria-labelledby="account-support-title"><p className="kicker">NEED A HAND?</p><h2 id="account-support-title">Questions and support</h2><p>Find quick answers or contact us if you need help with an audit.</p><div className="account-support-actions"><Link className="button button-quiet" href="/questions/">Q&amp;A</Link><a className="button button-quiet" href="mailto:support@pencilproof.com">Contact support</a></div></section></main>);
   }
 
   const days = expiresAt ? Math.max(0, Math.ceil((expiresAt * 1000 - Date.now()) / 86400000)) : 0;
@@ -131,7 +131,7 @@ export default function AccountPage() {
         <p className="kicker">PENCILPROOF 30-DAY PASS</p>
         <h2>{days ? `${days} days remaining` : "Your 30-Day Pass has ended."}</h2>
         <p>{days ? "Unlimited personal-use audits remain available during your pass." : "Your paid audit history remains available until each audit expires."}</p>
-        <Link className="button button-primary" href={auditPath}>Audit another quote</Link>
+        <div className="account-pass-actions"><Link className="button button-primary" href={auditPath}>Audit another quote</Link><Link className="button button-quiet" href="/sales">Salesperson tools</Link></div>
       </section>
 
       <section className="account-history" aria-labelledby="audit-history-title">
@@ -146,6 +146,13 @@ export default function AccountPage() {
         }) : <div className="account-empty"><strong>No paid audits yet.</strong><p>Your completed Full Quote Audits will appear here automatically.</p><Link className="text-link" href={auditPath}>Start a quote scan →</Link></div>}
       </section>
 
+      <section className="account-support" aria-labelledby="account-support-title">
+        <p className="kicker">NEED A HAND?</p>
+        <h2 id="account-support-title">Questions and support</h2>
+        <p>Find quick answers or contact us if you need help with an audit.</p>
+        <div className="account-support-actions"><Link className="button button-quiet" href="/questions/">Q&amp;A</Link><a className="button button-quiet" href="mailto:support@pencilproof.com">Contact support</a></div>
+      </section>
+
       {showDeletePrompt ? (
         <section className="delete-account-prompt" aria-labelledby="delete-account-prompt-title">
           <p className="kicker">BEFORE YOU GO</p>
@@ -154,11 +161,11 @@ export default function AccountPage() {
           <label htmlFor="delete-reason">Reason</label>
           <select id="delete-reason" value={deleteReason} onChange={(event) => setDeleteReason(event.target.value)}>
             <option value="">Choose a reason (optional)</option>
-            <option value="completed purchase">I completed my car purchase</option>
             <option value="did not use service">I did not use the service</option>
             <option value="price too high">The price was too high</option>
             <option value="site trouble">I had trouble using the site</option>
             <option value="not needed anymore">I do not need PencilProof anymore</option>
+            <option value="taking a break">I am taking a break</option>
             <option value="other">Other</option>
           </select>
           <label htmlFor="delete-details">Additional feedback (optional)</label>
