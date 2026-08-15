@@ -621,6 +621,16 @@ const sumDistinctAmounts = (
     // An accessory amount is still accepted when it appears on its own
     // itemized line, even if that line contains a physical accessory label.
     if (/(?:estimated|monthly|quoted|payment)\b|\b(?:months?|mos?)\s*@/i.test(line)) return;
+
+    // Vehicle equipment is often printed as a comma-separated feature list.
+    // A feature such as "Running Boards" can match the add-on vocabulary,
+    // while the next extracted line is the separate estimated-payment amount.
+    // Never borrow a number from that continuation line: it belongs to the
+    // payment column, not to the matched equipment description.
+    const commaCount = (line.match(/,/g) ?? []).length;
+    const looksLikeVehicleFeatureList = commaCount >= 2 && /\b(?:ABS|air bags?|air conditioning|backup camera|bluetooth|cruise control|entune|leather|navigation|power|running boards?|satellite|stability control|towing|wheel(?:s)?|V8|4WD)\b/i.test(line);
+    if (looksLikeVehicleFeatureList && !priceValues(line).length) return;
+
     const candidates = [index, index + 1, index - 1];
     for (const amountLineIndex of candidates) {
       if (amountLineIndex < 0 || matchedAmountLines.has(amountLineIndex)) continue;

@@ -261,6 +261,21 @@ const paymentColumnMustNotBecomeAccessory = parseDealerText([
 closeTo(paymentColumnMustNotBecomeAccessory.accessories, 999);
 closeTo(paymentColumnMustNotBecomeAccessory.quotedPayment, 625.89);
 
+const paymentOnNextLineAfterVehicleFeatures = parseDealerText([
+  "2017 Toyota Tundra CrewMax TRD Pro Pickup 4D 5 1/2 ft",
+  "Estimated Payment",
+  "V8, 5.7 Liter | 4WD | Auto, 6-Spd Sequential",
+  "ABS (4-Wheel), Active Traction Control, Air Conditioning, Alarm System, Backup Camera, Bed",
+  "Liner, Bluetooth Wireless, CD/MP3 (Single Disc), Cruise Control, Daytime Running Lights, Dual Air Bags, Entune,",
+  "Power Door Locks, Power Seat, Power Sliding Rear Window, Power Windows, Running Boards, Side Air Bags, SiriusXM",
+  "$786.00",
+  "Satellite, Stability Control, Tilt & Telescoping Wheel, Towing Pkg, TRD Pro Pkg",
+  "Connected Car 1 Year Plan $299.00",
+  "Zurich Shield - Standard $199.00",
+]);
+closeTo(paymentOnNextLineAfterVehicleFeatures.accessories, 498);
+closeTo(paymentOnNextLineAfterVehicleFeatures.quotedPayment, 786);
+
 const namedProducts = parseDealerText([
   "Ally VSC $2,495.00",
   "AmeriPlus GAP $995.00",
