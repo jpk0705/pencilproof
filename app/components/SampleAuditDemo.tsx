@@ -39,7 +39,7 @@ export default function SampleAuditDemo() {
             </div>
             <div className="flag flag-warn">
               <span className="flag-icon">!</span>
-              <p><b>Quoted payment is $36.59/month higher</b><small>Quote: $739.95. Entered figures: $703.36. Ask the dealer to explain the variance.</small></p>
+              <p><b>Quoted payment is $36.59/month higher</b><small>Quote: $739.95. Entered figures: $703.36. Review the amount financed, APR, term, and first-payment date.</small></p>
             </div>
             <div className="flag flag-good">
               <span className="flag-icon">✓</span>
@@ -67,3 +67,4 @@ export default function SampleAuditDemo() {
     </div>
   );
 }
+
