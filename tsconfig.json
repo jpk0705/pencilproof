@@ -36,6 +36,7 @@
     "db",
     "examples",
     "worker",
+    "mobile",
     "drizzle.config.ts",
     "vite.config.ts"
   ]
