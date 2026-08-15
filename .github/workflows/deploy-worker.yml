@@ -19,6 +19,7 @@ on:
       - "wrangler.jsonc"
       - "package.json"
       - "package-lock.json"
+      - "tsconfig.json"
       - ".github/workflows/deploy-worker.yml"
   workflow_dispatch:
 
