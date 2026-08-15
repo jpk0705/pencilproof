@@ -13,6 +13,7 @@ on:
       - "lib/vehicle-fuel-economy.ts"
       - "lib/vehicle-vin.ts"
       - "lib/clerk-client.ts"
+      - "lib/deal-pdf.ts"
       - "worker/**"
       - "lib/analytics.ts"
       - "wrangler.jsonc"
