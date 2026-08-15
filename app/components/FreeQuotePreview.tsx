@@ -697,11 +697,13 @@ export default function FreeQuotePreview() {
                     href={CHECKOUT_URL}
                     onClick={() => {
                       track({ event: "checkout_started" });
+                      const referralCode = window.localStorage.getItem("pencilproof:referral-code") ?? "";
                       window.name = createQuoteHandoffEnvelope({
                         fields: scan.result.fields,
                         confidence: scan.result.fieldConfidence,
                         offerMatrix: scan.result.offerMatrix ?? null,
                         selectedOfferId: selectedOfferId || null,
+                        ...( /^[A-Za-z0-9]{8,32}$/.test(referralCode) ? { referralCode: referralCode.toUpperCase() } : {}),
                       });
                     }}
                   >

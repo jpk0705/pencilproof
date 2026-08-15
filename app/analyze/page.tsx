@@ -81,9 +81,12 @@ type CheckoutPayload = {
   fileName: string;
   offerMatrix: DealOfferMatrix | null;
   selectedOfferId: string | null;
+  referralCode?: string;
 };
 
 const PENDING_CHECKOUT_KEY = "pencilproof:pending-checkout";
+const QUOTE_BASELINE_KEY = "pencilproof:quote-baseline";
+const REFERRAL_CODE_KEY = "pencilproof:referral-code";
 
 const auditFeedbackRatings = [
   { value: 1, label: "Very poor" },
@@ -233,6 +236,8 @@ export default function AnalyzePage() {
   const savedAuditKey = useRef("");
   const [accountPromptDismissed, setAccountPromptDismissed] = useState(false);
   const [pendingCheckout, setPendingCheckout] = useState<CheckoutPayload | null>(null);
+  const [savedRevision, setSavedRevision] = useState<Deal | null>(null);
+  const [hasReferralAttribution, setHasReferralAttribution] = useState(false);
   const checkoutGateRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -248,6 +253,25 @@ export default function AnalyzePage() {
 
   useEffect(() => {
     setPreCheckoutFeedbackCompleted(hasCompletedPreCheckoutFeedback());
+  }, []);
+
+  useEffect(() => {
+    const referralCode = new URLSearchParams(window.location.search).get("ref")?.trim() ?? "";
+    if (/^[A-Za-z0-9]{8,32}$/.test(referralCode)) {
+      window.localStorage.setItem(REFERRAL_CODE_KEY, referralCode.toUpperCase());
+      setHasReferralAttribution(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem(QUOTE_BASELINE_KEY);
+    if (!saved) return;
+    try {
+      const parsed = JSON.parse(saved) as Deal;
+      if (parsed && typeof parsed === "object" && typeof parsed.vehicle === "string") setSavedRevision(parsed);
+    } catch {
+      window.localStorage.removeItem(QUOTE_BASELINE_KEY);
+    }
   }, []);
 
   useEffect(() => {
@@ -351,6 +375,47 @@ export default function AnalyzePage() {
   const setNumber = (field: keyof Deal, value: string) =>
     setDeal((current) => ({ ...current, [field]: value === "" ? 0 : Number(value) }));
 
+  const saveCurrentQuote = () => {
+    if (!deal.vehicle.trim() && !deal.sellingPrice) return;
+    window.localStorage.setItem(QUOTE_BASELINE_KEY, JSON.stringify(deal));
+    setSavedRevision(deal);
+  };
+
+  const clearSavedQuote = () => {
+    window.localStorage.removeItem(QUOTE_BASELINE_KEY);
+    setSavedRevision(null);
+  };
+
+  const revisionComparison = useMemo(() => {
+    if (!savedRevision || !deal.vehicle.trim()) return { sameVehicle: false, changes: [] as { field: keyof Deal; before: string; after: string }[] };
+    const sameVehicle = savedRevision.vehicle.trim().toLowerCase() === deal.vehicle.trim().toLowerCase();
+    if (!sameVehicle) return { sameVehicle, changes: [] as { field: keyof Deal; before: string; after: string }[] };
+    const comparableFields: (keyof Deal)[] = [
+      "sellingPrice", "rebate", "tax", "govFees", "docFee", "serviceContract", "gap",
+      "prepaidMaintenance", "tireWheel", "accessories", "tradeValue", "tradePayoff",
+      "cashDown", "apr", "outsideApr", "term", "quotedPayment",
+    ];
+    const format = (field: keyof Deal, value: Deal[keyof Deal]) => {
+      if (field === "apr" || field === "outsideApr") return `${Number(value).toFixed(2)}%`;
+      if (field === "term") return `${Number(value)} months`;
+      return dollarsAndCents(Number(value));
+    };
+    const changes = comparableFields
+      .filter((field) => savedRevision[field] !== deal[field])
+      .map((field) => ({ field, before: format(field, savedRevision[field]), after: format(field, deal[field]) }));
+    return { sameVehicle, changes };
+  }, [deal, savedRevision]);
+
+  const pendingVerificationSummary = useMemo(() => {
+    if (!pendingImport) return null;
+    const detected = verificationFields.filter((field) => pendingImport.fields[field] !== undefined).length;
+    const missing = verificationFields.length - detected;
+    const needsReview = verificationFields.filter((field) => (
+      pendingImport.fields[field] !== undefined && (pendingImport.confidence[field] ?? "review") === "review"
+    )).length;
+    return { detected, missing, needsReview };
+  }, [pendingImport]);
+
   const manualCheckoutFields = useMemo(() => {
     const fields = Object.fromEntries(
       Object.entries(deal).filter(([field, value]) =>
@@ -374,7 +439,11 @@ export default function AnalyzePage() {
   const startCheckout = (payload: CheckoutPayload) => {
     track({ event: "checkout_started" });
     sessionStorage.removeItem(PENDING_CHECKOUT_KEY);
-    window.name = createQuoteHandoffEnvelope(payload);
+    const referralCode = window.localStorage.getItem(REFERRAL_CODE_KEY) ?? "";
+    window.name = createQuoteHandoffEnvelope({
+      ...payload,
+      ...( /^[A-Za-z0-9]{8,32}$/.test(referralCode) ? { referralCode: referralCode.toUpperCase() } : {}),
+    });
     window.location.assign(CHECKOUT_URL);
   };
 
@@ -731,7 +800,7 @@ export default function AnalyzePage() {
       flags.push({
         tone: "warn",
         title: `Quoted payment is ${dollars(Math.abs(paymentGap))}/month ${paymentGap > 0 ? "higher" : "lower"} than the live calculation`,
-        detail: `The entered figures calculate to about ${dollars(calculatedPayment)}/month. Ask the dealer to reconcile the amount financed, APR, term, and first-payment due date. An unshown amount, deferred first payment, or packed payment may explain the gap.`,
+        detail: `The entered figures calculate to about ${dollars(calculatedPayment)}/month. Review the amount financed, APR, term, and first-payment due date. An unshown amount, deferred first payment, or packed payment may explain the gap.`,
       });
     } else if (deal.quotedPayment > 0) {
       flags.push({
@@ -917,6 +986,7 @@ export default function AnalyzePage() {
             ? "Upload the dealer's quote or enter the figures yourself. Then test the down payment, term, desired APR, trade, and optional products while the dealership works on its official revision."
             : "Upload the dealer's quote or enter the figures yourself. Confirm what PencilProof found, choose an optional account or continue as a guest, then continue to secure checkout. The complete audit opens only after payment."}</p>
           <p className="analyzer-founder">Built by an automotive professional with experience as a salesperson, sales manager, and finance manager.</p>
+          {hasReferralAttribution ? <p className="referral-disclosure">You arrived through a PencilProof salesperson link. If you purchase the Full Quote Audit, the person who shared this link may receive subscription credit.</p> : null}
         </div>
         {isPaidAuditHost ? (
           <div className="analyzer-actions">
@@ -1031,6 +1101,14 @@ export default function AnalyzePage() {
                 <span className="confidence-missing">Not found</span>
               </div>
             </div>
+            {pendingVerificationSummary ? (
+              <div className="verification-summary" aria-label="Import verification summary">
+                <div><span>DETECTED</span><strong>{pendingVerificationSummary.detected}</strong></div>
+                <div><span>NEEDS REVIEW</span><strong>{pendingVerificationSummary.needsReview}</strong></div>
+                <div><span>NOT FOUND</span><strong>{pendingVerificationSummary.missing}</strong></div>
+                <p><b>Next:</b> compare the document, correct the fields marked Needs review, then continue.</p>
+              </div>
+            ) : null}
             <VehiclePhoto
               vehicle={String(pendingImport.fields.vehicle ?? "")}
               compact
@@ -1207,6 +1285,23 @@ export default function AnalyzePage() {
                 {analysis.hasMinimumData ? "Ready to review" : "Incomplete"}
               </div>
             </div>
+            {analysis.hasMinimumData ? (
+              <section className="revision-compare" aria-labelledby="revision-compare-title">
+                <div className="revision-compare-head">
+                  <div><span>REVISED QUOTE CHECK</span><h3 id="revision-compare-title">Keep a private baseline</h3></div>
+                  <button type="button" onClick={saveCurrentQuote}>{savedRevision ? "Replace baseline" : "Save this quote"}</button>
+                </div>
+                {savedRevision ? (
+                  revisionComparison.sameVehicle ? (
+                    <>
+                      <p>{revisionComparison.changes.length ? `${revisionComparison.changes.length} number${revisionComparison.changes.length === 1 ? "" : "s"} changed since your saved quote.` : "No numbers changed since your saved quote."}</p>
+                      {revisionComparison.changes.length ? <div className="revision-change-list">{revisionComparison.changes.slice(0, 5).map((change) => <div key={change.field}><span>{DEAL_FIELD_LABELS[change.field as keyof ImportedDealFields]}</span><b>{change.before} <i>→</i> {change.after}</b></div>)}</div> : null}
+                    </>
+                  ) : <p>The saved baseline is for {savedRevision.vehicle}. Save this quote to compare the current vehicle instead.</p>
+                ) : <p>Stored only in this browser. Use it when the dealer sends a revised worksheet so you can see what changed.</p>}
+                {savedRevision ? <button className="revision-clear" type="button" onClick={clearSavedQuote}>Clear saved baseline</button> : null}
+              </section>
+            ) : null}
             <p className="score-note">
               {analysis.hasMinimumData
                 ? `${analysis.missingInformation.length} important item${analysis.missingInformation.length === 1 ? "" : "s"} still missing: ${analysis.missingInformation.join(", ") || "none"}.`

@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   createAccessToken,
   handleRequest,
+  normalizeImportedVehicle,
   OrderStore,
   type Env,
   verifyAccessToken,
@@ -206,6 +207,18 @@ test("AI import reports a stable Gemini quota diagnostic", async () => {
   assert.equal(result.providerHttpStatus, 429);
 });
 
+test("AI import preserves vehicle identity when Gemini returns a structured identity", () => {
+  assert.equal(
+    normalizeImportedVehicle({ year: 2024, make: "Cadillac", model: "CT5-V", trim: "Blackwing" }),
+    "2024 Cadillac CT5-V Blackwing",
+  );
+  assert.equal(
+    normalizeImportedVehicle({ description: "2017 Toyota Tundra CrewMax TRD Pro" }),
+    "2017 Toyota Tundra CrewMax TRD Pro",
+  );
+  assert.equal(normalizeImportedVehicle({ year: 2024, make: "Cadillac" }), "2024 Cadillac");
+});
+
 test("access tokens are signed and expire", async () => {
   const token = await createAccessToken(
     "cs_test_paid",
@@ -382,6 +395,9 @@ test("checkout configures one Stripe webhook without exposing its secret", async
     [
       "checkout.session.completed",
       "checkout.session.async_payment_succeeded",
+      "invoice.paid",
+      "invoice.payment_failed",
+      "customer.subscription.deleted",
       "refund.created",
       "charge.refunded",
       "charge.dispute.created",
@@ -448,6 +464,9 @@ test("an existing webhook endpoint is upgraded with revocation events", async ()
     [
       "checkout.session.completed",
       "checkout.session.async_payment_succeeded",
+      "invoice.paid",
+      "invoice.payment_failed",
+      "customer.subscription.deleted",
       "refund.created",
       "charge.refunded",
       "charge.dispute.created",

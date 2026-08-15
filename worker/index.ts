@@ -4,6 +4,8 @@ const ACCESS_COOKIE = "pp_access";
 const USER_COOKIE = "pp_user";
 const DEVICE_COOKIE = "pp_device";
 const PRODUCT_CODE = "full_quote_audit_v1";
+const SALESPERSON_PRODUCT_CODE = "salesperson_plan_v1";
+const SALESPERSON_CREDIT_AMOUNT_CENTS = 2000;
 const DEFAULT_ACCESS_SECONDS = 60 * 60 * 24 * 30;
 const DEVICE_COOKIE_SECONDS = 60 * 60 * 24 * 400;
 const WEBHOOK_TOLERANCE_SECONDS = 5 * 60;
@@ -31,6 +33,9 @@ const ANALYTICS_EVENT_NAMES = [
 const STRIPE_WEBHOOK_EVENTS = [
   "checkout.session.completed",
   "checkout.session.async_payment_succeeded",
+  "invoice.paid",
+  "invoice.payment_failed",
+  "customer.subscription.deleted",
   "refund.created",
   "charge.refunded",
   "charge.dispute.created",
@@ -75,6 +80,7 @@ export interface Env {
   SESSION_SECRET: string;
   SITE_ORIGIN: string;
   STRIPE_PRICE_ID: string;
+  STRIPE_SALESPERSON_PRICE_ID?: string;
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET?: string;
   GEMINI_API_KEY?: string;
@@ -92,6 +98,11 @@ const AI_IMPORT_PROMPT = `You are PencilProof's document extraction engine for U
 
 Return ONLY one JSON object with exactly these keys: vehicle, sellingPrice, tax, govFees, docFee, serviceContract, gap, prepaidMaintenance, tireWheel, accessories, tradeValue, tradePayoff, cashDown, rebate, apr, term, quotedPayment, offerMatrix, warnings.
 Use null when a value is not explicitly printed or cannot be tied to a label with high confidence. Never guess, calculate, or copy a nearby total into a component field. Numbers must be numeric, not strings.
+
+Vehicle identity is required whenever the document prints it:
+- Read the vehicle year, make, model, trim, and any clearly printed series or drivetrain from the vehicle-description line, buyer's-order header, or VIN-decoding section.
+- Return vehicle as one plain string in the document's order, preserving the trim/series words exactly enough for a customer to recognize the vehicle. For example: "2017 Toyota Tundra CrewMax TRD Pro" or "2024 Cadillac CT5-V Blackwing".
+- If the model returns vehicle as an object internally, convert it to that one string before returning JSON. Do not leave vehicle null when a year plus make/model is visible anywhere in the document. If only a partial identity is readable, return the readable portion and add a warning rather than inventing the missing trim.
 
 This is a FINANCE-FIRST parser:
 - sellingPrice means the base selling/sales price of the vehicle. Do not use MSRP, asking price, total purchase, amount financed, or a price that already includes add-ons when a base sales price is present.
@@ -146,6 +157,31 @@ const numberOrNull = (value: unknown) => {
   if (value === null || value === undefined || value === "") return null;
   const parsed = typeof value === "number" ? value : Number(String(value).replace(/[$,\s]/g, ""));
   return Number.isFinite(parsed) ? parsed : null;
+};
+
+/**
+ * Gemini occasionally follows the vehicle instruction by returning a small
+ * identity object instead of the requested string. Keep that useful evidence
+ * rather than silently dropping it at the API boundary. This only joins
+ * explicitly labelled identity pieces; it never derives a trim from a VIN or
+ * guesses a missing model.
+ */
+export const normalizeImportedVehicle = (value: unknown) => {
+  if (typeof value === "string") {
+    const normalized = value.replace(/\s+/g, " ").trim();
+    return normalized ? normalized.slice(0, 120) : null;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const description = [record.description, record.name, record.label, record.vehicle]
+    .find((candidate) => typeof candidate === "string" && candidate.trim());
+  if (typeof description === "string") return normalizeImportedVehicle(description);
+  const parts = ["year", "make", "model", "series", "trim", "bodyStyle", "drivetrain"]
+    .map((key) => record[key])
+    .filter((part): part is string | number => typeof part === "string" || typeof part === "number")
+    .map((part) => String(part).replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  return parts.length ? parts.join(" ").slice(0, 120) : null;
 };
 
 const aiImportCorsHeaders = (env: Env) => ({
@@ -322,7 +358,10 @@ const handleAiImport = async (request: Request, env: Env) => {
     const fields = Object.fromEntries([
       "vehicle", "sellingPrice", "tax", "govFees", "docFee", "serviceContract", "gap", "prepaidMaintenance", "tireWheel", "accessories", "tradeValue", "tradePayoff", "cashDown", "rebate", "apr", "term", "quotedPayment",
     ].flatMap((key) => {
-      if (key === "vehicle") return typeof parsed[key] === "string" && parsed[key].trim() ? [[key, parsed[key].trim()]] : [];
+      if (key === "vehicle") {
+        const vehicle = normalizeImportedVehicle(parsed[key]);
+        return vehicle ? [[key, vehicle]] : [];
+      }
       const value = numberOrNull(parsed[key]);
       return value === null ? [] : [[key, value]];
     }));
@@ -384,6 +423,9 @@ type StripeCheckoutSession = {
   managed_payments?: { enabled?: boolean } | null;
   metadata?: Record<string, string> | null;
   mode?: string | null;
+  customer?: string | null;
+  subscription?: string | null;
+  customer_details?: { email?: string | null } | null;
   payment_intent?: string | null;
   payment_status?: string | null;
   status?: string | null;
@@ -403,6 +445,9 @@ type StripeEventObject = {
   payment_intent?: string | null;
   refunded?: boolean | null;
   status?: string | null;
+  customer?: string | null;
+  subscription?: string | null;
+  metadata?: Record<string, string> | null;
 };
 
 type StripeEvent = {
@@ -1032,6 +1077,52 @@ const handleAccount = async (request: Request, env: Env) => {
   }
   const userId = await currentUser(request, env);
   if (!userId) return withAccountCors(Response.json({ error: "account_required" }, { status: 401, headers: noStoreHeaders }), request, env);
+  if (url.pathname === "/api/salesperson/me" && (request.method === "GET" || request.method === "POST")) {
+    const body = await request.json().catch(() => ({})) as { email?: string; displayName?: string };
+    const result = await accountCall(env, "/salesperson", {
+      action: request.method === "POST" ? "ensure" : "get",
+      userId,
+      ...(typeof body.email === "string" ? { email: body.email } : {}),
+      ...(typeof body.displayName === "string" ? { displayName: body.displayName } : {}),
+    });
+    return withAccountCors(Response.json({ profile: result?.profile ?? null }, { headers: noStoreHeaders }), request, env);
+  }
+  if (url.pathname === "/api/salesperson/credit" && request.method === "POST") {
+    const body = await request.json().catch(() => ({})) as { action?: string };
+    if (body.action === "gift") {
+      const result = await accountCall(env, "/salesperson-credit", { action: "gift", userId });
+      return withAccountCors(Response.json(result ?? { status: "unavailable" }, { headers: noStoreHeaders }), request, env);
+    }
+    if (body.action === "redeem") {
+      const result = await accountCall(env, "/salesperson-credit", { action: "redeem", userId });
+      const creditId = typeof result?.creditId === "string" ? result.creditId : "";
+      const stripeCustomerId = typeof result?.stripeCustomerId === "string" ? result.stripeCustomerId : "";
+      if (result?.status === "pending" && creditId && stripeCustomerId) {
+        const applied = await addSalespersonStripeCredit(env, stripeCustomerId, creditId);
+        await accountCall(env, "/salesperson-credit", { action: "confirm", creditId, success: applied });
+        return withAccountCors(Response.json({ status: applied ? "redeemed" : "retry" }, { headers: noStoreHeaders }), request, env);
+      }
+      return withAccountCors(Response.json(result ?? { status: "unavailable" }, { headers: noStoreHeaders }), request, env);
+    }
+    return withAccountCors(Response.json({ error: "invalid_credit_action" }, { status: 400, headers: noStoreHeaders }), request, env);
+  }
+  if (url.pathname === "/api/salesperson/portal" && request.method === "POST") {
+    const result = await accountCall(env, "/salesperson", { action: "get", userId });
+    const profile = result?.profile as { stripeCustomerId?: string } | undefined;
+    try {
+      const url = await createSalespersonPortalSession(env, profile?.stripeCustomerId ?? "");
+      return withAccountCors(Response.json({ url }, { headers: noStoreHeaders }), request, env);
+    } catch {
+      return withAccountCors(Response.json({ error: "billing_portal_unavailable" }, { status: 503, headers: noStoreHeaders }), request, env);
+    }
+  }
+  if (url.pathname === "/api/salesperson/gift/claim" && request.method === "POST") {
+    const body = await request.json().catch(() => ({})) as { code?: string };
+    const code = typeof body.code === "string" ? body.code.trim().toUpperCase() : "";
+    if (!/^PPG-[A-Z0-9]{16}$/.test(code)) return withAccountCors(Response.json({ error: "invalid_gift_code" }, { status: 400, headers: noStoreHeaders }), request, env);
+    const result = await accountCall(env, "/salesperson-gift-claim", { userId, code });
+    return withAccountCors(Response.json(result ?? { status: "unavailable" }, { headers: noStoreHeaders }), request, env);
+  }
   if (url.pathname === "/api/account/marketing" && request.method === "GET") {
     const result = await accountCall(env, "/marketing", { action: "status", userId });
     return withAccountCors(Response.json({ optedIn: result?.optedIn === true }, { headers: noStoreHeaders }), request, env);
@@ -1081,6 +1172,31 @@ const handleAccount = async (request: Request, env: Env) => {
     return new Response(null, { status: 204, headers: { ...noStoreHeaders, "Set-Cookie": clearAccountCookie } });
   }
   return new Response("Not found", { status: 404, headers: noStoreHeaders });
+};
+
+const handleSalespersonCheckout = async (request: Request, env: Env) => {
+  if (request.method !== "POST") return new Response("Method not allowed", { status: 405, headers: { Allow: "POST" } });
+  const origin = request.headers.get("Origin");
+  if (origin && origin !== env.SITE_ORIGIN && origin !== env.PUBLIC_SITE_ORIGIN) return new Response("Forbidden", { status: 403 });
+  const userId = await currentUser(request, env);
+  if (!userId) return Response.json({ error: "account_required" }, { status: 401, headers: noStoreHeaders });
+  try {
+    const body = await request.json().catch(() => ({})) as { email?: string; displayName?: string };
+    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    const displayName = typeof body.displayName === "string" ? body.displayName.trim() : "";
+    const profileResult = await accountCall(env, "/salesperson", { action: "ensure", userId, email, displayName });
+    const profile = profileResult?.profile as { subscriptionStatus?: string; email?: string; displayName?: string } | undefined;
+    if (!profile) return Response.json({ error: "salesperson_profile_required" }, { status: 400, headers: noStoreHeaders });
+    if (profile.subscriptionStatus === "active") return Response.json({ error: "salesperson_already_active" }, { status: 409, headers: noStoreHeaders });
+    const billingEmail = email || profile.email || "";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(billingEmail)) return Response.json({ error: "salesperson_email_required" }, { status: 400, headers: noStoreHeaders });
+    const session = await createSalespersonCheckoutSession(env, userId, billingEmail);
+    return Response.json({ url: session.url }, { headers: noStoreHeaders });
+  } catch (error) {
+    const code = error instanceof CheckoutError ? error.code : "checkout_internal_error";
+    console.error("Salesperson checkout creation failed", { code, message: error instanceof Error ? error.message : "Unknown error" });
+    return Response.json({ error: "Salesperson subscription checkout is temporarily unavailable.", code }, { status: 502, headers: noStoreHeaders });
+  }
 };
 
 const marketingUnsubscribePage = (message: string, ok: boolean) => new Response(`<!doctype html>
@@ -1893,6 +2009,7 @@ const handoffPage = () =>
     <script>
       (() => {
         const status = document.getElementById("status");
+        let referralCode = "";
         try {
           const handoff = window.name;
           if (handoff) {
@@ -1906,6 +2023,9 @@ const handoffPage = () =>
                 || typeof envelope.payload.fields !== "object"
               ) {
                 throw new Error("invalid quote handoff");
+              }
+              if (typeof envelope.payload.referralCode === "string" && /^[A-Za-z0-9]{8,32}$/.test(envelope.payload.referralCode)) {
+                referralCode = envelope.payload.referralCode.toUpperCase();
               }
               sessionStorage.setItem(
                 ${JSON.stringify(QUOTE_HANDOFF_KEY)},
@@ -1922,7 +2042,8 @@ const handoffPage = () =>
             headers: { "Content-Type": "application/json" },
             credentials: "same-origin",
             body: JSON.stringify({
-              analyticsSessionId: localStorage.getItem("pencilproof:analytics-session")
+              analyticsSessionId: localStorage.getItem("pencilproof:analytics-session"),
+              referralCode
             })
           })
           .then(async (response) => {
@@ -2050,6 +2171,7 @@ const createCheckoutSession = async (
   deviceHash: string,
   analyticsSessionId = "",
   userId: string | null = null,
+  referralCode = "",
 ) => {
   const stripePriceId = typeof env.STRIPE_PRICE_ID === "string"
     ? env.STRIPE_PRICE_ID.trim()
@@ -2080,6 +2202,7 @@ const createCheckoutSession = async (
       ? { "metadata[pencilproof_analytics_session]": analyticsSessionId }
       : {}),
     ...(userId ? { "metadata[pencilproof_user_id]": userId } : {}),
+    ...(referralCode ? { "metadata[pencilproof_referral_code]": referralCode } : {}),
     "metadata[pencilproof_device_hash]": deviceHash,
     "metadata[pencilproof_product]": PRODUCT_CODE,
     mode: "payment",
@@ -2122,6 +2245,72 @@ const createCheckoutSession = async (
   return session;
 };
 
+const createSalespersonCheckoutSession = async (
+  env: Env,
+  userId: string,
+  email: string,
+) => {
+  const stripePriceId = typeof env.STRIPE_SALESPERSON_PRICE_ID === "string"
+    ? env.STRIPE_SALESPERSON_PRICE_ID.trim()
+    : "";
+  if (!/^price_[A-Za-z0-9]+$/.test(stripePriceId)) {
+    throw new CheckoutError("stripe_price_id_invalid", "Salesperson subscription is not configured yet");
+  }
+  const stripeSecretKey = typeof env.STRIPE_SECRET_KEY === "string" ? env.STRIPE_SECRET_KEY.trim() : "";
+  if (!stripeSecretKey) throw new CheckoutError("stripe_secret_key_invalid", "Stripe secret key is not configured");
+  const parameters = new URLSearchParams({
+    allow_promotion_codes: "true",
+    cancel_url: `${env.SITE_ORIGIN}/sales?billing=cancelled`,
+    "customer_email": email,
+    "line_items[0][quantity]": "1",
+    "line_items[0][price]": stripePriceId,
+    "metadata[pencilproof_product]": SALESPERSON_PRODUCT_CODE,
+    "metadata[pencilproof_user_id]": userId,
+    mode: "subscription",
+    success_url: `${env.SITE_ORIGIN}/sales?billing=success`,
+    "subscription_data[metadata][pencilproof_product]": SALESPERSON_PRODUCT_CODE,
+    "subscription_data[metadata][pencilproof_user_id]": userId,
+  });
+  const response = await stripeRequest("/checkout/sessions", env, { body: parameters, method: "POST" });
+  const session = await response.json() as StripeCheckoutSession & { error?: { message?: string; code?: string; param?: string } };
+  if (!response.ok || !session.url || !session.url.startsWith("https://checkout.stripe.com/")) {
+    throw new CheckoutError("stripe_api_rejected", session.error?.message ?? "Salesperson subscription checkout failed");
+  }
+  return session;
+};
+
+const createSalespersonPortalSession = async (env: Env, stripeCustomerId: string) => {
+  if (!/^cus_[A-Za-z0-9]+$/.test(stripeCustomerId)) throw new CheckoutError("stripe_api_rejected", "Salesperson billing profile is not ready");
+  const response = await stripeRequest("/billing_portal/sessions", env, {
+    body: new URLSearchParams({ customer: stripeCustomerId, return_url: `${env.SITE_ORIGIN}/sales` }),
+    method: "POST",
+  });
+  const session = await response.json() as { url?: string; error?: { message?: string } };
+  if (!response.ok || !session.url || !session.url.startsWith("https://billing.stripe.com/")) throw new CheckoutError("stripe_api_rejected", session.error?.message ?? "Billing portal unavailable");
+  return session.url;
+};
+
+const addSalespersonStripeCredit = async (
+  env: Env,
+  stripeCustomerId: string,
+  rewardId: string,
+) => {
+  if (!/^cus_[A-Za-z0-9]+$/.test(stripeCustomerId) || !/^[0-9a-f-]{36}$/i.test(rewardId)) return false;
+  const parameters = new URLSearchParams({
+    amount: String(-SALESPERSON_CREDIT_AMOUNT_CENTS),
+    currency: "usd",
+    description: "PencilProof salesperson referral credit",
+  });
+  const response = await stripeRequest(`/customers/${encodeURIComponent(stripeCustomerId)}/balance_transactions`, env, {
+    body: parameters,
+    headers: { "Idempotency-Key": `pencilproof-referral-${rewardId}` },
+    method: "POST",
+  });
+  if (response.ok) return true;
+  console.error("Salesperson referral credit failed", { rewardId, status: response.status });
+  return false;
+};
+
 const retrieveCheckoutSession = async (sessionId: string, env: Env) => {
   if (!/^cs_(test_|live_)?[A-Za-z0-9]+$/.test(sessionId)) return null;
   const response = await stripeRequest(
@@ -2160,7 +2349,7 @@ const retrieveCheckoutSessionsForPaymentIntent = async (
 
 const retrieveRecentRevocationEvents = async (env: Env) => {
   const parameters = new URLSearchParams({ limit: "100" });
-  for (const event of STRIPE_WEBHOOK_EVENTS.slice(2)) {
+  for (const event of STRIPE_WEBHOOK_EVENTS.slice(5)) {
     parameters.append("types[]", event);
   }
   const response = await stripeRequest(
@@ -2285,7 +2474,7 @@ const verifyAndStorePaidOrder = async (
   }, env);
   if (stored) {
     const accountUserId = session?.metadata?.pencilproof_user_id;
-    const validAccountUserId = /^[A-Za-z0-9_:-]{8,200}$/.test(accountUserId ?? "") ? accountUserId : null;
+    const validAccountUserId = typeof accountUserId === "string" && /^[A-Za-z0-9_:-]{8,200}$/.test(accountUserId) ? accountUserId : null;
     await accountCall(env, "/entitlement", {
       userId: validAccountUserId,
       guestId: /^[a-f0-9]{64}$/.test(deviceHash) ? deviceHash : null,
@@ -2293,6 +2482,17 @@ const verifyAndStorePaidOrder = async (
       activatedAt: createdAt,
     });
     await recordMarketingActivity(env, validAccountUserId, "purchase_completed");
+    const referralCode = session?.metadata?.pencilproof_referral_code ?? "";
+    if (/^[A-Za-z0-9]{8,32}$/.test(referralCode)) {
+      const reward = await accountCall(env, "/referral-reward", {
+        referralCode: referralCode.toUpperCase(),
+        stripeSessionId: sessionId,
+        customerUserId: validAccountUserId,
+        customerEmail: session?.customer_details?.email ?? null,
+      });
+      const rewardId = typeof reward?.rewardId === "string" ? reward.rewardId : "";
+      if (reward?.status === "pending" && rewardId) await accountCall(env, "/referral-reward-confirm", { rewardId });
+    }
     const analyticsSessionId = session?.metadata?.pencilproof_analytics_session;
     if (/^[A-Za-z0-9_-]{20,80}$/.test(analyticsSessionId ?? "")) {
       await recordAnalyticsEvent({
@@ -2377,6 +2577,58 @@ const processRevocationEvent = async (
   );
 };
 
+const processSalespersonCheckout = async (sessionId: string, env: Env) => {
+  const session = await retrieveCheckoutSession(sessionId, env);
+  const userId = session?.metadata?.pencilproof_user_id ?? "";
+  const priceId = typeof env.STRIPE_SALESPERSON_PRICE_ID === "string" ? env.STRIPE_SALESPERSON_PRICE_ID.trim() : "";
+  if (
+    !session
+    || session.status !== "complete"
+    || session.mode !== "subscription"
+    || session.payment_status !== "paid"
+    || session.metadata?.pencilproof_product !== SALESPERSON_PRODUCT_CODE
+    || !/^[A-Za-z0-9_:-]{8,200}$/.test(userId)
+    || !/^price_[A-Za-z0-9]+$/.test(priceId)
+    || !/^cus_[A-Za-z0-9]+$/.test(session.customer ?? "")
+    || !/^sub_[A-Za-z0-9]+$/.test(session.subscription ?? "")
+  ) return false;
+  const lineItems = await retrieveCheckoutLineItems(sessionId, env);
+  if (!hasExactPencilProofLineItem(lineItems, priceId)) return false;
+  await accountCall(env, "/salesperson-subscription", {
+    action: "activate",
+    userId,
+    stripeCustomerId: session.customer,
+    stripeSubscriptionId: session.subscription,
+    status: "active",
+  });
+  return Boolean(result?.profile);
+};
+
+const processSalespersonSubscriptionEvent = async (event: StripeEvent, env: Env) => {
+  const object = event.data?.object ?? {};
+  const customer = typeof object.customer === "string" ? object.customer : "";
+  const subscription = typeof object.subscription === "string" ? object.subscription : "";
+  if (!customer && !subscription) return true;
+  const status = event.type === "invoice.paid"
+    ? "active"
+    : event.type === "invoice.payment_failed"
+      ? "past_due"
+      : event.type === "customer.subscription.deleted"
+        ? "canceled"
+        : "";
+  if (!status) return true;
+  const result = await accountCall(env, "/salesperson-subscription", {
+    action: "status",
+    stripeCustomerId: customer,
+    stripeSubscriptionId: subscription,
+    status,
+  });
+  // The webhook endpoint may receive unrelated Billing events from the same
+  // Stripe account. Ignore those safely; checkout.session.completed performs
+  // strict validation for PencilProof's own salesperson plan.
+  return true;
+};
+
 async function reconcileRecentRevocations(env: Env) {
   const events = await retrieveRecentRevocationEvents(env);
   if (!events || events.has_more === true || !Array.isArray(events.data)) {
@@ -2426,6 +2678,11 @@ const handleStripeWebhook = async (request: Request, env: Env) => {
     || event.type === "checkout.session.async_payment_succeeded"
   ) {
     const sessionId = object.id ?? "";
+    if (object.metadata?.pencilproof_product === SALESPERSON_PRODUCT_CODE) {
+      const activated = await processSalespersonCheckout(sessionId, env);
+      if (!activated) return new Response("Salesperson subscription verification failed", { status: 503 });
+      return Response.json({ received: true });
+    }
     const stored = await verifyAndStorePaidOrder(
       sessionId,
       eventId,
@@ -2439,6 +2696,16 @@ const handleStripeWebhook = async (request: Request, env: Env) => {
       });
       return new Response("Order verification failed", { status: 503 });
     }
+    return Response.json({ received: true });
+  }
+
+  if (
+    event.type === "invoice.paid"
+    || event.type === "invoice.payment_failed"
+    || event.type === "customer.subscription.deleted"
+  ) {
+    const processed = await processSalespersonSubscriptionEvent(event, env);
+    if (!processed) return new Response("Salesperson subscription update failed", { status: 503 });
     return Response.json({ received: true });
   }
 
@@ -2469,6 +2736,7 @@ const handleCheckout = async (request: Request, env: Env) => {
   try {
     const body = await request.json().catch(() => ({})) as {
       analyticsSessionId?: string;
+      referralCode?: string;
     };
     // Webhook provisioning is best effort. It must not prevent a customer
     // from creating a Stripe Checkout Session. The success route can verify
@@ -2490,6 +2758,7 @@ const handleCheckout = async (request: Request, env: Env) => {
       deviceHash,
       body.analyticsSessionId ?? "",
       userId,
+      /^[A-Za-z0-9]{8,32}$/.test(body.referralCode ?? "") ? body.referralCode!.toUpperCase() : "",
     );
     const headers = new Headers({ "Cache-Control": "no-store" });
     if (deviceId !== existingDeviceId) {
@@ -2691,6 +2960,9 @@ export const handleRequest = async (request: Request, env: Env) => {
   if (url.pathname === "/api/checkout") {
     return handleCheckout(request, env);
   }
+  if (url.pathname === "/api/salesperson/checkout") {
+    return handleSalespersonCheckout(request, env);
+  }
   if (url.pathname === "/api/ai-import") {
     return handleAiImport(request, env);
   }
@@ -2704,6 +2976,10 @@ export const handleRequest = async (request: Request, env: Env) => {
     || url.pathname === "/api/account/marketing"
     || url.pathname === "/api/account/marketing/activity"
     || url.pathname === "/api/account/delete"
+    || url.pathname === "/api/salesperson/me"
+    || url.pathname === "/api/salesperson/credit"
+    || url.pathname === "/api/salesperson/portal"
+    || url.pathname === "/api/salesperson/gift/claim"
   ) {
     return handleAccount(request, env);
   }
