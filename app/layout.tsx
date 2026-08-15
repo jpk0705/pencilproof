@@ -17,7 +17,10 @@ export const metadata: Metadata = {
   title: "PencilProof | Privacy-first Full Quote Audit for car buyers",
   description: "PencilProof is a privacy-first Full Quote Audit for car buyers. Review dealer quote math, APR, amount financed, payment, trade equity, and add-ons before signing.",
   alternates: { canonical: "/" },
-  other: isGitHubPages ? undefined : { "codex-preview": "development" },
+  other: {
+    "facebook-domain-verification": "7tqkudgd5w6zan0d720tkmluc3g0jc",
+    ...(isGitHubPages ? {} : { "codex-preview": "development" }),
+  },
   icons: {
     icon: [
       { url: faviconPng, type: "image/png", sizes: "64x64" },
