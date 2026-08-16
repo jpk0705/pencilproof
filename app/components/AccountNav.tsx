@@ -68,6 +68,6 @@ export default function AccountNav() {
     return <><Link className="nav-sales-link" href="/sales">For salespeople</Link><Link className="nav-account-link" href={ACCOUNT_URL} aria-label="Sign in">Sign in</Link></>;
   }
   return signedIn
-    ? <>{authContext !== "salesperson" ? <Link className="nav-sales-link" href={SALES_URL}>For salespeople</Link> : null}<span className="nav-account-session"><Link className="nav-account-link" href={authContext === "salesperson" ? SALES_URL : ACCOUNT_URL}>{authContext === "salesperson" ? "Salesperson Dashboard" : "My Audits"}</Link><span className="nav-account-email" title={`Signed in as ${signedInEmail}`}>{signedInEmail || "Signed-in account"}</span></span></>
+    ? <><span className="nav-account-session"><Link className="nav-account-link" href={authContext === "salesperson" ? SALES_URL : ACCOUNT_URL}>{authContext === "salesperson" ? "Salesperson Dashboard" : "My Audits"}</Link><span className="nav-account-email" title={`Signed in as ${signedInEmail}`}>{signedInEmail || "Signed-in account"}</span></span></>
     : <><Link className="nav-sales-link" href="/sales">For salespeople</Link><button className="nav-account-button" type="button" onClick={() => clerk.openSignIn(authRedirectOptions("consumer"))}>Sign in</button></>;
 }

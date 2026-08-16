@@ -18,6 +18,7 @@ type SalesCoachProps = {
   unlocked?: boolean;
   playbook?: string | null;
   onSubscribe?: () => void;
+  startOpen?: boolean;
 };
 
 const previewObjections: Objection[] = [
@@ -150,8 +151,8 @@ const respond = (prompt: string, source: Objection[], unlocked: boolean) => {
   };
 };
 
-export default function SalesCoach({ unlocked = false, playbook = null, onSubscribe }: SalesCoachProps) {
-  const [open, setOpen] = useState(false);
+export default function SalesCoach({ unlocked = false, playbook = null, onSubscribe, startOpen = false }: SalesCoachProps) {
+  const [open, setOpen] = useState(startOpen);
   const [prompt, setPrompt] = useState("");
   const [librarySearch, setLibrarySearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All categories");

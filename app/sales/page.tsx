@@ -31,6 +31,8 @@ export default function SalespersonPage() {
   const [message, setMessage] = useState("");
   const [nameError, setNameError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [roleBlocked, setRoleBlocked] = useState(false);
+  const [showCoachPreview, setShowCoachPreview] = useState(false);
 
   const email = clerk?.user?.primaryEmailAddress?.emailAddress.trim().toLowerCase() ?? "";
   const referralLink = useMemo(
@@ -56,6 +58,10 @@ export default function SalespersonPage() {
   useEffect(() => {
     if (!clerk?.user || !clerk.session) return;
     void (async () => {
+      if (getAuthContext() !== "salesperson") {
+        setRoleBlocked(true);
+        return;
+      }
       const token = await clerk.session?.getToken();
       if (!token) return;
       await fetch(`${SALES_API_URL}/api/account/session`, {
@@ -205,6 +211,7 @@ export default function SalespersonPage() {
 
   if (!configured) return <><SiteNav /><main className="sales-page shell"><h1>Salesperson tools are being prepared.</h1><p>PencilProof is finishing the secure account connection.</p></main></>;
   if (!clerk) return <><SiteNav /><main className="sales-page shell"><p>Loading your PencilProof account…</p></main></>;
+  if (roleBlocked) return <><SiteNav /><main className="sales-page shell"><p className="kicker">CONSUMER ACCOUNT</p><h1>My Audits is your account home.</h1><p>Salesperson tools are kept separate from consumer audits. Open the account page to review your saved audits.</p><Link className="button button-primary" href="/account">Go to My Audits</Link></main></>;
   if (!clerk.user) return <>
     <SiteNav />
     <main className="sales-page shell">
@@ -234,14 +241,14 @@ export default function SalespersonPage() {
         </div>
       </section>
       {giftCode ? <section className="sales-card gift-card"><p className="kicker">PENCILPROOF GIFT</p><h2>You received a $20 salesperson credit.</h2><p>Claim it to your PencilProof salesperson account. A PencilProof account is required.</p><button className="button button-primary" type="button" onClick={() => void claimGift()} disabled={busy}>Claim this credit</button></section> : null}
-      {!profile ? <section className="sales-card"><p className="kicker">GET STARTED</p><h2>Create your referral profile</h2><p>Choose a customer-facing name for your tracked link. It can be your first name, a nickname, or a professional name—it does not need to be your legal name.</p><label className="sales-label" htmlFor="sales-display-name">Display name <span aria-hidden="true">*</span><input id="sales-display-name" value={displayName} onChange={(event) => { setDisplayName(event.target.value); if (nameError) setNameError(""); }} placeholder="Hannah or Hannah at PencilProof" maxLength={80} minLength={2} required aria-required="true" aria-invalid={Boolean(nameError)} aria-describedby={nameError ? "sales-display-name-error" : "sales-display-name-help"} /></label><small id="sales-display-name-help" className="sales-field-help">This is the name customers will see—not your legal name.</small>{nameError ? <p id="sales-display-name-error" className="sales-field-error" role="alert">{nameError}</p> : null}<button className="button button-primary" type="button" onClick={() => void createFreeAccount()} disabled={busy || displayName.trim().length < 2}>{busy ? "Creating account…" : "Create free account"}</button></section> : null}
+      {!profile ? <section className="sales-card"><p className="kicker">GET STARTED</p><h2>Create your referral profile</h2><p>Choose a customer-facing name for your tracked link. It can be your first name, a nickname, or a professional name—it does not need to be your legal name.</p><label className="sales-label" htmlFor="sales-display-name"><span className="sales-label-caption">Display name <span aria-hidden="true">*</span></span><input id="sales-display-name" value={displayName} onChange={(event) => { setDisplayName(event.target.value); if (nameError) setNameError(""); }} placeholder="Hannah or Hannah at PencilProof" maxLength={80} minLength={2} required aria-required="true" aria-invalid={Boolean(nameError)} aria-describedby={nameError ? "sales-display-name-error" : "sales-display-name-help"} /></label><small id="sales-display-name-help" className="sales-field-help">This is the name customers will see—not your legal name.</small>{nameError ? <p id="sales-display-name-error" className="sales-field-error" role="alert">{nameError}</p> : null}<button className="button button-primary" type="button" onClick={() => setShowCoachPreview(true)} disabled={busy}>{"Preview Sales Coach"}</button></section> : null}
       {profile && !isActive(profile.subscriptionStatus) ? <section id="salesperson-plan" className="sales-card sales-dashboard-onboarding"><p className="kicker">SALESPERSON DASHBOARD</p><h2>{profile.subscriptionStatus === "not_started" ? `Welcome, ${profile.displayName}` : "Resume your salesperson plan"}</h2><p>Your free salesperson account is ready. Activate the $20/month plan to unlock your tracked link, QR code, referral credits, and sales tools.</p><div className="sales-plan-offer"><strong>Try ALPHA1</strong><span>First month for $1 · first 100 redemptions</span></div><button className="button button-primary" type="button" onClick={() => void startSubscription()} disabled={busy}>{busy ? "Opening checkout…" : "Start $20/month plan"}</button>{message ? <p className="sales-message" role="status">{message}</p> : null}</section> : null}
       {profile && isActive(profile.subscriptionStatus) ? <>
         <section className="sales-card sales-dashboard"><div><p className="kicker">YOUR TRACKED LINK</p><h2>{profile.displayName}</h2><p>Customers who use this link are attributed to you. They are told that a paid audit may generate subscription credit for the person who shared the link.</p><div className="sales-link-row"><input readOnly value={referralLink} aria-label="Your referral link" /><button className="button button-quiet" type="button" onClick={() => void navigator.clipboard.writeText(referralLink)}>Copy link</button></div></div>{qrDataUrl ? <img className="sales-qr" src={qrDataUrl} alt="QR code for your PencilProof referral link" width="280" height="280" /> : null}</section>
         <section className="sales-card sales-credit-card"><div><p className="kicker">REFERRAL CREDITS</p><h2>${profile.availableCredits * 20} available</h2><p>{profile.earnedCredits} credit{profile.earnedCredits === 1 ? "" : "s"} earned. There is no six-referral cap: every verified paid Full Quote Audit adds another $20 credit.</p></div><div className="sales-credit-actions"><button className="button button-primary" type="button" onClick={() => void redeemCredit()} disabled={busy || profile.availableCredits < 1}>Use for my renewal</button><button className="button button-quiet" type="button" onClick={() => void giftCredit()} disabled={busy || profile.availableCredits < 1}>Gift $20 to someone</button><button className="button button-quiet" type="button" onClick={() => void managePlan()} disabled={busy}>Manage subscription</button></div>{giftUrl ? <div className="gift-link"><strong>Gift link</strong><input readOnly value={giftUrl} aria-label="Gift link" /><button className="button button-quiet" type="button" onClick={() => void navigator.clipboard.writeText(giftUrl)}>Copy gift link</button></div> : null}</section>
       </> : null}
       {message && !profile?.subscriptionStatus ? <p className="sales-message" role="status">{message}</p> : null}
-      {profile ? <SalesCoach unlocked={isActive(profile.subscriptionStatus)} playbook={playbook} onSubscribe={() => void startSubscription()} /> : null}
+      {profile || showCoachPreview ? <SalesCoach unlocked={Boolean(profile && isActive(profile.subscriptionStatus))} playbook={playbook} onSubscribe={() => void startSubscription()} startOpen={showCoachPreview && !profile} /> : null}
       <p className="sales-note">PencilProof is an educational quote-audit tool. It does not approve financing, negotiate with a dealership, or guarantee savings. Referral rewards never reveal a customer&apos;s quote or audit information.</p>
     </main>
   </>;
