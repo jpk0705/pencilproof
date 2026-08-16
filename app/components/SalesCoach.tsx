@@ -17,6 +17,7 @@ type CoachMessage = {
 type SalesCoachProps = {
   unlocked?: boolean;
   playbook?: string | null;
+  onSubscribe?: () => void;
 };
 
 const previewObjections: Objection[] = [
@@ -144,12 +145,12 @@ const respond = (prompt: string, source: Objection[], unlocked: boolean) => {
   const ordered = shuffled(objection.responses);
   return {
     category: objection.category,
-    text: ordered[0] + (ordered[1] ? "\n\nTry another approach when you practice: " + ordered[1] : ""),
+    text: ordered[0],
     allResponses: ordered,
   };
 };
 
-export default function SalesCoach({ unlocked = false, playbook = null }: SalesCoachProps) {
+export default function SalesCoach({ unlocked = false, playbook = null, onSubscribe }: SalesCoachProps) {
   const [open, setOpen] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [librarySearch, setLibrarySearch] = useState("");
@@ -194,7 +195,7 @@ export default function SalesCoach({ unlocked = false, playbook = null }: SalesC
       {unlocked && lastAnswers.length > 0 ? <div className="sales-coach-response-actions"><button className="button button-quiet" type="button" onClick={() => setShowAllResponses((current) => !current)}>{showAllResponses ? "Hide saved responses" : "Show all " + lastAnswers.length + " saved responses"}</button>{showAllResponses ? <div className="sales-coach-all-responses">{lastAnswers.map((answer, index) => <p key={"answer-" + index}><b>Approach {index + 1}</b>{answer}</p>)}</div> : null}</div> : null}
       <p className="sales-coach-section-label">TOP 5 QUICK PRACTICE</p>
       <div className="sales-coach-suggestions">{previewObjections.map((objection) => <button type="button" key={objection.question} onClick={() => ask(objection.question)}><small>{objection.category}</small>{objection.question}</button>)}</div>
-      {unlocked ? <><p className="sales-coach-section-label">FULL PLAYBOOK · {fullObjections.length} OBJECTIONS</p><div className="sales-coach-library-controls"><select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} aria-label="Filter playbook category">{categories.map((category) => <option key={category}>{category}</option>)}</select><input value={librarySearch} onChange={(event) => setLibrarySearch(event.target.value)} placeholder="Search objections…" aria-label="Search full playbook" /></div><div className="sales-coach-library">{filteredObjections.map((objection) => <button type="button" key={objection.category + "-" + objection.question} onClick={() => ask(objection.question)}><small>{objection.category}</small>{objection.question}</button>)}</div>{playbook ? <details className="sales-coach-reference"><summary>Open complete coaching reference</summary><pre>{playbook}</pre></details> : null}</> : <div className="sales-coach-upgrade"><strong>Use this when you’re stuck.</strong><p>Subscribe to unlock the full categorized objection playbook, every saved answer, and the complete coaching reference.</p><a className="button button-primary" href="#salesperson-plan">View salesperson plan</a></div>}
+      {unlocked ? <><p className="sales-coach-section-label">FULL PLAYBOOK · {fullObjections.length} OBJECTIONS</p><div className="sales-coach-library-controls"><select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} aria-label="Filter playbook category">{categories.map((category) => <option key={category}>{category}</option>)}</select><input value={librarySearch} onChange={(event) => setLibrarySearch(event.target.value)} placeholder="Search objections…" aria-label="Search full playbook" /></div><div className="sales-coach-library">{filteredObjections.map((objection) => <button type="button" key={objection.category + "-" + objection.question} onClick={() => ask(objection.question)}><small>{objection.category}</small>{objection.question}</button>)}</div>{playbook ? <details className="sales-coach-reference"><summary>Open complete coaching reference</summary><pre>{playbook}</pre></details> : null}</> : <div className="sales-coach-upgrade"><strong>Use this when you’re stuck.</strong><p>Subscribe to unlock the full categorized objection playbook, every saved answer, and the complete coaching reference.</p><button className="button button-primary" type="button" onClick={onSubscribe} disabled={!onSubscribe}>Go to secure checkout</button></div>}
       <form className="sales-coach-form" onSubmit={(event) => { event.preventDefault(); ask(); }}><input value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Ask about an objection…" aria-label="Ask the sales coach" /><button className="button button-primary" type="submit">Ask</button></form>
       {lastMessage.role === "coach" ? <small className="sales-coach-footer">A.C.I.C.: acknowledge → clarify → isolate → close conditionally. Keep the customer’s choice and the written numbers at the center.</small> : null}
     </section> : null}
