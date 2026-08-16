@@ -2155,7 +2155,7 @@ const stripeRequest = async (
     ? env.STRIPE_SECRET_KEY.trim()
     : "";
   headers.set("Authorization", `Bearer ${stripeSecretKey}`);
-  headers.set("Stripe-Version", "2026-04-22.dahlia");
+  headers.set("Stripe-Version", "2026-06-24.dahlia");
   return fetch(`https://api.stripe.com/v1${path}`, { ...init, headers });
 };
 

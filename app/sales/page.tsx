@@ -18,6 +18,7 @@ type Profile = {
 
 const isActive = (status: string) => status === "active" || status === "past_due";
 const SALES_API_URL = "https://audit.pencilproof.com";
+const PUBLIC_SALES_URL = "https://pencilproof.com/sales";
 
 export default function SalespersonPage() {
   const configured = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
@@ -164,25 +165,47 @@ export default function SalespersonPage() {
   const redeemCredit = async () => {
     setBusy(true);
     setMessage("");
-    const response = await fetch(`${SALES_API_URL}/api/salesperson/credit`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ action: "redeem" }) });
-    const data = await response.json().catch(() => ({})) as { status?: string };
-    setMessage(data.status === "redeemed" ? "$20 was applied to your next PencilProof subscription invoice." : data.status === "billing_not_ready" ? "Your subscription billing profile is still being prepared." : "No available credit was found.");
-    await refresh();
-    setBusy(false);
+    try {
+      const response = await fetch(`${SALES_API_URL}/api/salesperson/credit`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ action: "redeem" }) });
+      const data = await response.json().catch(() => ({})) as { status?: string; error?: string };
+      setMessage(!response.ok
+        ? "We could not apply the credit right now. Your credit is still available—please try again."
+        : data.status === "redeemed"
+          ? "$20 was applied to your next PencilProof subscription invoice."
+          : data.status === "billing_not_ready"
+            ? "Your subscription billing profile is still being prepared."
+            : data.status === "retry"
+              ? "Stripe could not apply the credit right now. Your credit is still available—please try again."
+              : "No available credit was found.");
+      await refresh();
+    } catch {
+      setMessage("We could not connect to billing. Your credit is still available—please try again.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const giftCredit = async () => {
     setBusy(true);
     setMessage("");
-    const response = await fetch(`${SALES_API_URL}/api/salesperson/credit`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ action: "gift" }) });
-    const data = await response.json().catch(() => ({})) as { status?: string; code?: string };
-    if (data.status === "created" && data.code) {
-      const url = `https://audit.pencilproof.com/sales?gift=${encodeURIComponent(data.code)}`;
-      setGiftUrl(url);
-      setMessage("Gift link created. Send it to the person you choose.");
-      await refresh();
-    } else setMessage("No available credit is ready to gift.");
-    setBusy(false);
+    try {
+      const response = await fetch(`${SALES_API_URL}/api/salesperson/credit`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ action: "gift" }) });
+      const data = await response.json().catch(() => ({})) as { status?: string; code?: string };
+      if (response.ok && data.status === "created" && data.code) {
+        const url = `${PUBLIC_SALES_URL}?gift=${encodeURIComponent(data.code)}`;
+        setGiftUrl(url);
+        setMessage("Gift link created. Send it to the person you choose.");
+        await refresh();
+      } else if (data.status === "no_credit") {
+        setMessage("No available credit is ready to gift.");
+      } else {
+        setMessage("We could not create the gift link right now. Your credit is still available—please try again.");
+      }
+    } catch {
+      setMessage("We could not connect to the credit service. Your credit is still available—please try again.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const claimGift = async () => {

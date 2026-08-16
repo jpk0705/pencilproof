@@ -34,6 +34,11 @@ import {
 } from "../lib/vehicle-image.ts";
 
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+const salesPageSource = await readFile(join(projectRoot, "app/sales/page.tsx"), "utf8");
+
+assert.match(salesPageSource, /const PUBLIC_SALES_URL = "https:\/\/pencilproof\.com\/sales"/);
+assert.match(salesPageSource, /Your credit is still available/);
+assert.match(salesPageSource, /finally \{\s*setBusy\(false\);\s*\}/);
 
 const closeTo = (actual, expected, tolerance = 0.01) => {
   assert.ok(
