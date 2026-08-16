@@ -1,4 +1,5 @@
 import { accountCookie, accountOwner, accountStub, clearAccountCookie, verifyProviderToken, verifyUserSession } from "./accounts.ts";
+import { fullSalesCoachPlaybook } from "./salesCoachPlaybook.ts";
 
 const ACCESS_COOKIE = "pp_access";
 const USER_COOKIE = "pp_user";
@@ -1092,6 +1093,15 @@ const handleAccount = async (request: Request, env: Env) => {
       ...(typeof body.displayName === "string" ? { displayName: body.displayName } : {}),
     });
     return withAccountCors(Response.json({ profile: result?.profile ?? null }, { headers: noStoreHeaders }), request, env);
+  }
+  if (url.pathname === "/api/salesperson/playbook" && request.method === "GET") {
+    const result = await accountCall(env, "/salesperson", { action: "get", userId });
+    const profile = result?.profile as { subscriptionStatus?: string } | undefined;
+    if (!profile) return withAccountCors(Response.json({ error: "salesperson_profile_required" }, { status: 404, headers: noStoreHeaders }), request, env);
+    if (profile.subscriptionStatus !== "active" && profile.subscriptionStatus !== "past_due") {
+      return withAccountCors(Response.json({ error: "salesperson_subscription_required" }, { status: 403, headers: noStoreHeaders }), request, env);
+    }
+    return withAccountCors(Response.json({ playbook: fullSalesCoachPlaybook }, { headers: noStoreHeaders }), request, env);
   }
   if (url.pathname === "/api/salesperson/credit" && request.method === "POST") {
     const body = await request.json().catch(() => ({})) as { action?: string };
@@ -2983,6 +2993,7 @@ export const handleRequest = async (request: Request, env: Env) => {
     || url.pathname === "/api/account/marketing/activity"
     || url.pathname === "/api/account/delete"
     || url.pathname === "/api/salesperson/me"
+    || url.pathname === "/api/salesperson/playbook"
     || url.pathname === "/api/salesperson/credit"
     || url.pathname === "/api/salesperson/portal"
     || url.pathname === "/api/salesperson/gift/claim"
