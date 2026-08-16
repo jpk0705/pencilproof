@@ -19,7 +19,7 @@ export default function Home() {
             complete Full Quote Audit is worth it before you pay.
           </p>
           <div className="hero-actions">
-            <Link className="button button-primary" href="/analyze">
+            <Link className="button button-primary" href="https://pencilproof.com/analyze">
               Review your quote free <Arrow />
             </Link>
             <Link className="text-link" href="/who-it-helps">Who it helps <Arrow /></Link>

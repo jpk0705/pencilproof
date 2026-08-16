@@ -119,6 +119,7 @@ const verificationFields: (keyof ImportedDealFields)[] = [
 ];
 
 const Arrow = () => <span aria-hidden="true">→</span>;
+const PUBLIC_ANALYZE_URL = "https://pencilproof.com/analyze";
 
 const sample: Deal = {
   vehicle: "2026 Toyota RAV4 XLE Premium",
@@ -973,7 +974,7 @@ export default function AnalyzePage() {
           <Link href="/what-it-checks">What it checks</Link>
           <Link href="/pricing">Pricing</Link>
           <AccountNav />
-          <Link className="nav-cta" href={isPaidAuditHost ? "/analyze/secure/" : "/analyze"}>Upload your quote</Link>
+          <Link className="nav-cta" href={PUBLIC_ANALYZE_URL}>Upload your quote</Link>
         </div>
         <span className="privacy-chip">Your deal inputs stay in this browser · <a href="mailto:support@pencilproof.com">Contact support</a></span>
       </nav>

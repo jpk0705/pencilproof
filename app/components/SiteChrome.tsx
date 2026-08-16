@@ -2,6 +2,8 @@ import Link from "next/link";
 import { CHECKOUT_URL } from "@/lib/checkout";
 import AccountNav from "@/app/components/AccountNav";
 
+const PUBLIC_ANALYZE_URL = "https://pencilproof.com/analyze";
+
 export function SiteNav() {
   return (
     <nav className="site-nav" aria-label="Main navigation">
@@ -15,7 +17,7 @@ export function SiteNav() {
         <Link href="/what-it-checks">What it checks</Link>
         <Link href="/pricing">Pricing</Link>
         <AccountNav />
-        <Link className="nav-cta" href="/analyze">Upload your quote</Link>
+        <Link className="nav-cta" href={PUBLIC_ANALYZE_URL}>Upload your quote</Link>
       </div>
     </nav>
   );
