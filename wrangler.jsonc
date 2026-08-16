@@ -13,9 +13,32 @@
     "binding": "ASSETS",
     "html_handling": "auto-trailing-slash",
     "run_worker_first": [
+      "/",
+      "/account",
+      "/account/*",
       "/analyze",
       "/analyze/*",
-      "/_next/static/chunks/app/analyze/*"
+      "/_next/static/chunks/app/analyze/*",
+      "/analytics",
+      "/analytics/*",
+      "/how-it-works",
+      "/how-it-works/*",
+      "/phone",
+      "/phone/*",
+      "/pricing",
+      "/pricing/*",
+      "/privacy",
+      "/privacy/*",
+      "/questions",
+      "/questions/*",
+      "/sales",
+      "/sales/*",
+      "/terms",
+      "/terms/*",
+      "/what-it-checks",
+      "/what-it-checks/*",
+      "/who-it-helps",
+      "/who-it-helps/*"
     ]
   },
   "vars": {
