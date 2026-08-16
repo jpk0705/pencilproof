@@ -85,7 +85,7 @@ const keywordsFor = (question: string) => question
   .toLowerCase()
   .replace(/[“”‘’"'!?.,/]/g, " ")
   .split(/\s+/)
-  .filter((word) => word.length > 3 && !["what", "this", "that", "with", "your", "need", "want", "have", "will", "from", "about", "just", "only", "dont", "doesnt", "talk"].includes(word));
+  .filter((word) => (word.length > 3 || ["apr", "gap", "ev", "otd"].includes(word)) && !["what", "this", "that", "with", "your", "need", "want", "have", "will", "from", "about", "just", "only", "dont", "doesnt", "talk"].includes(word));
 
 const parsePlaybook = (source: string): Objection[] => {
   const entries: Objection[] = [];
