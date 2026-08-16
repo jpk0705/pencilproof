@@ -178,6 +178,7 @@ export default function SalespersonPage() {
     <SiteNav />
     <main className="sales-page shell">
       <header className="sales-hero"><p className="kicker">PENCILPROOF SALESPERSON TOOLS</p><h1>Share a clearer quote review.</h1><p>Customers get an educational review of the written numbers. You get attribution for the customers you introduce—without seeing their private quote or audit details.</p></header>
+      <p className="sales-promo-banner"><strong>Try ALPHA1 at checkout.</strong> Get your first month for $1. Limited to the first 100 salesperson redemptions.</p>
       <section className="sales-problem-solution" aria-labelledby="sales-problem-title">
         <div className="sales-story-intro"><p className="kicker">THE SALES CONVERSATION</p><h2 id="sales-problem-title">Turn a complicated worksheet into a clearer next conversation.</h2><p>When the numbers are difficult to explain, the customer may lose confidence before you can answer the real question: “What is included in this payment?”</p></div>
         <div className="sales-story-grid">
