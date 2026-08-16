@@ -202,6 +202,33 @@ test("analytics feedback export uses dashboard authentication", async () => {
   assert.match(await response.text(), /"created_at","category","ui_rating","service_rating","scan_quality_rating","worth_range","worth_value","written_comment"/);
 });
 
+test("analytics account filter keeps the selected role and hides other accounts", async () => {
+  const env = makeEnv([]);
+  env.ACCOUNTS = {
+    idFromName: (name: string) => name,
+    get: () => ({
+      fetch: async () => Response.json({
+        accounts: [
+          { email: "consumer@example.com", firstSeenAt: 1_700_000_000, lastRole: "consumer", lastSeenAt: 1_700_000_100, role: "consumer", userId: "user-consumer" },
+          { email: "sales@example.com", firstSeenAt: 1_700_000_000, lastRole: "salesperson", lastSeenAt: 1_700_000_100, role: "salesperson", userId: "user-sales" },
+        ],
+      }),
+    }),
+  };
+  const response = await worker.fetch(
+    new Request("https://audit.pencilproof.com/analytics?range=1m&account_role=salesperson", {
+      headers: { Authorization: basicAuth("test-admin", "test-dashboard-password") },
+    }),
+    env,
+  );
+  const body = await response.text();
+  assert.equal(response.status, 200);
+  assert.match(body, /name="account_role"/);
+  assert.match(body, /value="salesperson" selected/);
+  assert.match(body, /sales@example\.com/);
+  assert.doesNotMatch(body, /consumer@example\.com/);
+});
+
 test("analytics routes reject the wrong method before reaching storage", async () => {
   const paths: string[] = [];
   const response = await worker.fetch(
