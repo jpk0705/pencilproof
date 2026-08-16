@@ -4,21 +4,51 @@ const API_ROOT = "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues";
 
 type VinResult = {
   ErrorCode?: string;
+  DriveType?: string;
+  DisplacementL?: string;
+  EngineCylinders?: string;
+  FuelTypePrimary?: string;
   Make?: string;
   Model?: string;
   ModelYear?: string;
   Series?: string;
+  TransmissionStyle?: string;
   Trim?: string;
 };
 
 const clean = (value?: string) => value?.trim() || undefined;
+
+const VIN_PATTERN = /^[A-HJ-NPR-Z0-9]{17}$/;
+
+export const normalizeVehicleVin = (value?: string) => {
+  const normalized = String(value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return VIN_PATTERN.test(normalized) ? normalized : undefined;
+};
+
+/** Finds a VIN in OCR text, including a VIN printed with spaces between characters. */
+export const extractVinFromText = (text: string) => {
+  const direct = text.match(/\b[A-HJ-NPR-Z0-9]{17}\b/i)?.[0];
+  const normalizedDirect = normalizeVehicleVin(direct);
+  if (normalizedDirect) return normalizedDirect;
+
+  const labeledSections = text.split(/\bVIN\s*(?:number|no\.?|#)?\s*[:#-]?/i).slice(1);
+  for (const section of labeledSections.slice(0, 4)) {
+    const candidate = section.match(/(?:[A-HJ-NPR-Z0-9][\s-]*){17}/i)?.[0];
+    const normalizedCandidate = normalizeVehicleVin(candidate);
+    if (normalizedCandidate) return normalizedCandidate;
+  }
+
+  return undefined;
+};
 
 export const decodeVehicleVin = async (
   vin: string,
   signal?: AbortSignal,
 ): Promise<VehicleIdentity | null> => {
   try {
-    const response = await fetch(`${API_ROOT}/${encodeURIComponent(vin)}?format=json`, {
+    const normalizedVin = normalizeVehicleVin(vin);
+    if (!normalizedVin) return null;
+    const response = await fetch(`${API_ROOT}/${encodeURIComponent(normalizedVin)}?format=json`, {
       signal,
       headers: { Accept: "application/json" },
     });
@@ -38,7 +68,12 @@ export const decodeVehicleVin = async (
       model,
       ...(trim ? { trim } : {}),
       displayName: `${year} ${normalizedMake} ${model}`,
-      vin,
+      vin: normalizedVin,
+      ...(clean(result?.EngineCylinders) ? { engineCylinders: clean(result?.EngineCylinders) } : {}),
+      ...(clean(result?.DisplacementL) ? { displacementL: clean(result?.DisplacementL) } : {}),
+      ...(clean(result?.DriveType) ? { driveType: clean(result?.DriveType) } : {}),
+      ...(clean(result?.TransmissionStyle) ? { transmission: clean(result?.TransmissionStyle) } : {}),
+      ...(clean(result?.FuelTypePrimary) ? { fuelType: clean(result?.FuelTypePrimary) } : {}),
     };
   } catch {
     return null;

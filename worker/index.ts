@@ -97,13 +97,14 @@ export interface Env {
 
 const AI_IMPORT_PROMPT = `You are PencilProof's document extraction engine for US automobile dealer buyer's orders, finance worksheets, F&I menus, lease worksheets, and payment quotes.
 
-Return ONLY one JSON object with exactly these keys: vehicle, sellingPrice, tax, govFees, docFee, serviceContract, gap, prepaidMaintenance, tireWheel, accessories, tradeValue, tradePayoff, cashDown, rebate, apr, term, quotedPayment, offerMatrix, warnings.
+Return ONLY one JSON object with exactly these keys: vehicle, vin, sellingPrice, tax, govFees, docFee, serviceContract, gap, prepaidMaintenance, tireWheel, accessories, tradeValue, tradePayoff, cashDown, rebate, apr, term, quotedPayment, offerMatrix, warnings.
 Use null when a value is not explicitly printed or cannot be tied to a label with high confidence. Never guess, calculate, or copy a nearby total into a component field. Numbers must be numeric, not strings.
 
 Vehicle identity is required whenever the document prints it:
 - Read the vehicle year, make, model, trim, and any clearly printed series or drivetrain from the vehicle-description line, buyer's-order header, or VIN-decoding section.
 - Return vehicle as one plain string in the document's order, preserving the trim/series words exactly enough for a customer to recognize the vehicle. For example: "2017 Toyota Tundra CrewMax TRD Pro" or "2024 Cadillac CT5-V Blackwing".
 - If the model returns vehicle as an object internally, convert it to that one string before returning JSON. Do not leave vehicle null when a year plus make/model is visible anywhere in the document. If only a partial identity is readable, return the readable portion and add a warning rather than inventing the missing trim.
+- vin is the 17-character VIN when it is clearly printed and readable. Preserve it exactly after removing spaces or hyphens. Return null when it is absent or uncertain; never reconstruct a VIN from nearby characters.
 
 This is a FINANCE-FIRST parser:
 - sellingPrice means the base selling/sales price of the vehicle. Do not use MSRP, asking price, total purchase, amount financed, or a price that already includes add-ons when a base sales price is present.
@@ -158,6 +159,12 @@ const numberOrNull = (value: unknown) => {
   if (value === null || value === undefined || value === "") return null;
   const parsed = typeof value === "number" ? value : Number(String(value).replace(/[$,\s]/g, ""));
   return Number.isFinite(parsed) ? parsed : null;
+};
+
+const normalizeImportedVin = (value: unknown) => {
+  if (typeof value !== "string") return null;
+  const normalized = value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return /^[A-HJ-NPR-Z0-9]{17}$/.test(normalized) ? normalized : null;
 };
 
 /**
@@ -357,11 +364,15 @@ const handleAiImport = async (request: Request, env: Env) => {
   try {
     const parsed = parsedProviderResponse;
     const fields = Object.fromEntries([
-      "vehicle", "sellingPrice", "tax", "govFees", "docFee", "serviceContract", "gap", "prepaidMaintenance", "tireWheel", "accessories", "tradeValue", "tradePayoff", "cashDown", "rebate", "apr", "term", "quotedPayment",
+      "vehicle", "vin", "sellingPrice", "tax", "govFees", "docFee", "serviceContract", "gap", "prepaidMaintenance", "tireWheel", "accessories", "tradeValue", "tradePayoff", "cashDown", "rebate", "apr", "term", "quotedPayment",
     ].flatMap((key) => {
       if (key === "vehicle") {
         const vehicle = normalizeImportedVehicle(parsed[key]);
         return vehicle ? [[key, vehicle]] : [];
+      }
+      if (key === "vin") {
+        const vin = normalizeImportedVin(parsed[key]);
+        return vin ? [[key, vin]] : [];
       }
       const value = numberOrNull(parsed[key]);
       return value === null ? [] : [[key, value]];

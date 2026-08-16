@@ -31,6 +31,7 @@ import AccountNav from "@/app/components/AccountNav";
 
 type Deal = {
   vehicle: string;
+  vin?: string;
   sellingPrice: number;
   tax: number;
   govFees: number;
@@ -421,7 +422,7 @@ export default function AnalyzePage() {
     const fields = Object.fromEntries(
       Object.entries(deal).filter(([field, value]) =>
         field !== "outsideApr" && (
-          field === "vehicle"
+          field === "vehicle" || field === "vin"
             ? typeof value === "string" && value.trim().length > 0
             : typeof value === "number" && Number.isFinite(value) && value > 0
         ),
@@ -610,7 +611,7 @@ export default function AnalyzePage() {
   const updatePendingField = (field: keyof ImportedDealFields, rawValue: string) => {
     setPendingImport((current) => {
       if (!current) return current;
-      const value = field === "vehicle" ? rawValue : rawValue === "" ? undefined : Number(rawValue);
+      const value = field === "vehicle" || field === "vin" ? rawValue : rawValue === "" ? undefined : Number(rawValue);
       return {
         ...current,
         fields: { ...current.fields, [field]: value },
@@ -1112,8 +1113,22 @@ export default function AnalyzePage() {
             ) : null}
             <VehiclePhoto
               vehicle={String(pendingImport.fields.vehicle ?? "")}
+              vin={pendingImport.fields.vin}
               compact
             />
+            <label className="vin-verification-field verification-field confidence-review">
+              <span>VIN for exact trim matching <small>OPTIONAL</small></span>
+              <input
+                aria-label="VIN for exact trim matching"
+                type="text"
+                autoCapitalize="characters"
+                maxLength={17}
+                value={pendingImport.fields.vin ?? ""}
+                placeholder="17-character VIN"
+                onChange={(event) => updatePendingField("vin", event.target.value.toUpperCase())}
+              />
+              <small>When available, PencilProof uses the VIN to identify the trim, engine, drivetrain, and EPA configuration.</small>
+            </label>
             <div className="evidence-layout">
               <div className="document-evidence">
                 <div className="evidence-title"><span>ORIGINAL DOCUMENT</span><small>{pendingImport.fileName}</small></div>
@@ -1310,7 +1325,7 @@ export default function AnalyzePage() {
             </p>
 
             {analysis.hasMinimumData ? <>
-              <VehiclePhoto vehicle={deal.vehicle} tone="dark" compact />
+              <VehiclePhoto vehicle={deal.vehicle} vin={deal.vin} tone="dark" compact />
 
               <div className="deal-check-grid">
                 {analysis.checks.map((check) => (

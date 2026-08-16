@@ -648,6 +648,18 @@ assert.equal(
   "2022 Lincoln Navigator",
 );
 
+const vinQuote = parseDealerText([
+  "Vehicle: 2024 Cadillac CT5 V-Series Blackwing",
+  "VIN: 1G6DN5RW3P0100000",
+  "Selling Price $95,000.00",
+  "APR 8.99%",
+  "Term 72 months",
+  "Monthly Payment $1,800.00",
+]);
+assert.equal(vinQuote.vin, "1G6DN5RW3P0100000");
+assert.equal(vinQuote.vehicle, "2024 Cadillac CT5 V-Series Blackwing");
+assert.equal(sanitizeImportedFields({ vin: "not-a-vin" }).fields.vin, undefined);
+
 const rav4Identity = parseVehicleIdentity(
   "2026 Toyota RAV4 XLE Premium VIN: 2T3A1RFV0PC123456",
 );
