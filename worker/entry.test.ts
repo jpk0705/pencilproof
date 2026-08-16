@@ -131,6 +131,39 @@ test("analytics protected routes translate to Durable Object routes", async () =
 
 test("analytics dashboard renders the selected range and business funnel", async () => {
   const env = makeEnv([]);
+  env.ACCOUNTS = {
+    idFromName: (name: string) => name,
+    get: () => ({
+      fetch: async () => Response.json({
+        accounts: [
+          {
+            email: "consumer@example.com",
+            firstSeenAt: 1_700_000_000,
+            lastRole: "consumer",
+            lastSeenAt: 1_700_000_100,
+            role: "consumer",
+            userId: "user-consumer",
+          },
+          {
+            email: "sales@example.com",
+            firstSeenAt: 1_700_000_000,
+            lastRole: "salesperson",
+            lastSeenAt: 1_700_000_100,
+            role: "salesperson",
+            userId: "user-sales",
+          },
+          {
+            email: "both@example.com",
+            firstSeenAt: 1_700_000_000,
+            lastRole: "consumer",
+            lastSeenAt: 1_700_000_100,
+            role: "both",
+            userId: "user-both",
+          },
+        ],
+      }),
+    }),
+  };
   const response = await worker.fetch(
     new Request("https://audit.pencilproof.com/analytics?range=1y", {
       headers: { Authorization: basicAuth("test-admin", "test-dashboard-password") },
@@ -151,6 +184,10 @@ test("analytics dashboard renders the selected range and business funnel", async
   assert.match(body, /Written comments/);
   assert.match(body, /Download CSV/);
   assert.match(body, /What “session” means/);
+  assert.match(body, /Account sign-ins/);
+  assert.match(body, /consumer@example\.com/);
+  assert.match(body, /Salesperson/);
+  assert.match(body, /Both/);
 });
 
 test("analytics feedback export uses dashboard authentication", async () => {

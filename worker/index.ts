@@ -1079,6 +1079,12 @@ const handleAccount = async (request: Request, env: Env) => {
     if (/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(email) && email.length <= 254) {
       await accountCall(env, "/email-contact", { email, userId: user.id });
     }
+    await accountCall(env, "/account-identity", {
+      action: "upsert",
+      email: /^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(email) && email.length <= 254 ? email : undefined,
+      role,
+      userId: user.id,
+    });
     const guestId = await requestGuestId(request);
     if (guestId) {
       await accountCall(env, "/migrate", { guestId, userId: user.id });
