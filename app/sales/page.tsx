@@ -26,6 +26,7 @@ export default function SalespersonPage() {
   const [giftUrl, setGiftUrl] = useState("");
   const [giftCode, setGiftCode] = useState("");
   const [message, setMessage] = useState("");
+  const [nameError, setNameError] = useState("");
   const [busy, setBusy] = useState(false);
 
   const email = clerk?.user?.primaryEmailAddress?.emailAddress.trim().toLowerCase() ?? "";
@@ -80,11 +81,13 @@ export default function SalespersonPage() {
 
   const ensureProfile = async () => {
     if (!clerk?.user || !email) return null;
-    const name = displayName.trim() || clerk.user.fullName?.trim() || "PencilProof salesperson";
+    const name = displayName.trim();
     if (name.length < 2) {
-      setMessage("Enter the name you want customers to see on your referral link.");
+      setNameError("Enter at least 2 characters customers can recognize.");
+      setMessage("Choose a display name before continuing.");
       return null;
     }
+    setNameError("");
     const response = await fetch("/api/salesperson/me", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -176,8 +179,8 @@ export default function SalespersonPage() {
     <main className="sales-page shell">
       <header className="sales-hero"><p className="kicker">PENCILPROOF SALESPERSON TOOLS</p><h1>Share a clearer quote review.</h1><p>Customers get an educational review of the written numbers. You get attribution for the customers you introduce—without seeing their private quote or audit details.</p></header>
       {giftCode ? <section className="sales-card gift-card"><p className="kicker">PENCILPROOF GIFT</p><h2>You received a $20 salesperson credit.</h2><p>Claim it to your PencilProof salesperson account. A PencilProof account is required.</p><button className="button button-primary" type="button" onClick={() => void claimGift()} disabled={busy}>Claim this credit</button></section> : null}
-      {!profile ? <section className="sales-card"><p className="kicker">GET STARTED</p><h2>Create your referral profile</h2><p>Choose the name customers should see when they open your tracked quote-review link.</p><label className="sales-label">Display name<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Your name" maxLength={80} /></label><button className="button button-primary" type="button" onClick={() => void startSubscription()} disabled={busy}>{busy ? "Preparing…" : "Start the $20/month plan"}</button></section> : null}
-      {profile && !isActive(profile.subscriptionStatus) ? <section className="sales-card"><p className="kicker">SALESPERSON PLAN</p><h2>{profile.subscriptionStatus === "not_started" ? "Activate your referral tools" : "Resume your salesperson plan"}</h2><p>$20/month, cancellable through Stripe. Customers who pay for a Full Quote Audit can earn you one $20 credit, up to six total.</p><button className="button button-primary" type="button" onClick={() => void startSubscription()} disabled={busy}>{busy ? "Opening checkout…" : "Continue to secure checkout"}</button>{message ? <p className="sales-message" role="status">{message}</p> : null}</section> : null}
+      {!profile ? <section className="sales-card"><p className="kicker">GET STARTED</p><h2>Create your referral profile</h2><p>Choose a customer-facing name for your tracked link. It can be your first name, a nickname, or a professional name—it does not need to be your legal name.</p><label className="sales-label" htmlFor="sales-display-name">Display name <span aria-hidden="true">*</span><input id="sales-display-name" value={displayName} onChange={(event) => { setDisplayName(event.target.value); if (nameError) setNameError(""); }} placeholder="Hannah or Hannah at PencilProof" maxLength={80} minLength={2} required aria-required="true" aria-invalid={Boolean(nameError)} aria-describedby={nameError ? "sales-display-name-error" : "sales-display-name-help"} /></label><small id="sales-display-name-help" className="sales-field-help">This is the name customers will see—not your legal name.</small>{nameError ? <p id="sales-display-name-error" className="sales-field-error" role="alert">{nameError}</p> : null}<button className="button button-primary" type="button" onClick={() => void startSubscription()} disabled={busy || displayName.trim().length < 2}>{busy ? "Preparing…" : "Start the $20/month plan"}</button></section> : null}
+      {profile && !isActive(profile.subscriptionStatus) ? <section className="sales-card"><p className="kicker">SALESPERSON PLAN</p><h2>{profile.subscriptionStatus === "not_started" ? "Activate your referral tools" : "Resume your salesperson plan"}</h2><p>$20/month, cancellable through Stripe. Every verified paid Full Quote Audit can earn you another $20 credit—there is no referral limit.</p><button className="button button-primary" type="button" onClick={() => void startSubscription()} disabled={busy}>{busy ? "Opening checkout…" : "Continue to secure checkout"}</button>{message ? <p className="sales-message" role="status">{message}</p> : null}</section> : null}
       {profile && isActive(profile.subscriptionStatus) ? <>
         <section className="sales-card sales-dashboard"><div><p className="kicker">YOUR TRACKED LINK</p><h2>{profile.displayName}</h2><p>Customers who use this link are attributed to you. They are told that a paid audit may generate subscription credit for the person who shared the link.</p><div className="sales-link-row"><input readOnly value={referralLink} aria-label="Your referral link" /><button className="button button-quiet" type="button" onClick={() => void navigator.clipboard.writeText(referralLink)}>Copy link</button></div></div>{qrDataUrl ? <img className="sales-qr" src={qrDataUrl} alt="QR code for your PencilProof referral link" width="280" height="280" /> : null}</section>
         <section className="sales-card sales-credit-card"><div><p className="kicker">REFERRAL CREDITS</p><h2>${profile.availableCredits * 20} available</h2><p>{profile.earnedCredits} credit{profile.earnedCredits === 1 ? "" : "s"} earned. There is no six-referral cap: every verified paid Full Quote Audit adds another $20 credit.</p></div><div className="sales-credit-actions"><button className="button button-primary" type="button" onClick={() => void redeemCredit()} disabled={busy || profile.availableCredits < 1}>Use for my renewal</button><button className="button button-quiet" type="button" onClick={() => void giftCredit()} disabled={busy || profile.availableCredits < 1}>Gift $20 to someone</button><button className="button button-quiet" type="button" onClick={() => void managePlan()} disabled={busy}>Manage subscription</button></div>{giftUrl ? <div className="gift-link"><strong>Gift link</strong><input readOnly value={giftUrl} aria-label="Gift link" /><button className="button button-quiet" type="button" onClick={() => void navigator.clipboard.writeText(giftUrl)}>Copy gift link</button></div> : null}</section>
