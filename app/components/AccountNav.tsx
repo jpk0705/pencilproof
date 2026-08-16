@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { Clerk } from "@clerk/clerk-js";
 import { useEffect, useState } from "react";
-import { authRedirectOptions, createLoadedClerk } from "@/lib/clerk-client";
+import { authRedirectOptions, createLoadedClerk, getAuthContext, type PencilProofAuthContext } from "@/lib/clerk-client";
 
 const ACCOUNT_URL = "https://audit.pencilproof.com/account";
 const ACCOUNT_API_URL = "https://audit.pencilproof.com";
 const SALES_URL = "https://audit.pencilproof.com/sales";
 
-const syncAccountContact = async (instance: Clerk) => {
+const syncAccountContact = async (instance: Clerk, authContext: PencilProofAuthContext) => {
   const token = await instance.session?.getToken();
   const email = instance.user?.primaryEmailAddress?.emailAddress.trim().toLowerCase() ?? "";
   if (!token) return;
@@ -17,7 +17,7 @@ const syncAccountContact = async (instance: Clerk) => {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify({ email, token }),
+    body: JSON.stringify({ email, token, role: authContext }),
   }).catch(() => undefined);
 };
 
@@ -25,17 +25,7 @@ export default function AccountNav() {
   const [clerk, setClerk] = useState<Clerk | null>(null);
   const [signedIn, setSignedIn] = useState(false);
   const [signedInEmail, setSignedInEmail] = useState("");
-  const [isSalesperson, setIsSalesperson] = useState(false);
-
-  const refreshSalespersonRole = async () => {
-    const response = await fetch(`${ACCOUNT_API_URL}/api/salesperson/me`, { cache: "no-store", credentials: "include" }).catch(() => null);
-    if (!response?.ok) {
-      setIsSalesperson(false);
-      return;
-    }
-    const data = await response.json().catch(() => ({})) as { profile?: unknown };
-    setIsSalesperson(Boolean(data.profile));
-  };
+  const [authContext, setAuthContext] = useState<PencilProofAuthContext>("consumer");
 
   useEffect(() => {
     const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
@@ -50,15 +40,18 @@ export default function AccountNav() {
         setClerk(instance);
         setSignedIn(Boolean(instance.user));
         setSignedInEmail(instance.user?.primaryEmailAddress?.emailAddress.trim() ?? "");
-        void syncAccountContact(instance).then(() => refreshSalespersonRole());
-        profileListener = () => { void refreshSalespersonRole(); };
+        const context = getAuthContext();
+        setAuthContext(context);
+        void syncAccountContact(instance, context);
+        profileListener = () => { setAuthContext(getAuthContext()); };
         window.addEventListener("pencilproof:salesperson-profile-updated", profileListener);
         unsubscribe = instance.addListener(() => {
           if (!cancelled) {
             setSignedIn(Boolean(instance.user));
             setSignedInEmail(instance.user?.primaryEmailAddress?.emailAddress.trim() ?? "");
-            if (instance.user) void syncAccountContact(instance).then(() => refreshSalespersonRole());
-            else setIsSalesperson(false);
+            const nextContext = getAuthContext();
+            setAuthContext(nextContext);
+            if (instance.user) void syncAccountContact(instance, nextContext);
           }
         });
       })
@@ -75,6 +68,6 @@ export default function AccountNav() {
     return <><Link className="nav-sales-link" href="/sales">For salespeople</Link><Link className="nav-account-link" href={ACCOUNT_URL} aria-label="Sign in">Sign in</Link></>;
   }
   return signedIn
-    ? <>{!isSalesperson ? <Link className="nav-sales-link" href={SALES_URL}>Salesperson Dashboard</Link> : null}<span className="nav-account-session"><Link className="nav-account-link" href={isSalesperson ? SALES_URL : ACCOUNT_URL}>{isSalesperson ? "Salesperson Dashboard" : "My Audits"}</Link><span className="nav-account-email" title={`Signed in as ${signedInEmail}`}>{signedInEmail || "Signed-in account"}</span></span></>
-    : <><Link className="nav-sales-link" href="/sales">For salespeople</Link><button className="nav-account-button" type="button" onClick={() => clerk.openSignIn(authRedirectOptions())}>Sign in</button></>;
+    ? <>{authContext !== "salesperson" ? <Link className="nav-sales-link" href={SALES_URL}>For salespeople</Link> : null}<span className="nav-account-session"><Link className="nav-account-link" href={authContext === "salesperson" ? SALES_URL : ACCOUNT_URL}>{authContext === "salesperson" ? "Salesperson Dashboard" : "My Audits"}</Link><span className="nav-account-email" title={`Signed in as ${signedInEmail}`}>{signedInEmail || "Signed-in account"}</span></span></>
+    : <><Link className="nav-sales-link" href="/sales">For salespeople</Link><button className="nav-account-button" type="button" onClick={() => clerk.openSignIn(authRedirectOptions("consumer"))}>Sign in</button></>;
 }

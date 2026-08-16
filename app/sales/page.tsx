@@ -4,7 +4,7 @@ import Link from "next/link";
 import QRCode from "qrcode";
 import { Clerk } from "@clerk/clerk-js";
 import { useEffect, useMemo, useState } from "react";
-import { authRedirectOptions, createLoadedClerk } from "@/lib/clerk-client";
+import { authRedirectOptions, createLoadedClerk, getAuthContext } from "@/lib/clerk-client";
 import { SiteNav } from "@/app/components/SiteChrome";
 import SalesCoach from "@/app/components/SalesCoach";
 
@@ -62,7 +62,7 @@ export default function SalespersonPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ email, token }),
+        body: JSON.stringify({ email, token, role: getAuthContext() === "salesperson" ? "salesperson" : "consumer" }),
       });
       await refresh();
     })();
@@ -208,7 +208,7 @@ export default function SalespersonPage() {
   if (!clerk.user) return <>
     <SiteNav />
     <main className="sales-page shell">
-      <header className="sales-hero sales-hero-public"><div className="sales-hero-copy"><p className="kicker">FOR AUTOMOTIVE SALESPEOPLE</p><h1>Know the numbers before you make a promise.</h1><p>Use PencilProof to review a customer quote privately, explain the written numbers with confidence, and share a tracked link so a paid customer can earn you a $20 credit.</p><button className="button button-primary" type="button" onClick={() => clerk.openSignIn(authRedirectOptions())}>Sign in to start</button></div></header>
+      <header className="sales-hero sales-hero-public"><div className="sales-hero-copy"><p className="kicker">FOR AUTOMOTIVE SALESPEOPLE</p><h1>Know the numbers before you make a promise.</h1><p>Use PencilProof to review a customer quote privately, explain the written numbers with confidence, and share a tracked link so a paid customer can earn you a $20 credit.</p><button className="button button-primary" type="button" onClick={() => clerk.openSignIn(authRedirectOptions("salesperson"))}>Sign in to start</button></div></header>
       <p className="sales-promo-banner"><strong>Try the salesperson plan.</strong> Start with the $1 first-month ALPHA1 offer. Limited to the first 100 salesperson redemptions.</p>
       <section className="sales-problem-solution" aria-labelledby="sales-public-problem-title">
         <div className="sales-story-intro"><p className="kicker">THE SALES CONVERSATION</p><h2 id="sales-public-problem-title">Turn a complicated worksheet into a clearer next conversation.</h2><p>When a customer asks what is inside the payment, a quick, private review helps you answer with the written figures in front of you.</p></div>
@@ -217,7 +217,7 @@ export default function SalespersonPage() {
           <div className="sales-story-column sales-story-solution"><p className="sales-story-label">WITH PENCILPROOF</p><article><strong>Scan and verify the figures</strong><span>Import the written quote, correct anything that needs attention, and confirm the numbers before using them.</span></article><article><strong>Explain the deal in one view</strong><span>See payment, APR, term, fees, optional products, trade figures, and questions to verify.</span></article><article><strong>Keep the next step obvious</strong><span>Share a tracked review link or QR code while the customer is still engaged.</span></article><article><strong>Keep revisions organized</strong><span>Return to the review with updated figures and focus on what changed.</span></article></div>
         </div>
       </section>
-      <section className="sales-card sales-public-benefits"><p className="kicker">WHAT YOU GET</p><h2>Useful before you go back to the desk.</h2><div className="check-list"><article><b>Private quote review</b><p>Customers review their own quote without exposing the document to you.</p></article><article><b>Tracked referrals</b><p>Share your link or QR code and receive credit when an attributed customer completes a paid audit.</p></article><article><b>Practice support</b><p>Use the free top-five coach preview, then subscribe for the complete objection playbook.</p></article></div><button className="button button-primary" type="button" onClick={() => clerk.openSignIn(authRedirectOptions())}>Create your salesperson account</button></section>
+      <section className="sales-card sales-public-benefits"><p className="kicker">WHAT YOU GET</p><h2>Useful before you go back to the desk.</h2><div className="check-list"><article><b>Private quote review</b><p>Customers review their own quote without exposing the document to you.</p></article><article><b>Tracked referrals</b><p>Share your link or QR code and receive credit when an attributed customer completes a paid audit.</p></article><article><b>Practice support</b><p>Use the free top-five coach preview, then subscribe for the complete objection playbook.</p></article></div><button className="button button-primary" type="button" onClick={() => clerk.openSignIn(authRedirectOptions("salesperson"))}>Create your salesperson account</button></section>
     </main>
   </>;
 
