@@ -9,6 +9,7 @@ import {
   verifyAccessToken,
   verifyStripeSignature,
 } from "./index.ts";
+import { createAccountRoleSession, verifyAccountRoleSession } from "./accounts.ts";
 
 const originalFetch = globalThis.fetch;
 const TEST_DEVICE_ID = "A".repeat(43);
@@ -111,6 +112,15 @@ const signWebhook = async (
   ).join("");
   return `t=${timestamp},v1=${hex}`;
 };
+
+test("account role sessions preserve the sign-in entry context", async () => {
+  const secret = "role-session-test-secret";
+  const salesperson = await createAccountRoleSession("salesperson", secret);
+  const consumer = await createAccountRoleSession("consumer", secret);
+  assert.equal(await verifyAccountRoleSession(salesperson, secret), "salesperson");
+  assert.equal(await verifyAccountRoleSession(consumer, secret), "consumer");
+  assert.equal(await verifyAccountRoleSession(`${salesperson}tampered`, secret), null);
+});
 
 const paidSession = (
   deviceHash: string,

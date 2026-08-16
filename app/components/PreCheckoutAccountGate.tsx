@@ -64,7 +64,7 @@ export default function PreCheckoutAccountGate({ onContinue }: Props) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ email, token }),
+        body: JSON.stringify({ email, token, role: "consumer" }),
       });
       if (!sessionResponse.ok) throw new Error("account_session");
 
@@ -101,7 +101,7 @@ export default function PreCheckoutAccountGate({ onContinue }: Props) {
             {busy ? "Preparing checkout…" : "Continue to secure checkout"}
           </button>
         ) : (
-          <button className="button button-primary" type="button" onClick={() => clerk?.openSignUp(authRedirectOptions())} disabled={busy || !configured || clerkError}>
+          <button className="button button-primary" type="button" onClick={() => clerk?.openSignUp(authRedirectOptions("consumer"))} disabled={busy || !configured || clerkError}>
             Create free account
           </button>
         )}
@@ -109,7 +109,7 @@ export default function PreCheckoutAccountGate({ onContinue }: Props) {
           Continue as guest
         </button>
         {!accountReady && clerk ? (
-          <button className="pre-checkout-signin" type="button" onClick={() => clerk.openSignIn(authRedirectOptions())} disabled={busy}>
+          <button className="pre-checkout-signin" type="button" onClick={() => clerk.openSignIn(authRedirectOptions("consumer"))} disabled={busy}>
             Already have an account? Sign in
           </button>
         ) : null}

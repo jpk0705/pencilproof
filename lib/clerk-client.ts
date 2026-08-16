@@ -2,6 +2,13 @@
 
 import { Clerk } from "@clerk/clerk-js";
 
+export type PencilProofAuthContext = "consumer" | "salesperson";
+
+const AUTH_CONTEXT_STORAGE_KEY = "pencilproof-auth-context";
+
+const isAuthContext = (value: string | null | undefined): value is PencilProofAuthContext =>
+  value === "consumer" || value === "salesperson";
+
 type ClerkWindow = Window & {
   __internal_ClerkUICtor?: unknown;
   __pencilProofClerkUiPromise?: Promise<void>;
@@ -64,8 +71,25 @@ export const createLoadedClerk = async (publishableKey: string) => {
   return clerkWindow.__pencilProofClerkPromise;
 };
 
-export const authRedirectOptions = () => {
-  const url = window.location.href;
+export const setAuthContext = (context: PencilProofAuthContext) => {
+  window.sessionStorage.setItem(AUTH_CONTEXT_STORAGE_KEY, context);
+};
+
+export const getAuthContext = (): PencilProofAuthContext => {
+  const queryContext = new URL(window.location.href).searchParams.get("auth_context");
+  if (isAuthContext(queryContext)) {
+    setAuthContext(queryContext);
+    return queryContext;
+  }
+  const storedContext = window.sessionStorage.getItem(AUTH_CONTEXT_STORAGE_KEY);
+  return isAuthContext(storedContext) ? storedContext : "consumer";
+};
+
+export const authRedirectOptions = (context: PencilProofAuthContext = "consumer") => {
+  setAuthContext(context);
+  const redirectUrl = new URL(window.location.href);
+  redirectUrl.searchParams.set("auth_context", context);
+  const url = redirectUrl.toString();
   return {
     signInForceRedirectUrl: url,
     signUpForceRedirectUrl: url,

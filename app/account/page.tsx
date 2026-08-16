@@ -59,7 +59,7 @@ export default function AccountPage() {
         await fetch("/api/account/session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, token }),
+          body: JSON.stringify({ email, token, role: "consumer" }),
         });
       }
       const response = await fetch("/api/account/me", { cache: "no-store" });
@@ -85,7 +85,7 @@ export default function AccountPage() {
     return shell(<main className="account-page shell"><p>Loading your PencilProof account…</p></main>);
   }
   if (!clerk.user) {
-    return shell(<main className="account-page shell"><h1>Save your PencilProof access.</h1><p>Create a free account to use your Pass on other devices and keep eligible audits for 30 days.</p><div className="account-actions"><button className="button button-primary" type="button" onClick={() => clerk.openSignUp(authRedirectOptions())}>Create account</button><button className="button button-quiet" type="button" onClick={() => clerk.openSignIn(authRedirectOptions())}>Sign in</button></div><p className="account-guest-note">No account is required. You can continue using PencilProof as a guest.</p><section className="account-support" aria-labelledby="account-support-title"><p className="kicker">NEED A HAND?</p><h2 id="account-support-title">Questions and support</h2><p>Find quick answers or contact us if you need help with an audit.</p><div className="account-support-actions"><Link className="button button-quiet" href="/questions/">Q&amp;A</Link><a className="button button-quiet" href="mailto:support@pencilproof.com">Contact support</a></div></section></main>);
+    return shell(<main className="account-page shell"><h1>Save your PencilProof access.</h1><p>Create a free account to use your Pass on other devices and keep eligible audits for 30 days.</p><div className="account-actions"><button className="button button-primary" type="button" onClick={() => clerk.openSignUp(authRedirectOptions("consumer"))}>Create account</button><button className="button button-quiet" type="button" onClick={() => clerk.openSignIn(authRedirectOptions("consumer"))}>Sign in</button></div><p className="account-guest-note">No account is required. You can continue using PencilProof as a guest.</p><section className="account-support" aria-labelledby="account-support-title"><p className="kicker">NEED A HAND?</p><h2 id="account-support-title">Questions and support</h2><p>Find quick answers or contact us if you need help with an audit.</p><div className="account-support-actions"><Link className="button button-quiet" href="/questions/">Q&amp;A</Link><a className="button button-quiet" href="mailto:support@pencilproof.com">Contact support</a></div></section></main>);
   }
 
   const days = expiresAt ? Math.max(0, Math.ceil((expiresAt * 1000 - Date.now()) / 86400000)) : 0;
