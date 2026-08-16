@@ -1079,6 +1079,12 @@ const handleAccount = async (request: Request, env: Env) => {
   if (!userId) return withAccountCors(Response.json({ error: "account_required" }, { status: 401, headers: noStoreHeaders }), request, env);
   if (url.pathname === "/api/salesperson/me" && (request.method === "GET" || request.method === "POST")) {
     const body = await request.json().catch(() => ({})) as { email?: string; displayName?: string };
+    if (request.method === "POST") {
+      const displayName = typeof body.displayName === "string" ? body.displayName.trim() : "";
+      if (displayName.length < 2 || displayName.length > 80) {
+        return withAccountCors(Response.json({ error: "display_name_required" }, { status: 400, headers: noStoreHeaders }), request, env);
+      }
+    }
     const result = await accountCall(env, "/salesperson", {
       action: request.method === "POST" ? "ensure" : "get",
       userId,
