@@ -17,6 +17,14 @@ export type AccountEnv = {
 type User = { id: string; providerSubject: string; createdAt: number };
 export type Entitlement = { id: string; userId: string | null; guestId: string | null; stripeSessionId: string; activatedAt: number; expiresAt: number; status: string };
 export type StoredAudit = { id: string; ownerId: string; createdAt: number; expiresAt: number; data: Record<string, unknown> };
+export type AccountIdentity = {
+  userId: string;
+  email: string;
+  role: "consumer" | "salesperson" | "both";
+  lastRole: AccountRole;
+  firstSeenAt: number;
+  lastSeenAt: number;
+};
 
 type SalespersonProfile = {
   userId: string;
@@ -144,6 +152,8 @@ export class AccountStore {
     this.sql.exec(`CREATE TABLE IF NOT EXISTS marketing_activity (user_id TEXT PRIMARY KEY, last_scan_at INTEGER, last_checkout_at INTEGER, last_purchase_at INTEGER)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS marketing_deliveries (user_id TEXT NOT NULL, campaign_key TEXT NOT NULL, claimed_at INTEGER NOT NULL, sent_at INTEGER, PRIMARY KEY (user_id, campaign_key))`);
     this.sql.exec(`CREATE INDEX IF NOT EXISTS marketing_deliveries_user ON marketing_deliveries(user_id, sent_at)`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS account_identity_contexts (user_id TEXT PRIMARY KEY, email TEXT NOT NULL, consumer_seen_at INTEGER, salesperson_seen_at INTEGER, last_role TEXT NOT NULL, first_seen_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL)`);
+    this.sql.exec(`CREATE INDEX IF NOT EXISTS account_identity_contexts_last_seen ON account_identity_contexts(last_seen_at)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS salesperson_profiles (user_id TEXT PRIMARY KEY, email TEXT NOT NULL, display_name TEXT NOT NULL, referral_code TEXT UNIQUE NOT NULL, stripe_customer_id TEXT, stripe_subscription_id TEXT, subscription_status TEXT NOT NULL, earned_credits INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`);
     this.sql.exec(`CREATE INDEX IF NOT EXISTS salesperson_profiles_referral ON salesperson_profiles(referral_code)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS referral_rewards (id TEXT PRIMARY KEY, referral_code TEXT NOT NULL, salesperson_user_id TEXT NOT NULL, customer_user_id TEXT, customer_email TEXT, stripe_session_id TEXT UNIQUE NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL, credited_at INTEGER)`);
@@ -152,6 +162,8 @@ export class AccountStore {
     this.sql.exec(`CREATE INDEX IF NOT EXISTS salesperson_credits_owner ON salesperson_credits(owner_user_id, status)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS salesperson_gifts (code TEXT PRIMARY KEY, credit_id TEXT UNIQUE NOT NULL, from_user_id TEXT NOT NULL, claimed_by_user_id TEXT, status TEXT NOT NULL, created_at INTEGER NOT NULL, claimed_at INTEGER)`);
     this.sql.exec(`INSERT OR IGNORE INTO email_contacts (user_id, email, added_at, updated_at) SELECT user_id, email, opted_in_at, updated_at FROM marketing_preferences`);
+    this.sql.exec(`INSERT OR IGNORE INTO account_identity_contexts (user_id, email, consumer_seen_at, salesperson_seen_at, last_role, first_seen_at, last_seen_at) SELECT contacts.user_id, contacts.email, CASE WHEN profiles.user_id IS NULL THEN contacts.added_at ELSE NULL END, CASE WHEN profiles.user_id IS NOT NULL THEN profiles.created_at ELSE NULL END, CASE WHEN profiles.user_id IS NOT NULL THEN 'salesperson' ELSE 'consumer' END, contacts.added_at, MAX(contacts.updated_at, COALESCE(profiles.updated_at, contacts.updated_at)) FROM email_contacts AS contacts LEFT JOIN salesperson_profiles AS profiles ON profiles.user_id = contacts.user_id`);
+    this.sql.exec(`INSERT OR IGNORE INTO account_identity_contexts (user_id, email, consumer_seen_at, salesperson_seen_at, last_role, first_seen_at, last_seen_at) SELECT profiles.user_id, profiles.email, NULL, profiles.created_at, 'salesperson', profiles.created_at, profiles.updated_at FROM salesperson_profiles AS profiles`);
   }
   private purge() { this.sql.exec(`DELETE FROM audits WHERE expires_at <= ?`, isoNow()); }
   user(providerSubject: string) {
@@ -191,6 +203,42 @@ export class AccountStore {
     const now = isoNow();
     this.sql.exec(`INSERT OR IGNORE INTO email_contacts (user_id, email, added_at, updated_at) VALUES (?, ?, ?, ?)`, userId, email, now, now);
     this.sql.exec(`UPDATE email_contacts SET email = ?, updated_at = ? WHERE user_id = ?`, email, now, userId);
+  }
+  saveAccountIdentity(userId: string, email: string | null, role: AccountRole) {
+    const now = isoNow();
+    const existing = this.sql.exec<{ user_id: string; email: string; consumer_seen_at: number | null; salesperson_seen_at: number | null }>(`SELECT user_id, email, consumer_seen_at, salesperson_seen_at FROM account_identity_contexts WHERE user_id = ?`, userId).toArray()[0];
+    const nextEmail = email || existing?.email || "";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(nextEmail) || nextEmail.length > 254) return false;
+    const consumerSeenAt = role === "consumer" ? now : (existing?.consumer_seen_at ?? null);
+    const salespersonSeenAt = role === "salesperson" ? now : (existing?.salesperson_seen_at ?? null);
+    if (existing) {
+      this.sql.exec(`UPDATE account_identity_contexts SET email = ?, consumer_seen_at = ?, salesperson_seen_at = ?, last_role = ?, last_seen_at = ? WHERE user_id = ?`, nextEmail, consumerSeenAt, salespersonSeenAt, role, now, userId);
+    } else {
+      this.sql.exec(`INSERT INTO account_identity_contexts (user_id, email, consumer_seen_at, salesperson_seen_at, last_role, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, userId, nextEmail, consumerSeenAt, salespersonSeenAt, role, now, now);
+    }
+    return true;
+  }
+  accountIdentities() {
+    return this.sql.exec<{
+      user_id: string;
+      email: string;
+      consumer_seen_at: number | null;
+      salesperson_seen_at: number | null;
+      last_role: AccountRole;
+      first_seen_at: number;
+      last_seen_at: number;
+    }>(`SELECT user_id, email, consumer_seen_at, salesperson_seen_at, last_role, first_seen_at, last_seen_at FROM account_identity_contexts ORDER BY last_seen_at DESC LIMIT 1000`).toArray().map((row) => ({
+      userId: row.user_id,
+      email: row.email,
+      role: row.consumer_seen_at && row.salesperson_seen_at
+        ? "both"
+        : row.salesperson_seen_at
+          ? "salesperson"
+          : "consumer",
+      lastRole: row.last_role,
+      firstSeenAt: row.first_seen_at,
+      lastSeenAt: row.last_seen_at,
+    } satisfies AccountIdentity));
   }
   marketingEnabled(userId: string) {
     return this.sql.exec<{ user_id: string }>(`
@@ -414,7 +462,7 @@ export class AccountStore {
     this.sql.exec(`UPDATE salesperson_credits SET owner_user_id = ?, status = 'available' WHERE id = ? AND status = 'gifted'`, userId, gift.credit_id);
     return { status: "claimed" };
   }
-  deleteUser(userId: string) { this.sql.exec(`DELETE FROM audits WHERE owner_id = ?`, `user:${userId}`); this.sql.exec(`DELETE FROM entitlements WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM marketing_preferences WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM email_contacts WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM marketing_activity WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM marketing_deliveries WHERE user_id = ?`, userId); this.sql.exec(`UPDATE referral_rewards SET customer_user_id = NULL, customer_email = NULL WHERE customer_user_id = ?`, userId); this.sql.exec(`DELETE FROM referral_rewards WHERE salesperson_user_id = ?`, userId); this.sql.exec(`DELETE FROM salesperson_profiles WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM users WHERE id = ?`, userId); }
+  deleteUser(userId: string) { this.sql.exec(`DELETE FROM audits WHERE owner_id = ?`, `user:${userId}`); this.sql.exec(`DELETE FROM entitlements WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM marketing_preferences WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM email_contacts WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM marketing_activity WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM marketing_deliveries WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM account_identity_contexts WHERE user_id = ?`, userId); this.sql.exec(`UPDATE referral_rewards SET customer_user_id = NULL, customer_email = NULL WHERE customer_user_id = ?`, userId); this.sql.exec(`DELETE FROM referral_rewards WHERE salesperson_user_id = ?`, userId); this.sql.exec(`DELETE FROM salesperson_profiles WHERE user_id = ?`, userId); this.sql.exec(`DELETE FROM users WHERE id = ?`, userId); }
   async fetch(request: Request) {
     if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
     const path = new URL(request.url).pathname;
@@ -429,6 +477,15 @@ export class AccountStore {
       if (!/^[A-Za-z0-9_:-]{8,200}$/.test(userId) || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(email) || email.length > 254) return json({ error: "invalid_email_contact" }, 400);
       this.saveEmailContact(userId, email);
       return json({ stored: true });
+    }
+    if (path === "/account-identity") {
+      if (body.action === "list") return json({ accounts: this.accountIdentities() });
+      const userId = typeof body.userId === "string" ? body.userId : "";
+      if (!/^[A-Za-z0-9_:-]{8,200}$/.test(userId)) return json({ error: "invalid_account_identity" }, 400);
+      const role = body.role === "salesperson" ? "salesperson" : body.role === "consumer" ? "consumer" : null;
+      const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : null;
+      if (!role || (email !== null && (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(email) || email.length > 254))) return json({ error: "invalid_account_identity" }, 400);
+      return json({ stored: this.saveAccountIdentity(userId, email, role) });
     }
     if (path === "/migrate") {
       if (typeof body.guestId !== "string" || typeof body.userId !== "string") return json({ error: "invalid_migration" }, 400);
