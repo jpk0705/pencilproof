@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
   DEAL_FIELD_LABELS,
   parseDealerText,
+  parsePdfFormFields,
   parseOfferMatrix,
   reconcileQuotedPayment,
   sanitizeImportedFields,
@@ -43,6 +44,44 @@ const closeTo = (actual, expected, tolerance = 0.01) => {
 
 assert.equal(DEAL_FIELD_LABELS.rebate, "Rebate");
 assert.equal(DEAL_CAMERA_ACCEPT, "image/*");
+
+const acroFormImport = parsePdfFormFields([
+  { fieldName: "Vehicle_Year", fieldValue: "2016", subtype: "Widget" },
+  { fieldName: "Vehicle_Make", fieldValue: "Dodge Challenger", subtype: "Widget" },
+  { fieldName: "Vehicle_IdentificationNumber", fieldValue: "2C3CDZC98GH335601", subtype: "Widget" },
+  { fieldName: "Loan_Paid_CashPrice_Vehicle_Amount", fieldValue: "49500.00", subtype: "Widget" },
+  { fieldName: "Loan_Paid_CashPrice_Accessories_Amount", fieldValue: "699.00", subtype: "Widget" },
+  { fieldName: "Loan_Paid_TheftDeterrentDevice2_Amount", fieldValue: "1.00", subtype: "Widget" },
+  { fieldName: "Loan_Paid_TheftDeterrentDevice3_Amount", fieldValue: "299.00", subtype: "Widget" },
+  { fieldName: "Loan_Paid_SalesTax_Amount", fieldValue: "4430.48", subtype: "Widget" },
+  { fieldName: "Loan_Paid_PublicOfficials_TotalOfficialFees_Amount", fieldValue: "873.00", subtype: "Widget" },
+  { fieldName: "Agreement_ElectronicRegistrationOrTransferChargeFee_Amount", fieldValue: "37.00", subtype: "Widget" },
+  { fieldName: "Vehicle_FeesPaidToState_Amount", fieldValue: "8.25", subtype: "Widget" },
+  { fieldName: "Loan_Paid_Other_Amount", fieldValue: "50.00", subtype: "Widget" },
+  { fieldName: "Loan_Paid_DocumentPreparation_Amount", fieldValue: "85.00", subtype: "Widget" },
+  { fieldName: "Loan_Paid_ServiceContract_Amount", fieldValue: "5684.00", subtype: "Widget" },
+  { fieldName: "Loan_Fee_GAPWaiver_Amount", fieldValue: "1200.00", subtype: "Widget" },
+  { fieldName: "Vehicle_TradeIn_Amount", fieldValue: "0.00", subtype: "Widget" },
+  { fieldName: "Loan_Paid_TradeInLien_Amount", fieldValue: "0.00", subtype: "Widget" },
+  { fieldName: "Loan_Paid_CashDown_Amount", fieldValue: "0.00", subtype: "Widget" },
+  { fieldName: "Loan_Paid_ManufacturersRebate_Amount", fieldValue: "0.00", subtype: "Widget" },
+  { fieldName: "Loan_AnnualPercentage_Rate", fieldValue: "7.340", subtype: "Widget" },
+  { fieldName: "Loan_Payment4_Number", fieldValue: "83", subtype: "Widget" },
+  { fieldName: "Loan_Payment4_Amount", fieldValue: "959.32", subtype: "Widget" },
+]);
+assert.equal(acroFormImport.vehicle, "2016 Dodge Challenger");
+assert.equal(acroFormImport.vin, "2C3CDZC98GH335601");
+closeTo(acroFormImport.sellingPrice, 49500);
+closeTo(acroFormImport.accessories, 999);
+closeTo(acroFormImport.govFees, 968.25);
+closeTo(acroFormImport.serviceContract, 5684);
+closeTo(acroFormImport.gap, 1200);
+assert.equal(acroFormImport.tradeValue, 0);
+assert.equal(acroFormImport.cashDown, 0);
+assert.equal(acroFormImport.rebate, 0);
+closeTo(acroFormImport.apr, 7.34);
+assert.equal(acroFormImport.term, 83);
+closeTo(acroFormImport.quotedPayment, 959.32);
 
 const phoneBridgeSource = await readFile(join(projectRoot, "app/components/PhoneCameraBridge.tsx"), "utf8");
 const phonePageSource = await readFile(join(projectRoot, "app/phone/page.tsx"), "utf8");

@@ -26,13 +26,11 @@ const normalizeVehicleVin = (value?: string) => {
 };
 
 const extractVinFromText = (text: string) => {
-  const direct = normalizeVehicleVin(text.match(/\b[A-HJ-NPR-Z0-9]{17}\b/i)?.[0]);
-  if (direct) return direct;
   const sections = text.split(/\bVIN\s*(?:number|no\.?|#)?\s*[:#-]?/i).slice(1);
   for (const section of sections.slice(0, 4)) {
     const candidate = section.match(/(?:[A-HJ-NPR-Z0-9][\s-]*){17}/i)?.[0];
     const normalized = normalizeVehicleVin(candidate);
-    if (normalized) return normalized;
+    if (normalized && /\d/.test(normalized)) return normalized;
   }
   return undefined;
 };
@@ -148,6 +146,154 @@ type PdfTextItem = {
 
 type PdfPageLike = {
   getTextContent: () => Promise<{ items: unknown[] }>;
+  getAnnotations?: (params?: { intent?: string }) => Promise<unknown[]>;
+};
+
+export type PdfFormField = {
+  fieldName?: string;
+  fieldValue?: unknown;
+  fieldType?: string;
+  alternativeText?: string;
+  subtype?: string;
+};
+
+const formFieldEntries = (rawFields: PdfFormField[]) => rawFields
+  .map((field) => ({
+    ...field,
+    name: String(field.fieldName ?? ""),
+    normalizedName: String(field.fieldName ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "_"),
+    text: typeof field.fieldValue === "string" || typeof field.fieldValue === "number"
+      ? String(field.fieldValue).replace(/\s+/g, " ").trim()
+      : "",
+  }))
+  .filter((field) => field.name && field.text);
+
+const formNumber = (value: string) => {
+  if (!value || /^(?:n\/a|none|null|off)$/i.test(value.trim())) return undefined;
+  const normalized = value.replace(/[$,%\s,]/g, "");
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+const firstFormText = (
+  entries: ReturnType<typeof formFieldEntries>,
+  matcher: RegExp,
+) => entries.find((entry) => matcher.test(entry.name))?.text;
+
+const firstFormNumber = (
+  entries: ReturnType<typeof formFieldEntries>,
+  matcher: RegExp,
+  options?: { allowZero?: boolean },
+) => {
+  for (const entry of entries) {
+    if (!matcher.test(entry.name)) continue;
+    const value = formNumber(entry.text);
+    if (value === undefined || (!options?.allowZero && value <= 0)) continue;
+    return value;
+  }
+  return undefined;
+};
+
+const sumFormNumbers = (
+  entries: ReturnType<typeof formFieldEntries>,
+  matcher: RegExp,
+  options?: { allowZero?: boolean },
+) => {
+  const values = entries
+    .filter((entry) => matcher.test(entry.name))
+    .map((entry) => formNumber(entry.text))
+    .filter((value): value is number => value !== undefined && (options?.allowZero || value > 0));
+  if (!values.length) return undefined;
+  return Math.round(values.reduce((total, value) => total + value, 0) * 100) / 100;
+};
+
+const validFormVin = (value?: string) => {
+  const vin = normalizeVehicleVin(value);
+  return vin && /\d/.test(vin) ? vin : undefined;
+};
+
+/**
+ * Fillable retail contracts carry the authoritative values in AcroForm
+ * widgets. PDF.js text extraction does not include those values, so a
+ * contract can otherwise look like a blank template and OCR can mistake
+ * labels, legal text, or product terms for deal numbers.
+ */
+export const parsePdfFormFields = (rawFields: PdfFormField[]): ImportedDealFields => {
+  const entries = formFieldEntries(rawFields);
+  const fields: ImportedDealFields = {};
+
+  const year = firstFormText(entries, /^Vehicle_Year$/i);
+  const make = firstFormText(entries, /^Vehicle_Make$/i);
+  if (year && make && /^(?:19|20)\d{2}$/.test(year)) fields.vehicle = `${year} ${make}`.slice(0, 90);
+
+  const vin = validFormVin(firstFormText(entries, /^Vehicle_IdentificationNumber(?:2)?$/i));
+  if (vin) fields.vin = vin;
+
+  const sellingPrice = firstFormNumber(entries, /^Loan_Paid_CashPrice_Vehicle_Amount$/i);
+  if (sellingPrice !== undefined) fields.sellingPrice = sellingPrice;
+
+  const tax = firstFormNumber(entries, /^Loan_Paid_SalesTax_Amount$/i, { allowZero: true });
+  if (tax !== undefined) fields.tax = tax;
+
+  // Include itemized state/registration amounts and the contract's explicit
+  // "other" amount so the imported components reconcile to the financed total.
+  const officialFees = firstFormNumber(entries, /^Loan_Paid_PublicOfficials_TotalOfficialFees_Amount$/i, { allowZero: true });
+  const electronicRegistration = firstFormNumber(entries, /^Agreement_ElectronicRegistrationOrTransferChargeFee_Amount$/i, { allowZero: true });
+  const stateFee = firstFormNumber(entries, /^Vehicle_FeesPaidToState_Amount$/i, { allowZero: true });
+  const otherFee = firstFormNumber(entries, /^Loan_Paid_Other_Amount$/i, { allowZero: true });
+  const governmentFees = [officialFees, electronicRegistration, stateFee, otherFee]
+    .filter((value): value is number => value !== undefined)
+    .reduce((total, value) => total + value, 0);
+  if (officialFees !== undefined || electronicRegistration !== undefined || stateFee !== undefined || otherFee !== undefined) {
+    fields.govFees = Math.round(governmentFees * 100) / 100;
+  }
+
+  const docFee = firstFormNumber(entries, /^Loan_Paid_DocumentPreparation_Amount$/i, { allowZero: true });
+  if (docFee !== undefined) fields.docFee = docFee;
+
+  const serviceContract = sumFormNumbers(entries, /^Loan_Paid_ServiceContract(?:\d+)?_Amount$/i);
+  if (serviceContract !== undefined) fields.serviceContract = serviceContract;
+
+  const gap = sumFormNumbers(entries, /^Loan_(?:Fee_GAPWaiver|Paid_DebtCancellation)_Amount$/i);
+  if (gap !== undefined) fields.gap = gap;
+
+  const accessories = sumFormNumbers(entries, /^(?:Loan_Paid_CashPrice_Accessories_Amount|Loan_Paid_TheftDeterrentDevice(?:\d+)?_Amount|Loan_Paid_SurfaceProtectionProduct(?:\d+)?_Amount|Loan_Paid_EVChargingStation_Amount)$/i);
+  if (accessories !== undefined) fields.accessories = accessories;
+
+  const tradeValue = firstFormNumber(entries, /^Vehicle_TradeIn_Amount$/i, { allowZero: true });
+  if (tradeValue !== undefined) fields.tradeValue = tradeValue;
+
+  const tradePayoff = sumFormNumbers(entries, /^Loan_Paid_TradeInLien(?:OrBalance)?_Amount(?:2)?$/i, { allowZero: true });
+  if (tradePayoff !== undefined) fields.tradePayoff = tradePayoff;
+
+  const cashDown = firstFormNumber(entries, /^Loan_Paid_CashDown_Amount$/i, { allowZero: true }) ??
+    firstFormNumber(entries, /^Loan_Paid_DownPayment_Amount$/i, { allowZero: true });
+  if (cashDown !== undefined) fields.cashDown = cashDown;
+
+  const rebate = firstFormNumber(entries, /^Loan_Paid_ManufacturersRebate_Amount$/i, { allowZero: true });
+  if (rebate !== undefined) fields.rebate = rebate;
+
+  const apr = firstFormNumber(entries, /^Loan_AnnualPercentage_Rate$/i, { allowZero: true });
+  if (apr !== undefined) fields.apr = apr;
+
+  const paymentStreams = entries
+    .map((entry) => entry.name.match(/^Loan_Payment(\d+)_Number$/i)?.[1])
+    .filter((stream): stream is string => Boolean(stream))
+    .map((stream) => {
+      const number = firstFormNumber(entries, new RegExp(`^Loan_Payment${stream}_Number$`, "i"));
+      const amount = firstFormNumber(entries, new RegExp(`^Loan_Payment${stream}_Amount$`, "i"));
+      return { number, amount };
+    })
+    .filter((stream): stream is { number: number; amount: number } =>
+      stream.number !== undefined && stream.amount !== undefined && stream.number >= 12 && stream.number <= 120 && stream.amount >= 50 && stream.amount <= 5000,
+    );
+  const paymentStream = paymentStreams[0];
+  if (paymentStream) {
+    fields.term = paymentStream.number;
+    fields.quotedPayment = paymentStream.amount;
+  }
+
+  return sanitizeImportedFields(fields).fields;
 };
 
 type PdfViewportLike = {
@@ -204,7 +350,7 @@ const confidenceFor = (
     Object.keys(fields).map((field) => [field, confidence]),
   ) as DealPdfResult["fieldConfidence"];
 
-const allowedLoanTerms = [24, 30, 36, 39, 42, 48, 54, 60, 63, 66, 72, 75, 78, 84, 96];
+const allowedLoanTerms = [24, 30, 36, 39, 42, 48, 54, 60, 63, 66, 72, 75, 78, 83, 84, 96];
 
 const criticalImportFields: (keyof ImportedDealFields)[] = [
   "sellingPrice",
@@ -282,7 +428,7 @@ const importCandidateScore = (fields: ImportedDealFields) => {
   score += criticalImportFields.filter((field) => fields[field] !== undefined).length * 5;
   if (fields.sellingPrice && fields.sellingPrice >= 1000) score += 2;
   if (fields.apr !== undefined && fields.apr >= 0 && fields.apr <= 40) score += 2;
-  if (fields.term !== undefined && [24, 30, 36, 39, 42, 48, 54, 60, 63, 66, 72, 75, 78, 84, 96].includes(fields.term)) score += 2;
+  if (fields.term !== undefined && allowedLoanTerms.includes(fields.term)) score += 2;
   if (fields.quotedPayment !== undefined && fields.quotedPayment >= 50 && fields.quotedPayment <= 5000) score += 2;
   return score;
 };
@@ -1321,13 +1467,40 @@ export const extractDealFromPdf = async (
   const data = new Uint8Array(await file.arrayBuffer());
   const pdfDocument = await pdfjs.getDocument({ data }).promise;
   const lines: string[] = [];
+  const formAnnotations: PdfFormField[] = [];
 
   for (let pageNumber = 1; pageNumber <= pdfDocument.numPages; pageNumber += 1) {
     const page = await pdfDocument.getPage(pageNumber);
     lines.push(...await pageLines(page));
+    const annotations = await page.getAnnotations?.({ intent: "display" });
+    if (annotations?.length) {
+      formAnnotations.push(...annotations.filter((annotation): annotation is PdfFormField =>
+        Boolean(annotation && typeof annotation === "object" && "subtype" in annotation && (annotation as { subtype?: unknown }).subtype === "Widget"),
+      ));
+    }
   }
 
-  const digitalFields = parseDealerText(lines);
+  const textFields = parseDealerText(lines);
+  const formFields = parsePdfFormFields(formAnnotations);
+  const formNames = formAnnotations.map((field) => String(field.fieldName ?? ""));
+  const formCovers = {
+    vin: formNames.some((name) => /^Vehicle_IdentificationNumber/i.test(name)),
+    term: formNames.some((name) => /^Loan_Payment\d+_(?:Number|Amount)$/i.test(name) || /(?:Loan_)?(?:Term|NumberOfPayments)/i.test(name)),
+    payment: formNames.some((name) => /^Loan_Payment\d+_Amount$/i.test(name)),
+  };
+  const digitalFields = Object.keys(formFields).length
+    ? (Object.keys(textFields) as (keyof ImportedDealFields)[]).reduce<ImportedDealFields>((merged, field) => {
+      if (merged[field] !== undefined) return merged;
+      if (field === "vin" && formCovers.vin) return merged;
+      if (field === "term" && formCovers.term) return merged;
+      if (field === "quotedPayment" && formCovers.payment) return merged;
+      const value = textFields[field];
+      if (value !== undefined) {
+        (merged as Record<keyof ImportedDealFields, string | number | undefined>)[field] = value;
+      }
+      return merged;
+    }, { ...formFields })
+    : textFields;
   const digitalOfferMatrix = parseOfferMatrix(lines);
   const digitalNeedsVerification = criticalImportFields.some((field) => digitalFields[field] === undefined) ||
     Object.keys(digitalFields).length < 8;
