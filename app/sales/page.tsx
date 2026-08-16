@@ -209,7 +209,7 @@ export default function SalespersonPage() {
     <SiteNav />
     <main className="sales-page shell">
       <header className="sales-hero sales-hero-public"><div className="sales-hero-copy"><p className="kicker">FOR AUTOMOTIVE SALESPEOPLE</p><h1>Know the numbers before you make a promise.</h1><p>Use PencilProof to review a customer quote privately, explain the written numbers with confidence, and share a tracked link so a paid customer can earn you a $20 credit.</p><button className="button button-primary" type="button" onClick={() => clerk.openSignIn(authRedirectOptions())}>Sign in to start</button></div></header>
-      <p className="sales-promo-banner"><strong>Try the salesperson plan.</strong> Start with the $1 first-month ALPHA1 offer when available.</p>
+      <p className="sales-promo-banner"><strong>Try the salesperson plan.</strong> Start with the $1 first-month ALPHA1 offer. Limited to the first 100 salesperson redemptions.</p>
       <section className="sales-problem-solution" aria-labelledby="sales-public-problem-title">
         <div className="sales-story-intro"><p className="kicker">THE SALES CONVERSATION</p><h2 id="sales-public-problem-title">Turn a complicated worksheet into a clearer next conversation.</h2><p>When a customer asks what is inside the payment, a quick, private review helps you answer with the written figures in front of you.</p></div>
         <div className="sales-story-grid">

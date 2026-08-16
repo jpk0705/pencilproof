@@ -62,7 +62,7 @@ export default function SampleAuditDemo() {
 
       <div className="deal-card-foot">
         <span>Example figures for illustration.</span>
-        <Link href="/analyze">Try your quote free <Arrow /></Link>
+        <Link href="https://pencilproof.com/analyze">Try your quote free <Arrow /></Link>
       </div>
     </div>
   );
