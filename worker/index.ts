@@ -1138,8 +1138,9 @@ const handleAccount = async (request: Request, env: Env) => {
       const result = await accountCall(env, "/salesperson-credit", { action: "redeem", userId });
       const creditId = typeof result?.creditId === "string" ? result.creditId : "";
       const stripeCustomerId = typeof result?.stripeCustomerId === "string" ? result.stripeCustomerId : "";
-      if (result?.status === "pending" && creditId && stripeCustomerId) {
-        const applied = await addSalespersonStripeCredit(env, stripeCustomerId, creditId);
+      const stripeSubscriptionId = typeof result?.stripeSubscriptionId === "string" ? result.stripeSubscriptionId : "";
+      if (result?.status === "pending" && creditId && stripeCustomerId && stripeSubscriptionId) {
+        const applied = await addSalespersonSubscriptionCredit(env, stripeCustomerId, stripeSubscriptionId, creditId);
         await accountCall(env, "/salesperson-credit", { action: "confirm", creditId, success: applied });
         return withAccountCors(Response.json({ status: applied ? "redeemed" : "retry" }, { headers: noStoreHeaders }), request, env);
       }
@@ -2365,18 +2366,22 @@ const createSalespersonPortalSession = async (env: Env, stripeCustomerId: string
   return session.url;
 };
 
-const addSalespersonStripeCredit = async (
+const addSalespersonSubscriptionCredit = async (
   env: Env,
   stripeCustomerId: string,
+  stripeSubscriptionId: string,
   rewardId: string,
 ) => {
-  if (!/^cus_[A-Za-z0-9]+$/.test(stripeCustomerId) || !/^[0-9a-f-]{36}$/i.test(rewardId)) return false;
+  if (!/^cus_[A-Za-z0-9]+$/.test(stripeCustomerId) || !/^sub_[A-Za-z0-9]+$/.test(stripeSubscriptionId) || !/^[0-9a-f-]{36}$/i.test(rewardId)) return false;
   const parameters = new URLSearchParams({
     amount: String(-SALESPERSON_CREDIT_AMOUNT_CENTS),
     currency: "usd",
-    description: "PencilProof salesperson referral credit",
+    customer: stripeCustomerId,
+    description: "PencilProof salesperson referral credit for next subscription invoice",
+    discountable: "false",
+    subscription: stripeSubscriptionId,
   });
-  const response = await stripeRequest(`/customers/${encodeURIComponent(stripeCustomerId)}/balance_transactions`, env, {
+  const response = await stripeRequest("/invoiceitems", env, {
     body: parameters,
     headers: { "Idempotency-Key": `pencilproof-referral-${rewardId}` },
     method: "POST",
@@ -2669,7 +2674,7 @@ const processSalespersonCheckout = async (sessionId: string, env: Env) => {
   ) return false;
   const lineItems = await retrieveCheckoutLineItems(sessionId, env);
   if (!hasExactPencilProofLineItem(lineItems, priceId)) return false;
-  await accountCall(env, "/salesperson-subscription", {
+  const result = await accountCall(env, "/salesperson-subscription", {
     action: "activate",
     userId,
     stripeCustomerId: session.customer,

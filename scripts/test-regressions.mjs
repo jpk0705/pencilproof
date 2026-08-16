@@ -39,6 +39,10 @@ const salesPageSource = await readFile(join(projectRoot, "app/sales/page.tsx"), 
 assert.match(salesPageSource, /const PUBLIC_SALES_URL = "https:\/\/pencilproof\.com\/sales"/);
 assert.match(salesPageSource, /Your credit is still available/);
 assert.match(salesPageSource, /finally \{\s*setBusy\(false\);\s*\}/);
+const salesWorkerSource = await readFile(join(projectRoot, "worker/index.ts"), "utf8");
+assert.match(salesWorkerSource, /addSalespersonSubscriptionCredit/);
+assert.match(salesWorkerSource, /stripeRequest\("\/invoiceitems"/);
+assert.doesNotMatch(salesWorkerSource, /balance_transactions/);
 
 const closeTo = (actual, expected, tolerance = 0.01) => {
   assert.ok(

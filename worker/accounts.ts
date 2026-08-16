@@ -432,11 +432,11 @@ export class AccountStore {
   }
   redeemSalespersonCredit(userId: string) {
     const profile = this.salespersonRow(userId);
-    if (!profile?.stripe_customer_id) return { status: "billing_not_ready" };
+    if (!profile?.stripe_customer_id || !profile.stripe_subscription_id) return { status: "billing_not_ready" };
     const credit = this.sql.exec<{ id: string }>(`SELECT id FROM salesperson_credits WHERE owner_user_id = ? AND status = 'available' ORDER BY created_at ASC LIMIT 1`, userId).toArray()[0];
     if (!credit) return { status: "no_credit" };
     this.sql.exec(`UPDATE salesperson_credits SET status = 'pending_redeem' WHERE id = ? AND status = 'available'`, credit.id);
-    return { status: "pending", creditId: credit.id, stripeCustomerId: profile.stripe_customer_id };
+    return { status: "pending", creditId: credit.id, stripeCustomerId: profile.stripe_customer_id, stripeSubscriptionId: profile.stripe_subscription_id };
   }
   confirmSalespersonCredit(creditId: string, success: boolean) {
     const status = success ? "redeemed" : "available";
