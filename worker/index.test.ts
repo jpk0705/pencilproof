@@ -235,15 +235,42 @@ test("access tokens are signed and expire", async () => {
   assert.equal(await verifyAccessToken(token, "secret", 1_061), null);
 });
 
-test("the paid audit redirects an unauthenticated visitor to checkout", async () => {
+test("the audit host sends an unauthenticated analyze visitor to the free scan", async () => {
   const response = await handleRequest(
-    new Request("https://audit.pencilproof.com/analyze/"),
+    new Request("https://audit.pencilproof.com/analyze/?source=direct"),
     makeEnv(),
   );
   assert.equal(response.status, 303);
   assert.equal(
     response.headers.get("Location"),
-    "https://audit.pencilproof.com/handoff?reason=access_required",
+    "https://pencilproof.com/analyze?source=direct",
+  );
+});
+
+test("the audit host redirects public information pages and marks service pages noindex", async () => {
+  const pricingResponse = await handleRequest(
+    new Request("https://audit.pencilproof.com/pricing?source=direct"),
+    makeEnv(),
+  );
+  assert.equal(pricingResponse.status, 303);
+  assert.equal(
+    pricingResponse.headers.get("Location"),
+    "https://pencilproof.com/pricing?source=direct",
+  );
+  assert.equal(
+    pricingResponse.headers.get("X-Robots-Tag"),
+    "noindex, nofollow, noarchive",
+  );
+
+  const accountResponse = await handleRequest(
+    new Request("https://audit.pencilproof.com/account/"),
+    makeEnv(),
+  );
+  assert.equal(accountResponse.status, 200);
+  assert.equal(await accountResponse.text(), "asset");
+  assert.equal(
+    accountResponse.headers.get("X-Robots-Tag"),
+    "noindex, nofollow, noarchive",
   );
 });
 

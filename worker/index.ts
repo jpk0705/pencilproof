@@ -1960,6 +1960,31 @@ const noStoreHeaders = {
   ].join("; "),
   "Referrer-Policy": "no-referrer",
   "X-Content-Type-Options": "nosniff",
+  "X-Robots-Tag": "noindex, nofollow, noarchive",
+};
+
+const publicPagePaths = new Set([
+  "/how-it-works",
+  "/how-it-works/",
+  "/pricing",
+  "/pricing/",
+  "/privacy",
+  "/privacy/",
+  "/questions",
+  "/questions/",
+  "/terms",
+  "/terms/",
+  "/what-it-checks",
+  "/what-it-checks/",
+  "/who-it-helps",
+  "/who-it-helps/",
+]);
+
+const publicPageRedirect = (url: URL, env: Env) => {
+  const destination = new URL(env.PUBLIC_SITE_ORIGIN);
+  destination.pathname = url.pathname;
+  destination.search = url.search;
+  return redirect(destination.toString());
 };
 
 const accountCorsHeaders = (request: Request, env: Env) => {
@@ -2967,6 +2992,9 @@ export const handleRequest = async (request: Request, env: Env) => {
   if (url.pathname === "/") {
     return redirect(env.PUBLIC_SITE_ORIGIN);
   }
+  if (publicPagePaths.has(url.pathname)) {
+    return publicPageRedirect(url, env);
+  }
   if (url.pathname === "/handoff" || url.pathname === "/handoff/") {
     return handoffPage();
   }
@@ -3061,7 +3089,12 @@ export const handleRequest = async (request: Request, env: Env) => {
         headers,
       });
     }
-    const location = access.reason === "revoked"
+    const isAnalyzeAsset = url.pathname.startsWith("/_next/static/chunks/app/analyze/");
+    const location = isAnalyzeAsset
+      ? `${env.SITE_ORIGIN}/handoff?reason=access_required`
+      : access.reason === "not_found"
+        ? `${env.PUBLIC_SITE_ORIGIN}/analyze${url.search}`
+        : access.reason === "revoked"
       ? `${env.SITE_ORIGIN}/recover?reason=revoked`
       : `${env.SITE_ORIGIN}/handoff?reason=access_required`;
     return redirect(location, {
@@ -3070,7 +3103,14 @@ export const handleRequest = async (request: Request, env: Env) => {
     });
   }
 
-  return env.ASSETS.fetch(request);
+  const response = await env.ASSETS.fetch(request);
+  const headers = new Headers(response.headers);
+  headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 };
 
 export default {
