@@ -227,6 +227,7 @@ test("analytics account filter keeps the selected role and hides other accounts"
   assert.match(body, /value="salesperson" selected/);
   assert.match(body, /sales@example\.com/);
   assert.doesNotMatch(body, /consumer@example\.com/);
+  assert.match(body, /pencilproof-analytics-scroll-y/);
 });
 
 test("analytics routes reject the wrong method before reaching storage", async () => {
