@@ -134,12 +134,16 @@ const shuffled = (items: string[]) => {
   return copy;
 };
 
-const respond = (prompt: string, source: Objection[]) => {
+const respond = (prompt: string, source: Objection[], unlocked: boolean) => {
   const objection = findObjection(prompt, source);
-  if (!objection) return { category: "General practice", text: fallbackResponse, allResponses: [] };
+  if (!objection) {
+    return unlocked
+      ? { category: "General practice", text: fallbackResponse, allResponses: [] }
+      : { category: "More practice available", text: "That question is outside the five free preview topics. Subscribe for more categories, saved answers, and the complete coaching playbook.", allResponses: [] };
+  }
   const ordered = shuffled(objection.responses);
   return {
-    category: objection.category + " · randomized response",
+    category: objection.category,
     text: ordered[0] + (ordered[1] ? "\n\nTry another approach when you practice: " + ordered[1] : ""),
     allResponses: ordered,
   };
@@ -171,7 +175,7 @@ export default function SalesCoach({ unlocked = false, playbook = null }: SalesC
   const ask = (value = prompt) => {
     const question = value.trim();
     if (!question) return;
-    const response = respond(question, practiceObjections);
+    const response = respond(question, practiceObjections, unlocked);
     setLastAnswers(response.allResponses);
     setShowAllResponses(false);
     setMessages((current) => [
