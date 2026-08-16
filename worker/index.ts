@@ -17,7 +17,7 @@ const QUOTE_HANDOFF_KEY = "pencilproof:pending-import";
 const QUOTE_HANDOFF_TYPE = "pencilproof:quote-handoff:v1";
 const ANALYTICS_RETENTION_MILLISECONDS = 1000 * 60 * 60 * 24 * 400;
 const ANALYTICS_MAX_FEEDBACK = 500;
-const PHONE_SESSION_MAX_AGE_MILLISECONDS = 10 * 60 * 1000;
+const PHONE_SESSION_MAX_AGE_MILLISECONDS = 15 * 60 * 1000;
 const PHONE_SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{24,80}$/;
 const PHONE_SESSION_TOKEN_PATTERN = /^[A-Za-z0-9_-]{32,120}$/;
 const PHONE_SESSION_CHUNK_LIMIT = 1024 * 1024;
@@ -1835,9 +1835,9 @@ export class PhoneSessionStore {
   }
 
   webSocketMessage(socket: PhoneSessionSocket, message: string | ArrayBuffer) {
-    const peer = this.peer(socket);
-    if (!peer || peer.readyState !== WebSocket.OPEN) return;
     if (typeof message !== "string") {
+      const peer = this.peer(socket);
+      if (!peer || peer.readyState !== WebSocket.OPEN) return;
       if (message.byteLength > PHONE_SESSION_CHUNK_LIMIT) {
         socket.close(1009, "chunk too large");
         return;
@@ -1851,10 +1851,16 @@ export class PhoneSessionStore {
     }
     try {
       const payload = JSON.parse(message) as { type?: string };
+      if (payload.type === "keepalive") {
+        this.send(socket, { type: "keepalive_ack" });
+        return;
+      }
       if (
         typeof payload.type !== "string"
         || !["hello", "photo-start", "photo-end"].includes(payload.type)
       ) return;
+      const peer = this.peer(socket);
+      if (!peer || peer.readyState !== WebSocket.OPEN) return;
       peer.send(message);
     } catch {
       socket.close(1003, "invalid message");

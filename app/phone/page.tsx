@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 const PHONE_API_ORIGIN = "https://audit.pencilproof.com";
 const PHONE_SOCKET_ORIGIN = PHONE_API_ORIGIN.replace(/^https:/, "wss:");
 const PHONE_CHUNK_SIZE = 256 * 1024;
+const PHONE_SESSION_MAX_AGE = 15 * 60 * 1000;
 
 type PhoneState = "connecting" | "ready" | "sending" | "sent" | "error";
 
@@ -13,6 +14,29 @@ export default function PhoneCameraPage() {
   const [message, setMessage] = useState("Connecting to your computer…");
   const [progress, setProgress] = useState(0);
   const socketRef = useRef<WebSocket | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const heartbeatTimerRef = useRef<number | null>(null);
+  const sessionExpiresAtRef = useRef<number>(0);
+  const manualCloseRef = useRef(false);
+  const sentRef = useRef(false);
+
+  const clearConnectionTimers = () => {
+    if (reconnectTimerRef.current !== null) {
+      window.clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    if (heartbeatTimerRef.current !== null) {
+      window.clearInterval(heartbeatTimerRef.current);
+      heartbeatTimerRef.current = null;
+    }
+  };
+
+  const startHeartbeat = (socket: WebSocket) => {
+    if (heartbeatTimerRef.current !== null) window.clearInterval(heartbeatTimerRef.current);
+    heartbeatTimerRef.current = window.setInterval(() => {
+      if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "keepalive" }));
+    }, 15_000);
+  };
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -23,23 +47,63 @@ export default function PhoneCameraPage() {
       setMessage("This camera link is incomplete. Scan the QR code again from your computer.");
       return;
     }
-    const socket = new WebSocket(`${PHONE_SOCKET_ORIGIN}/api/phone-session?session=${encodeURIComponent(session)}&token=${encodeURIComponent(token)}&role=phone`);
-    socketRef.current = socket;
-    socket.onopen = () => {
-      setState("ready");
-      setMessage("Connected. Take a clear photo of the full quote.");
-      socket.send(JSON.stringify({ type: "hello" }));
+    manualCloseRef.current = false;
+    sessionExpiresAtRef.current = Date.now() + PHONE_SESSION_MAX_AGE;
+    const connect = () => {
+      if (manualCloseRef.current) return;
+      if (sessionExpiresAtRef.current && Date.now() >= sessionExpiresAtRef.current) {
+        setState("error");
+        setMessage("This camera session expired. Scan a new code from your computer.");
+        return;
+      }
+      setState((current) => current === "sent" ? current : "connecting");
+      setMessage("Connecting to your computer…");
+      const socket = new WebSocket(`${PHONE_SOCKET_ORIGIN}/api/phone-session?session=${encodeURIComponent(session)}&token=${encodeURIComponent(token)}&role=phone`);
+      socketRef.current = socket;
+      socket.onopen = () => {
+        startHeartbeat(socket);
+        setState("ready");
+        setMessage("Connected. Take a clear photo of the full quote.");
+        socket.send(JSON.stringify({ type: "hello" }));
+      };
+      socket.onmessage = (event) => {
+        if (typeof event.data !== "string") return;
+        try {
+          const payload = JSON.parse(event.data) as { type?: string };
+          if (payload.type === "peer_disconnected") {
+            setState((current) => current === "sent" ? current : "connecting");
+            setMessage("Your computer connection briefly dropped. Reconnecting automatically…");
+          } else if (payload.type === "desktop_connected" && !sentRef.current) {
+            setState("ready");
+            setMessage("Connected. Take a clear photo of the full quote.");
+          }
+        } catch {
+          // Ignore malformed status messages; the bridge remains usable.
+        }
+      };
+      socket.onerror = () => {
+        if (!manualCloseRef.current) setMessage("Connection interrupted. Reconnecting automatically…");
+      };
+      socket.onclose = () => {
+        if (socketRef.current === socket) socketRef.current = null;
+        if (heartbeatTimerRef.current !== null) {
+          window.clearInterval(heartbeatTimerRef.current);
+          heartbeatTimerRef.current = null;
+        }
+        if (manualCloseRef.current || sentRef.current) return;
+        if (reconnectTimerRef.current === null) {
+          reconnectTimerRef.current = window.setTimeout(() => {
+            reconnectTimerRef.current = null;
+            connect();
+          }, 1_500);
+        }
+      };
     };
-    socket.onerror = () => {
-      setState("error");
-      setMessage("The connection could not be made. Scan the QR code again from your computer.");
-    };
-    socket.onclose = () => {
-      setState((current) => current === "sent" ? current : "error");
-      setMessage((current) => current || "The camera session ended.");
-    };
+    connect();
     return () => {
-      socket.close(1000, "closed");
+      manualCloseRef.current = true;
+      clearConnectionTimers();
+      socketRef.current?.close(1000, "closed");
       socketRef.current = null;
     };
   }, []);
@@ -47,8 +111,8 @@ export default function PhoneCameraPage() {
   const sendPhoto = async (file: File) => {
     const socket = socketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) {
-      setState("error");
-      setMessage("Your computer is no longer connected. Scan the QR code again.");
+      setState("connecting");
+      setMessage("Your computer connection is recovering. Please wait a moment and choose the photo again.");
       return;
     }
     if (!file.type.startsWith("image/") || file.size > 15 * 1024 * 1024) {
@@ -57,22 +121,30 @@ export default function PhoneCameraPage() {
       return;
     }
     setState("sending");
+    sentRef.current = false;
     setProgress(0);
     setMessage("Sending the quote photo to your computer…");
-    socket.send(JSON.stringify({ type: "photo-start", fileName: file.name || "phone-quote.jpg", mimeType: file.type || "image/jpeg" }));
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    for (let offset = 0; offset < bytes.byteLength; offset += PHONE_CHUNK_SIZE) {
-      const chunk = bytes.slice(offset, Math.min(bytes.byteLength, offset + PHONE_CHUNK_SIZE));
-      while (socket.bufferedAmount > PHONE_CHUNK_SIZE * 8) {
-        await new Promise((resolve) => window.setTimeout(resolve, 25));
+    try {
+      socket.send(JSON.stringify({ type: "photo-start", fileName: file.name || "phone-quote.jpg", mimeType: file.type || "image/jpeg" }));
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      for (let offset = 0; offset < bytes.byteLength; offset += PHONE_CHUNK_SIZE) {
+        const chunk = bytes.slice(offset, Math.min(bytes.byteLength, offset + PHONE_CHUNK_SIZE));
+        while (socket.bufferedAmount > PHONE_CHUNK_SIZE * 8) {
+          await new Promise((resolve) => window.setTimeout(resolve, 25));
+        }
+        if (socket.readyState !== WebSocket.OPEN) throw new Error("connection");
+        socket.send(chunk);
+        setProgress(Math.min(1, (offset + chunk.byteLength) / bytes.byteLength));
       }
-      socket.send(chunk);
-      setProgress(Math.min(1, (offset + chunk.byteLength) / bytes.byteLength));
+      socket.send(JSON.stringify({ type: "photo-end" }));
+      sentRef.current = true;
+      setState("sent");
+      setProgress(1);
+      setMessage("Photo sent. You can return to your computer.");
+    } catch {
+      setState("error");
+      setMessage("The connection dropped while sending. Reconnect and take the photo again.");
     }
-    socket.send(JSON.stringify({ type: "photo-end" }));
-    setState("sent");
-    setProgress(1);
-    setMessage("Photo sent. You can return to your computer.");
   };
 
   return (

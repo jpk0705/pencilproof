@@ -22,17 +22,125 @@ export default function PhoneCameraBridge({ disabled = false, buttonLabel = "Sca
   const socketRef = useRef<WebSocket | null>(null);
   const incomingRef = useRef<IncomingPhoto | null>(null);
   const mountedRef = useRef(true);
+  const sessionRef = useRef<PhoneSession | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const heartbeatTimerRef = useRef<number | null>(null);
+  const manualCloseRef = useRef(false);
+
+  const clearConnectionTimers = () => {
+    if (reconnectTimerRef.current !== null) {
+      window.clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    if (heartbeatTimerRef.current !== null) {
+      window.clearInterval(heartbeatTimerRef.current);
+      heartbeatTimerRef.current = null;
+    }
+  };
+
+  const startHeartbeat = (socket: WebSocket) => {
+    if (heartbeatTimerRef.current !== null) window.clearInterval(heartbeatTimerRef.current);
+    heartbeatTimerRef.current = window.setInterval(() => {
+      if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "keepalive" }));
+    }, 15_000);
+  };
+
+  const reconnect = () => {
+    const session = sessionRef.current;
+    if (!mountedRef.current || manualCloseRef.current || !session) return;
+    if (Date.now() >= session.expiresAt) {
+      setStatus("error");
+      setMessage("This phone camera session expired. Start a new phone scan.");
+      return;
+    }
+    if (reconnectTimerRef.current !== null) return;
+    setStatus("waiting");
+    setMessage("Connection interrupted. Reconnecting automatically...");
+    reconnectTimerRef.current = window.setTimeout(() => {
+      reconnectTimerRef.current = null;
+      connectDesktop(session);
+    }, 1_500);
+  };
+
+  function connectDesktop(session: PhoneSession) {
+    if (!mountedRef.current || manualCloseRef.current) return;
+    const socket = new WebSocket(sessionSocketUrl(session));
+    socket.binaryType = "arraybuffer";
+    socketRef.current = socket;
+    socket.onopen = () => {
+      if (!mountedRef.current || manualCloseRef.current) return;
+      startHeartbeat(socket);
+      setStatus("waiting");
+      setMessage("Waiting for your phone to connect...");
+      socket.send(JSON.stringify({ type: "hello" }));
+    };
+    socket.onmessage = async (event) => {
+      if (typeof event.data === "string") {
+        let payload: { type?: string; fileName?: string; mimeType?: string };
+        try { payload = JSON.parse(event.data) as typeof payload; } catch { return; }
+        if (payload.type === "phone_connected") {
+          setStatus("connected");
+          setMessage("Phone connected. Take a clear photo of the full quote.");
+        } else if (payload.type === "photo-start") {
+          incomingRef.current = { chunks: [], fileName: payload.fileName || "phone-quote.jpg", mimeType: payload.mimeType || "image/jpeg" };
+          setStatus("receiving");
+          setMessage("Receiving the quote photo...");
+        } else if (payload.type === "photo-end") {
+          const incoming = incomingRef.current;
+          if (!incoming) return;
+          const parts = incoming.chunks.map((chunk) => {
+            const copy = new ArrayBuffer(chunk.byteLength);
+            new Uint8Array(copy).set(chunk);
+            return copy;
+          });
+          const file = new File(parts, incoming.fileName, { type: incoming.mimeType });
+          incomingRef.current = null;
+          setStatus("complete");
+          setMessage("Photo received. Starting the quote scan...");
+          await onFile(file);
+          if (mountedRef.current) window.setTimeout(() => close(), 900);
+        } else if (payload.type === "peer_disconnected" && mountedRef.current) {
+          setStatus("waiting");
+          setMessage("Phone connection interrupted. Keep this page open; reconnecting automatically...");
+        }
+        return;
+      }
+      const incoming = incomingRef.current;
+      if (!incoming) return;
+      const bytes = event.data instanceof Blob
+        ? new Uint8Array(await event.data.arrayBuffer())
+        : new Uint8Array(event.data as ArrayBuffer);
+      if (bytes.byteLength <= PHONE_CHUNK_SIZE) incoming.chunks.push(bytes);
+    };
+    socket.onerror = () => {
+      if (!mountedRef.current || manualCloseRef.current) return;
+      setMessage("Connection interrupted. Reconnecting automatically...");
+    };
+    socket.onclose = () => {
+      if (socketRef.current === socket) socketRef.current = null;
+      if (heartbeatTimerRef.current !== null) {
+        window.clearInterval(heartbeatTimerRef.current);
+        heartbeatTimerRef.current = null;
+      }
+      reconnect();
+    };
+  }
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      manualCloseRef.current = true;
+      clearConnectionTimers();
       socketRef.current?.close(1000, "closed");
       socketRef.current = null;
     };
   }, []);
 
   const close = () => {
+    manualCloseRef.current = true;
+    sessionRef.current = null;
+    clearConnectionTimers();
     socketRef.current?.close(1000, "closed");
     socketRef.current = null;
     incomingRef.current = null;
@@ -44,6 +152,8 @@ export default function PhoneCameraBridge({ disabled = false, buttonLabel = "Sca
 
   const start = async () => {
     if (disabled || status === "creating") return;
+    manualCloseRef.current = false;
+    sessionRef.current = null;
     setOpen(true);
     setStatus("creating");
     setMessage("Creating a secure camera session...");
@@ -66,58 +176,8 @@ export default function PhoneCameraBridge({ disabled = false, buttonLabel = "Sca
       setQrDataUrl(dataUrl);
       setStatus("waiting");
       setMessage("Scan this code with your phone camera.");
-
-      const socket = new WebSocket(sessionSocketUrl(completeSession));
-      socket.binaryType = "arraybuffer";
-      socketRef.current = socket;
-      socket.onopen = () => {
-        if (!mountedRef.current) return;
-        setMessage("Waiting for your phone to connect...");
-        socket.send(JSON.stringify({ type: "hello" }));
-      };
-      socket.onmessage = async (event) => {
-        if (typeof event.data === "string") {
-          let payload: { type?: string; fileName?: string; mimeType?: string };
-          try { payload = JSON.parse(event.data) as typeof payload; } catch { return; }
-          if (payload.type === "phone_connected") {
-            setStatus("connected");
-            setMessage("Phone connected. Take a clear photo of the full quote.");
-          } else if (payload.type === "photo-start") {
-            incomingRef.current = { chunks: [], fileName: payload.fileName || "phone-quote.jpg", mimeType: payload.mimeType || "image/jpeg" };
-            setStatus("receiving");
-            setMessage("Receiving the quote photo...");
-          } else if (payload.type === "photo-end") {
-            const incoming = incomingRef.current;
-            if (!incoming) return;
-            const parts = incoming.chunks.map((chunk) => {
-              const copy = new ArrayBuffer(chunk.byteLength);
-              new Uint8Array(copy).set(chunk);
-              return copy;
-            });
-            const file = new File(parts, incoming.fileName, { type: incoming.mimeType });
-            incomingRef.current = null;
-            setStatus("complete");
-            setMessage("Photo received. Starting the quote scan...");
-            await onFile(file);
-            if (mountedRef.current) window.setTimeout(() => close(), 900);
-          } else if (payload.type === "peer_disconnected" && mountedRef.current) {
-            setStatus("waiting");
-            setMessage("The phone disconnected. Scan the code again to reconnect.");
-          }
-          return;
-        }
-        const incoming = incomingRef.current;
-        if (!incoming) return;
-        const bytes = event.data instanceof Blob
-          ? new Uint8Array(await event.data.arrayBuffer())
-          : new Uint8Array(event.data as ArrayBuffer);
-        if (bytes.byteLength <= PHONE_CHUNK_SIZE) incoming.chunks.push(bytes);
-      };
-      socket.onerror = () => {
-        if (!mountedRef.current) return;
-        setStatus("error");
-        setMessage("The phone camera connection could not start. Try again or upload the file here.");
-      };
+      sessionRef.current = completeSession;
+      connectDesktop(completeSession);
     } catch {
       setStatus("error");
       setMessage("Could not create the phone camera session. Try again or upload the file here.");
@@ -139,7 +199,7 @@ export default function PhoneCameraBridge({ disabled = false, buttonLabel = "Sca
           {qrDataUrl ? (
             <div className="phone-camera-content">
               <div className="phone-camera-qr-wrap"><img className="phone-camera-qr" src={qrDataUrl} alt="QR code to open the PencilProof phone camera" /></div>
-              <div className="phone-camera-instructions"><strong>{message}</strong><ol><li>Open your phone camera.</li><li>Point it at this QR code.</li><li>Tap the link, then take the quote photo.</li></ol><small>The code expires in about 10 minutes. Your photo streams directly to this browser.</small></div>
+              <div className="phone-camera-instructions"><strong>{message}</strong><ol><li>Open your phone camera.</li><li>Point it at this QR code.</li><li>Tap the link, then take the quote photo.</li></ol><small>The code stays active for about 15 minutes and reconnects automatically if the mobile connection briefly drops.</small></div>
             </div>
           ) : null}
           {status === "error" ? <p className="phone-camera-error" role="alert">{message}</p> : null}
