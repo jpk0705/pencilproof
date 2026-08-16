@@ -792,6 +792,22 @@ const trimOnlyImage = selectBestVehicleImage(
 );
 assert.equal(trimOnlyImage, null);
 
+const historicalImage = selectBestVehicleImage(
+  [
+    {
+      title: "File:Dodge Challenger lors de la rencontre du Duke's Club.jpg",
+      imageinfo: [{
+        thumburl: "https://upload.wikimedia.org/challenger-classic.jpg",
+        descriptionurl: "https://commons.wikimedia.org/wiki/File:Dodge_Challenger_lors_de_la_rencontre_du_Duke%27s_Club.jpg",
+        extmetadata: { LicenseShortName: { value: "CC BY-SA 4.0" } },
+      }],
+    },
+  ],
+  navigatorIdentity,
+  { requireYear: true },
+);
+assert.equal(historicalImage, null);
+
 const fixtureRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "quote-library");
 const fixtureExpectations = [
   ["toyota-buyer-order.txt", 36100, 8.49, 72, 739.95],

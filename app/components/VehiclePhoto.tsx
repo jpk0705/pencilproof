@@ -144,7 +144,10 @@ export default function VehiclePhoto({
           const selected = selectBestVehicleImage(
             Object.values(result.query?.pages ?? {}),
             resolvedIdentity,
-            { requireTrim: Boolean(resolvedIdentity.trim && queryIndex === 0) },
+            {
+              requireTrim: Boolean(resolvedIdentity.trim && queryIndex === 0),
+              requireYear: Boolean(resolvedIdentity.year && queryIndex < 2),
+            },
           );
           if (selected) {
             cacheImage(cacheKey, selected);

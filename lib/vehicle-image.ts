@@ -283,7 +283,7 @@ const bodyStyleTokens = new Set([
 ]);
 
 const excludedImageTerms =
-  /\b(?:badge|brochure|cab|dashboard|diagram|engine|grille|interior|logo|manual|parts?|seat|steering|wheel)\b/i;
+  /\b(?:antique|badge|brochure|cab|classic|concept|custom|dashboard|diagram|engine|grille|hot\s*rod|interior|logo|manual|oldtimer|parts?|prototype|reproduction|replica|restomod|retro|seat|steering|vintage|wheel)\b/i;
 
 const normalize = (value: string) =>
   value
@@ -458,7 +458,7 @@ const validLicenseUrl = (value?: string) => {
 export const selectBestVehicleImage = (
   pages: CommonsPage[],
   identity: VehicleIdentity,
-  options?: { requireTrim?: boolean },
+  options?: { requireTrim?: boolean; requireYear?: boolean },
 ): CommonsVehicleImage | null => {
   const makeNeedle = comparable(identity.make);
   const modelNeedles = comparable(identity.model).split(" ").filter(Boolean);
@@ -484,6 +484,7 @@ export const selectBestVehicleImage = (
       const exactYearMatch = Boolean(
         identity.year && new RegExp(`\\b${identity.year}\\b`).test(title),
       );
+      if (options?.requireYear && !exactYearMatch) return null;
       const exactTrimMatch = trimNeedles.length > 0 && trimNeedles.every((part) => titleComparable.includes(part));
       if (options?.requireTrim && !exactTrimMatch) return null;
       const creator =
