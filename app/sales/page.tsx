@@ -184,6 +184,11 @@ export default function SalespersonPage() {
     setBusy(false);
   };
 
+  const signOut = async () => {
+    await clerk?.signOut();
+    window.location.assign("/");
+  };
+
   if (!configured) return <><SiteNav /><main className="sales-page shell"><h1>Salesperson tools are being prepared.</h1><p>PencilProof is finishing the secure account connection.</p></main></>;
   if (!clerk) return <><SiteNav /><main className="sales-page shell"><p>Loading your PencilProof account…</p></main></>;
   if (!clerk.user) return <><SiteNav /><main className="sales-page shell"><p className="kicker">FOR AUTOMOTIVE SALESPEOPLE</p><h1>Know the numbers before you make a promise.</h1><p>Use PencilProof to review a customer quote privately, then share a tracked link so a paid customer can earn you a $20 credit.</p><button className="button button-primary" type="button" onClick={() => clerk.openSignIn(authRedirectOptions())}>Sign in to start</button></main></>;
@@ -191,7 +196,7 @@ export default function SalespersonPage() {
   return <>
     <SiteNav />
     <main className="sales-page shell">
-      <header className="sales-hero"><p className="kicker">PENCILPROOF SALESPERSON TOOLS</p><h1>Share a clearer quote review.</h1><p>Customers get an educational review of the written numbers. You get attribution for the customers you introduce—without seeing their private quote or audit details.</p></header>
+      <header className="sales-hero"><div className="sales-hero-copy"><p className="kicker">PENCILPROOF SALESPERSON TOOLS</p><h1>Share a clearer quote review.</h1><p>Customers get an educational review of the written numbers. You get attribution for the customers you introduce—without seeing their private quote or audit details.</p></div><button className="sales-signout" type="button" onClick={() => void signOut()}>Sign out</button></header>
       <p className="sales-promo-banner"><strong>Try ALPHA1 at checkout.</strong> Get your first month for $1. Limited to the first 100 salesperson redemptions.</p>
       <section className="sales-problem-solution" aria-labelledby="sales-problem-title">
         <div className="sales-story-intro"><p className="kicker">THE SALES CONVERSATION</p><h2 id="sales-problem-title">Turn a complicated worksheet into a clearer next conversation.</h2><p>When the numbers are difficult to explain, the customer may lose confidence before you can answer the real question: “What is included in this payment?”</p></div>
@@ -210,7 +215,6 @@ export default function SalespersonPage() {
       {message && !profile?.subscriptionStatus ? <p className="sales-message" role="status">{message}</p> : null}
       {profile ? <SalesCoach /> : null}
       <p className="sales-note">PencilProof is an educational quote-audit tool. It does not approve financing, negotiate with a dealership, or guarantee savings. Referral rewards never reveal a customer&apos;s quote or audit information.</p>
-      <Link className="text-link" href="/account">Back to My Audits →</Link>
     </main>
   </>;
 }
