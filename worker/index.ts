@@ -1,8 +1,9 @@
-import { accountCookie, accountOwner, accountStub, clearAccountCookie, verifyProviderToken, verifyUserSession } from "./accounts.ts";
+import { accountCookie, accountOwner, accountRoleCookie, accountStub, clearAccountCookie, clearAccountRoleCookie, verifyAccountRoleSession, verifyProviderToken, verifyUserSession, type AccountRole } from "./accounts.ts";
 import { fullSalesCoachPlaybook } from "./salesCoachPlaybook.ts";
 
 const ACCESS_COOKIE = "pp_access";
 const USER_COOKIE = "pp_user";
+const ROLE_COOKIE = "pp_role";
 const DEVICE_COOKIE = "pp_device";
 const PRODUCT_CODE = "full_quote_audit_v1";
 const SALESPERSON_PRODUCT_CODE = "salesperson_plan_v1";
@@ -1038,6 +1039,9 @@ const requestGuestId = async (request: Request) => {
   return validDeviceId(device) ? sha256Hex(device) : null;
 };
 
+const currentAccountRole = async (request: Request, env: Env): Promise<AccountRole> =>
+  await verifyAccountRoleSession(readCookie(request, ROLE_COOKIE), env.SESSION_SECRET) ?? "consumer";
+
 const accountAccess = async (request: Request, env: Env) => {
   if (!env.ACCOUNTS) return null;
   const userId = await currentUser(request, env);
@@ -1053,7 +1057,8 @@ const handleAccount = async (request: Request, env: Env) => {
     return new Response(null, { status: 204, headers: accountCorsHeaders(request, env) });
   }
   if (url.pathname === "/api/account/session" && request.method === "POST") {
-    const body = await request.json().catch(() => ({})) as { email?: string; token?: string };
+    const body = await request.json().catch(() => ({})) as { email?: string; token?: string; role?: AccountRole };
+    const role: AccountRole = body.role === "salesperson" ? "salesperson" : "consumer";
     const provider = typeof body.token === "string" ? await verifyProviderToken(body.token, env) : null;
     if (!provider) return withAccountCors(Response.json({ error: "invalid_account_session" }, { status: 401, headers: noStoreHeaders }), request, env);
     const userResult = await accountCall(env, "/user", { providerSubject: provider.id });
@@ -1074,7 +1079,10 @@ const handleAccount = async (request: Request, env: Env) => {
         exactExpiresAt: legacy.accessExpiresAt,
       });
     }
-    return withAccountCors(Response.json({ ok: true, expiresAt: await accountAccess(request, env) }, { headers: { ...noStoreHeaders, "Set-Cookie": await accountCookie(user.id, env.SESSION_SECRET) } }), request, env);
+    const headers = new Headers(noStoreHeaders);
+    headers.append("Set-Cookie", await accountCookie(user.id, env.SESSION_SECRET));
+    headers.append("Set-Cookie", await accountRoleCookie(role, env.SESSION_SECRET));
+    return withAccountCors(Response.json({ ok: true, role, expiresAt: await accountAccess(request, env) }, { headers }), request, env);
   }
   const userId = await currentUser(request, env);
   if (!userId) return withAccountCors(Response.json({ error: "account_required" }, { status: 401, headers: noStoreHeaders }), request, env);
@@ -1175,7 +1183,7 @@ const handleAccount = async (request: Request, env: Env) => {
     const access = await accountAccess(request, env);
     const result = await accountCall(env, "/audits", { ownerId, action: "list" });
     const marketing = await accountCall(env, "/marketing", { action: "status", userId });
-    return Response.json({ userId, expiresAt: access, audits: result?.audits ?? [], marketingOptedIn: marketing?.optedIn === true }, { headers: noStoreHeaders });
+    return Response.json({ userId, role: await currentAccountRole(request, env), expiresAt: access, audits: result?.audits ?? [], marketingOptedIn: marketing?.optedIn === true }, { headers: noStoreHeaders });
   }
   if (url.pathname === "/api/account/audits" && request.method === "DELETE") {
     const body = await request.json().catch(() => ({})) as { id?: string };
@@ -1185,7 +1193,10 @@ const handleAccount = async (request: Request, env: Env) => {
   }
   if (url.pathname === "/api/account/delete" && request.method === "POST") {
     await accountCall(env, "/delete-user", { userId });
-    return new Response(null, { status: 204, headers: { ...noStoreHeaders, "Set-Cookie": clearAccountCookie } });
+    const headers = new Headers(noStoreHeaders);
+    headers.append("Set-Cookie", clearAccountCookie);
+    headers.append("Set-Cookie", clearAccountRoleCookie);
+    return new Response(null, { status: 204, headers });
   }
   return new Response("Not found", { status: 404, headers: noStoreHeaders });
 };

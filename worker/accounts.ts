@@ -72,6 +72,31 @@ export const verifyUserSession = async (token: string | null, secret: string) =>
   } catch { return null; }
 };
 
+export type AccountRole = "consumer" | "salesperson";
+
+export const createAccountRoleSession = async (role: AccountRole, secret: string, maxAge = 60 * 60 * 24 * 30) => {
+  const payload = b64(encoder.encode(JSON.stringify({ role, exp: Math.floor(Date.now() / 1000) + maxAge })));
+  const signature = b64(new Uint8Array(await crypto.subtle.sign("HMAC", await key(secret), encoder.encode(payload))));
+  return `${payload}.${signature}`;
+};
+
+export const verifyAccountRoleSession = async (token: string | null, secret: string): Promise<AccountRole | null> => {
+  if (!token) return null;
+  const [payload, signature, extra] = token.split(".");
+  if (!payload || !signature || extra) return null;
+  if (!await crypto.subtle.verify("HMAC", await key(secret), unb64(signature), encoder.encode(payload))) return null;
+  try {
+    const parsed = JSON.parse(new TextDecoder().decode(unb64(payload))) as { role?: unknown; exp?: unknown };
+    return (parsed.role === "consumer" || parsed.role === "salesperson")
+      && typeof parsed.exp === "number"
+      && parsed.exp > Math.floor(Date.now() / 1000)
+      ? parsed.role
+      : null;
+  } catch {
+    return null;
+  }
+};
+
 const jwtPart = (token: string, index: number) => {
   const parts = token.split(".");
   if (parts.length !== 3) return null;
@@ -512,5 +537,7 @@ export class AccountStore {
 
 export const accountStub = (env: AccountEnv) => env.ACCOUNTS.get(env.ACCOUNTS.idFromName("pencilproof-accounts"));
 export const accountCookie = async (userId: string, secret: string) => `pp_user=${await createUserSession(userId, secret)}; Max-Age=2592000; Path=/; HttpOnly; Secure; SameSite=Lax`;
+export const accountRoleCookie = async (role: AccountRole, secret: string) => `pp_role=${await createAccountRoleSession(role, secret)}; Max-Age=2592000; Path=/; HttpOnly; Secure; SameSite=Lax`;
 export const clearAccountCookie = "pp_user=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax";
+export const clearAccountRoleCookie = "pp_role=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax";
 export const accountOwner = owner;
