@@ -163,6 +163,10 @@ export default function SalespersonPage() {
   };
 
   const redeemCredit = async () => {
+    if (!profile || profile.availableCredits < 1) {
+      setMessage("No PencilProof credit is available yet. Earn one when a referred customer completes a paid Full Quote Audit.");
+      return;
+    }
     setBusy(true);
     setMessage("");
     try {
@@ -186,6 +190,10 @@ export default function SalespersonPage() {
   };
 
   const giftCredit = async () => {
+    if (!profile || profile.availableCredits < 1) {
+      setMessage("No PencilProof credit is available to gift yet. Earn one when a referred customer completes a paid Full Quote Audit.");
+      return;
+    }
     setBusy(true);
     setMessage("");
     try {
@@ -211,11 +219,16 @@ export default function SalespersonPage() {
   const claimGift = async () => {
     if (!giftCode) return;
     setBusy(true);
-    const response = await fetch(`${SALES_API_URL}/api/salesperson/gift/claim`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ code: giftCode }) });
-    const data = await response.json().catch(() => ({})) as { status?: string };
-    setMessage(data.status === "claimed" ? "$20 PencilProof credit added to your salesperson account." : data.status === "salesperson_profile_required" ? "Create your salesperson profile first, then claim this gift." : "This gift link is unavailable or has already been claimed.");
-    await refresh();
-    setBusy(false);
+    try {
+      const response = await fetch(`${SALES_API_URL}/api/salesperson/gift/claim`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ code: giftCode }) });
+      const data = await response.json().catch(() => ({})) as { status?: string };
+      setMessage(data.status === "claimed" ? "$20 PencilProof credit added to your salesperson account." : data.status === "salesperson_profile_required" ? "Create your salesperson profile first, then claim this gift." : "This gift link is unavailable or has already been claimed.");
+      await refresh();
+    } catch {
+      setMessage("We could not claim this gift right now. Please try again.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const managePlan = async () => {
@@ -268,7 +281,7 @@ export default function SalespersonPage() {
       {profile && !isActive(profile.subscriptionStatus) ? <section id="salesperson-plan" className="sales-card sales-dashboard-onboarding"><p className="kicker">SALESPERSON DASHBOARD</p><h2>{profile.subscriptionStatus === "not_started" ? `Welcome, ${profile.displayName}` : "Resume your salesperson plan"}</h2><p>Your free salesperson account is ready. Activate the $20/month plan to unlock your tracked link, QR code, referral credits, and sales tools.</p><div className="sales-plan-offer"><strong>Try ALPHA1</strong><span>First month for $1 · first 100 redemptions</span></div><button className="button button-primary" type="button" onClick={() => void startSubscription()} disabled={busy}>{busy ? "Opening checkout…" : "Start $20/month plan"}</button>{message ? <p className="sales-message" role="status">{message}</p> : null}</section> : null}
       {profile && isActive(profile.subscriptionStatus) ? <>
         <section className="sales-card sales-dashboard"><div><p className="kicker">YOUR TRACKED LINK</p><h2>{profile.displayName}</h2><p>Customers who use this link are attributed to you. They are told that a paid audit may generate subscription credit for the person who shared the link.</p><div className="sales-link-row"><input readOnly value={referralLink} aria-label="Your referral link" /><button className="button button-quiet" type="button" onClick={() => void navigator.clipboard.writeText(referralLink)}>Copy link</button></div></div>{qrDataUrl ? <img className="sales-qr" src={qrDataUrl} alt="QR code for your PencilProof referral link" width="280" height="280" /> : null}</section>
-        <section className="sales-card sales-credit-card"><div><p className="kicker">REFERRAL CREDITS</p><h2>${profile.availableCredits * 20} available</h2><p>{profile.earnedCredits} credit{profile.earnedCredits === 1 ? "" : "s"} earned. There is no six-referral cap: every verified paid Full Quote Audit adds another $20 credit.</p><p className="sales-field-help">PencilProof credits have no cash value. They can only be applied to your PencilProof salesperson subscription or gifted to another salesperson.</p></div><div className="sales-credit-actions"><button className="button button-primary" type="button" onClick={() => void redeemCredit()} disabled={busy || profile.availableCredits < 1}>Use for my renewal</button><button className="button button-quiet" type="button" onClick={() => void giftCredit()} disabled={busy || profile.availableCredits < 1}>Gift $20 to someone</button><button className="button button-quiet" type="button" onClick={() => void managePlan()} disabled={busy}>Manage subscription</button></div>{giftUrl ? <div className="gift-link"><strong>Gift link</strong><input readOnly value={giftUrl} aria-label="Gift link" /><button className="button button-quiet" type="button" onClick={() => void navigator.clipboard.writeText(giftUrl)}>Copy gift link</button></div> : null}</section>
+        <section className="sales-card sales-credit-card"><div><p className="kicker">REFERRAL CREDITS</p><h2>${profile.availableCredits * 20} available</h2><p>{profile.earnedCredits} credit{profile.earnedCredits === 1 ? "" : "s"} earned. There is no six-referral cap: every verified paid Full Quote Audit adds another $20 credit.</p><p className="sales-field-help">PencilProof credits have no cash value. They can only be applied to your PencilProof salesperson subscription or gifted to another salesperson.</p></div><div className="sales-credit-actions"><button className="button button-primary" type="button" onClick={() => void redeemCredit()} disabled={busy}>Use for my renewal</button><button className="button button-quiet" type="button" onClick={() => void giftCredit()} disabled={busy}>Gift $20 to someone</button><button className="button button-quiet" type="button" onClick={() => void managePlan()} disabled={busy}>Manage subscription</button></div>{giftUrl ? <div className="gift-link"><strong>Gift link</strong><input readOnly value={giftUrl} aria-label="Gift link" /><button className="button button-quiet" type="button" onClick={() => void navigator.clipboard.writeText(giftUrl)}>Copy gift link</button></div> : null}</section>
       </> : null}
       {message && !profile?.subscriptionStatus ? <p className="sales-message" role="status">{message}</p> : null}
       {profile || showCoachPreview ? <SalesCoach unlocked={Boolean(profile && isActive(profile.subscriptionStatus))} playbook={playbook} onSubscribe={() => void startSubscription()} startOpen={showCoachPreview && !profile} /> : null}
