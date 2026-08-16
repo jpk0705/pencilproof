@@ -282,14 +282,31 @@ export const parsePdfFormFields = (rawFields: PdfFormField[]): ImportedDealField
     .map((stream) => {
       const number = firstFormNumber(entries, new RegExp(`^Loan_Payment${stream}_Number$`, "i"));
       const amount = firstFormNumber(entries, new RegExp(`^Loan_Payment${stream}_Amount$`, "i"));
-      return { number, amount };
+      return { stream, number, amount };
     })
-    .filter((stream): stream is { number: number; amount: number } =>
+    .filter((stream): stream is { stream: string; number: number; amount: number } =>
       stream.number !== undefined && stream.amount !== undefined && stream.number >= 12 && stream.number <= 120 && stream.amount >= 50 && stream.amount <= 5000,
     );
   const paymentStream = paymentStreams[0];
   if (paymentStream) {
-    fields.term = paymentStream.number;
+    // Retail installment contracts often list the regular payment count in
+    // one field and the final payment separately (for example, 83 regular
+    // payments plus a final payment due later). Count that final row so the
+    // loan term reflects the total number of payments.
+    const finalPayment = entries
+      .map((entry) => entry.name.match(/^Loan_Payment(\d+)_Amount$/i)?.[1])
+      .filter((stream): stream is string => Boolean(stream) && stream !== paymentStream.stream)
+      .map((stream) => ({
+        stream,
+        amount: firstFormNumber(entries, new RegExp(`^Loan_Payment${stream}_Amount$`, "i")),
+        due: firstFormText(entries, new RegExp(`^Loan_Payment${stream}_Due$`, "i")),
+      }))
+      .filter((candidate): candidate is { stream: string; amount: number; due: string } =>
+        candidate.amount !== undefined && candidate.amount >= 50 && candidate.amount <= 5000 && Boolean(candidate.due),
+      )
+      .sort((first, second) => Number(second.stream) - Number(first.stream))[0];
+    const hasSeparateFinalPayment = finalPayment && Number(finalPayment.stream) > Number(paymentStream.stream);
+    fields.term = paymentStream.number + (hasSeparateFinalPayment ? 1 : 0);
     fields.quotedPayment = paymentStream.amount;
   }
 

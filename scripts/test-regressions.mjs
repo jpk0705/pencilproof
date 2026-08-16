@@ -68,6 +68,8 @@ const acroFormImport = parsePdfFormFields([
   { fieldName: "Loan_AnnualPercentage_Rate", fieldValue: "7.340", subtype: "Widget" },
   { fieldName: "Loan_Payment4_Number", fieldValue: "83", subtype: "Widget" },
   { fieldName: "Loan_Payment4_Amount", fieldValue: "959.32", subtype: "Widget" },
+  { fieldName: "Loan_Payment6_Amount", fieldValue: "959.32", subtype: "Widget" },
+  { fieldName: "Loan_Payment6_Due", fieldValue: "8/15/2033", subtype: "Widget" },
 ]);
 assert.equal(acroFormImport.vehicle, "2016 Dodge Challenger");
 assert.equal(acroFormImport.vin, "1HGCM82633A004352");
@@ -80,7 +82,7 @@ assert.equal(acroFormImport.tradeValue, 0);
 assert.equal(acroFormImport.cashDown, 0);
 assert.equal(acroFormImport.rebate, 0);
 closeTo(acroFormImport.apr, 7.34);
-assert.equal(acroFormImport.term, 83);
+assert.equal(acroFormImport.term, 84);
 closeTo(acroFormImport.quotedPayment, 959.32);
 
 const phoneBridgeSource = await readFile(join(projectRoot, "app/components/PhoneCameraBridge.tsx"), "utf8");
