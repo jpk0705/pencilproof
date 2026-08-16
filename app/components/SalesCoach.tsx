@@ -126,6 +126,11 @@ const parsePlaybook = (source: string): Objection[] => {
 
 const findObjection = (prompt: string, source: Objection[]): Objection | null => {
   const text = prompt.toLowerCase();
+  const tradeValueIntent = /\btrade\b/.test(text) && /\b(?:more|enough|value|worth|allowance|appraisal|appraising)\b/.test(text) && !/\b(?:discount|deal|another|additional)\b/.test(text);
+  if (tradeValueIntent) {
+    const tradeObjection = source.find((objection) => objection.category.toLowerCase().includes("trade-in"));
+    if (tradeObjection) return tradeObjection;
+  }
   let bestObjection: Objection | null = null;
   let bestScore = 0;
   let bestIndex = Number.MAX_SAFE_INTEGER;
