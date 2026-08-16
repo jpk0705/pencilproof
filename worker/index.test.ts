@@ -155,6 +155,7 @@ test("phone camera sessions are short-lived and origin restricted", async () => 
   assert.match(payload.token ?? "", /^[A-Za-z0-9_-]{43}$/);
   assert.match(payload.phoneUrl ?? "", /^https:\/\/audit\.pencilproof\.com\/phone\?/);
   assert.ok((payload.expiresAt ?? 0) > Date.now());
+  assert.equal(new URL(payload.phoneUrl ?? "https://audit.pencilproof.com/phone").searchParams.get("expiresAt"), String(payload.expiresAt));
 
   const forbidden = await handleRequest(
     new Request("https://audit.pencilproof.com/api/phone-session", {

@@ -5,6 +5,9 @@ import { useEffect, useRef, useState } from "react";
 const PHONE_API_ORIGIN = "https://audit.pencilproof.com";
 const PHONE_SOCKET_ORIGIN = PHONE_API_ORIGIN.replace(/^https:/, "wss:");
 const PHONE_CHUNK_SIZE = 256 * 1024;
+const PHONE_KEEPALIVE_INTERVAL_MS = 20_000;
+const PHONE_RECONNECT_MAX_DELAY_MS = 5_000;
+const PHONE_SESSION_FALLBACK_MAX_AGE_MS = 10 * 60 * 1000;
 
 type PhoneState = "connecting" | "ready" | "sending" | "sent" | "error";
 
@@ -13,33 +16,86 @@ export default function PhoneCameraPage() {
   const [message, setMessage] = useState("Connecting to your computer…");
   const [progress, setProgress] = useState(0);
   const socketRef = useRef<WebSocket | null>(null);
+  const sentRef = useRef(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const session = params.get("session") ?? "";
     const token = params.get("token") ?? "";
+    const parsedExpiresAt = Number(params.get("expiresAt"));
+    const expiresAt = Number.isFinite(parsedExpiresAt) && parsedExpiresAt > Date.now()
+      ? parsedExpiresAt
+      : Date.now() + PHONE_SESSION_FALLBACK_MAX_AGE_MS;
     if (!session || !token) {
       setState("error");
       setMessage("This camera link is incomplete. Scan the QR code again from your computer.");
       return;
     }
-    const socket = new WebSocket(`${PHONE_SOCKET_ORIGIN}/api/phone-session?session=${encodeURIComponent(session)}&token=${encodeURIComponent(token)}&role=phone`);
-    socketRef.current = socket;
-    socket.onopen = () => {
-      setState("ready");
-      setMessage("Connected. Take a clear photo of the full quote.");
-      socket.send(JSON.stringify({ type: "hello" }));
+    let stopped = false;
+    let reconnectTimer: number | null = null;
+    let keepaliveTimer: number | null = null;
+    let reconnectDelay = 1_000;
+    sentRef.current = false;
+
+    const clearTimers = () => {
+      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
+      if (keepaliveTimer !== null) window.clearInterval(keepaliveTimer);
+      reconnectTimer = null;
+      keepaliveTimer = null;
     };
-    socket.onerror = () => {
-      setState("error");
-      setMessage("The connection could not be made. Scan the QR code again from your computer.");
+
+    const connect = () => {
+      if (stopped || sentRef.current || Date.now() >= expiresAt) {
+        if (!stopped && !sentRef.current) {
+          setState("error");
+          setMessage("This phone camera session expired. Scan the QR code again to reconnect.");
+        }
+        return;
+      }
+      const socket = new WebSocket(`${PHONE_SOCKET_ORIGIN}/api/phone-session?session=${encodeURIComponent(session)}&token=${encodeURIComponent(token)}&role=phone`);
+      socketRef.current = socket;
+      socket.onopen = () => {
+        if (stopped) return;
+        reconnectDelay = 1_000;
+        if (keepaliveTimer !== null) window.clearInterval(keepaliveTimer);
+        keepaliveTimer = window.setInterval(() => {
+          if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "keepalive" }));
+        }, PHONE_KEEPALIVE_INTERVAL_MS);
+        setState("ready");
+        setMessage("Connected. Take a clear photo of the full quote.");
+        socket.send(JSON.stringify({ type: "hello" }));
+      };
+      socket.onerror = () => {
+        if (stopped || sentRef.current) return;
+        setState("connecting");
+        setMessage("The connection paused. Reconnecting...");
+      };
+      socket.onclose = () => {
+        if (keepaliveTimer !== null) window.clearInterval(keepaliveTimer);
+        keepaliveTimer = null;
+        if (stopped || sentRef.current || socketRef.current !== socket) return;
+        socketRef.current = null;
+        if (Date.now() >= expiresAt) {
+          setState("error");
+          setMessage("This phone camera session expired. Scan the QR code again to reconnect.");
+          return;
+        }
+        setState("connecting");
+        setMessage("The connection paused. Reconnecting...");
+        const delay = Math.min(reconnectDelay, PHONE_RECONNECT_MAX_DELAY_MS);
+        reconnectDelay = Math.min(delay * 2, PHONE_RECONNECT_MAX_DELAY_MS);
+        reconnectTimer = window.setTimeout(() => {
+          reconnectTimer = null;
+          connect();
+        }, delay);
+      };
     };
-    socket.onclose = () => {
-      setState((current) => current === "sent" ? current : "error");
-      setMessage((current) => current || "The camera session ended.");
-    };
+
+    connect();
     return () => {
-      socket.close(1000, "closed");
+      stopped = true;
+      clearTimers();
+      socketRef.current?.close(1000, "closed");
       socketRef.current = null;
     };
   }, []);
@@ -70,6 +126,7 @@ export default function PhoneCameraPage() {
       setProgress(Math.min(1, (offset + chunk.byteLength) / bytes.byteLength));
     }
     socket.send(JSON.stringify({ type: "photo-end" }));
+    sentRef.current = true;
     setState("sent");
     setProgress(1);
     setMessage("Photo sent. You can return to your computer.");

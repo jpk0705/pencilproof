@@ -6,6 +6,8 @@ import { useEffect, useRef, useState } from "react";
 const PHONE_API_ORIGIN = "https://audit.pencilproof.com";
 const PHONE_SOCKET_ORIGIN = PHONE_API_ORIGIN.replace(/^https:/, "wss:");
 const PHONE_CHUNK_SIZE = 256 * 1024;
+const PHONE_KEEPALIVE_INTERVAL_MS = 20_000;
+const PHONE_RECONNECT_MAX_DELAY_MS = 5_000;
 
 type PhoneSession = { expiresAt: number; phoneUrl: string; sessionId: string; token: string };
 type PhoneCameraBridgeProps = { disabled?: boolean; buttonLabel?: string; onFile: (file: File) => void | Promise<void> };
@@ -21,18 +23,27 @@ export default function PhoneCameraBridge({ disabled = false, buttonLabel = "Sca
   const [qrDataUrl, setQrDataUrl] = useState("");
   const socketRef = useRef<WebSocket | null>(null);
   const incomingRef = useRef<IncomingPhoto | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const keepaliveTimerRef = useRef<number | null>(null);
+  const reconnectDelayRef = useRef(1_000);
+  const manualCloseRef = useRef(false);
   const mountedRef = useRef(true);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      if (reconnectTimerRef.current !== null) window.clearTimeout(reconnectTimerRef.current);
+      if (keepaliveTimerRef.current !== null) window.clearInterval(keepaliveTimerRef.current);
       socketRef.current?.close(1000, "closed");
       socketRef.current = null;
     };
   }, []);
 
   const close = () => {
+    manualCloseRef.current = true;
+    if (reconnectTimerRef.current !== null) window.clearTimeout(reconnectTimerRef.current);
+    if (keepaliveTimerRef.current !== null) window.clearInterval(keepaliveTimerRef.current);
     socketRef.current?.close(1000, "closed");
     socketRef.current = null;
     incomingRef.current = null;
@@ -42,36 +53,25 @@ export default function PhoneCameraBridge({ disabled = false, buttonLabel = "Sca
     setQrDataUrl("");
   };
 
-  const start = async () => {
-    if (disabled || status === "creating") return;
-    setOpen(true);
-    setStatus("creating");
-    setMessage("Creating a secure camera session...");
-    try {
-      const response = await fetch(`${PHONE_API_ORIGIN}/api/phone-session`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "omit",
-      });
-      const session = await response.json() as Partial<PhoneSession> & { error?: string };
-      if (!response.ok || !session.sessionId || !session.token || !session.phoneUrl || !session.expiresAt) throw new Error(session.error ?? "session");
-      const completeSession = session as PhoneSession;
-      const dataUrl = await QRCode.toDataURL(completeSession.phoneUrl, {
-        width: 280,
-        margin: 2,
-        errorCorrectionLevel: "M",
-        color: { dark: "#10284b", light: "#ffffff" },
-      });
-      if (!mountedRef.current) return;
-      setQrDataUrl(dataUrl);
-      setStatus("waiting");
-      setMessage("Scan this code with your phone camera.");
-
-      const socket = new WebSocket(sessionSocketUrl(completeSession));
+  const connectDesktopSocket = (session: PhoneSession, delay = 1_000) => {
+    if (!mountedRef.current || manualCloseRef.current || Date.now() >= session.expiresAt) return;
+    if (reconnectTimerRef.current !== null) window.clearTimeout(reconnectTimerRef.current);
+    reconnectTimerRef.current = window.setTimeout(() => {
+      reconnectTimerRef.current = null;
+      if (!mountedRef.current || manualCloseRef.current || Date.now() >= session.expiresAt) return;
+      socketRef.current?.close(1000, "reconnecting");
+      socketRef.current = null;
+      const socket = new WebSocket(sessionSocketUrl(session));
       socket.binaryType = "arraybuffer";
       socketRef.current = socket;
       socket.onopen = () => {
-        if (!mountedRef.current) return;
+        if (!mountedRef.current || manualCloseRef.current) return;
+        reconnectDelayRef.current = 1_000;
+        if (keepaliveTimerRef.current !== null) window.clearInterval(keepaliveTimerRef.current);
+        keepaliveTimerRef.current = window.setInterval(() => {
+          if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "keepalive" }));
+        }, PHONE_KEEPALIVE_INTERVAL_MS);
+        setStatus("waiting");
         setMessage("Waiting for your phone to connect...");
         socket.send(JSON.stringify({ type: "hello" }));
       };
@@ -102,7 +102,7 @@ export default function PhoneCameraBridge({ disabled = false, buttonLabel = "Sca
             if (mountedRef.current) window.setTimeout(() => close(), 900);
           } else if (payload.type === "peer_disconnected" && mountedRef.current) {
             setStatus("waiting");
-            setMessage("The phone disconnected. Scan the code again to reconnect.");
+            setMessage("The phone disconnected. Reconnecting if the camera page is still open...");
           }
           return;
         }
@@ -114,10 +114,55 @@ export default function PhoneCameraBridge({ disabled = false, buttonLabel = "Sca
         if (bytes.byteLength <= PHONE_CHUNK_SIZE) incoming.chunks.push(bytes);
       };
       socket.onerror = () => {
-        if (!mountedRef.current) return;
-        setStatus("error");
-        setMessage("The phone camera connection could not start. Try again or upload the file here.");
+        if (!mountedRef.current || manualCloseRef.current) return;
+        setStatus("waiting");
+        setMessage("The connection paused. Reconnecting...");
       };
+      socket.onclose = () => {
+        if (keepaliveTimerRef.current !== null) window.clearInterval(keepaliveTimerRef.current);
+        if (!mountedRef.current || manualCloseRef.current || socketRef.current !== socket) return;
+        socketRef.current = null;
+        if (Date.now() >= session.expiresAt) {
+          setStatus("error");
+          setMessage("This phone camera session expired. Start a new scan to reconnect.");
+          return;
+        }
+        setStatus("waiting");
+        setMessage("The connection paused. Reconnecting...");
+        const nextDelay = Math.min(reconnectDelayRef.current, PHONE_RECONNECT_MAX_DELAY_MS);
+        reconnectDelayRef.current = Math.min(nextDelay * 2, PHONE_RECONNECT_MAX_DELAY_MS);
+        connectDesktopSocket(session, nextDelay);
+      };
+    }, delay);
+  };
+
+  const start = async () => {
+    if (disabled || status === "creating") return;
+    manualCloseRef.current = false;
+    reconnectDelayRef.current = 1_000;
+    setOpen(true);
+    setStatus("creating");
+    setMessage("Creating a secure camera session...");
+    try {
+      const response = await fetch(`${PHONE_API_ORIGIN}/api/phone-session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "omit",
+      });
+      const session = await response.json() as Partial<PhoneSession> & { error?: string };
+      if (!response.ok || !session.sessionId || !session.token || !session.phoneUrl || !session.expiresAt) throw new Error(session.error ?? "session");
+      const completeSession = session as PhoneSession;
+      const dataUrl = await QRCode.toDataURL(completeSession.phoneUrl, {
+        width: 280,
+        margin: 2,
+        errorCorrectionLevel: "M",
+        color: { dark: "#10284b", light: "#ffffff" },
+      });
+      if (!mountedRef.current) return;
+      setQrDataUrl(dataUrl);
+      setStatus("waiting");
+      setMessage("Scan this code with your phone camera.");
+      connectDesktopSocket(completeSession, 0);
     } catch {
       setStatus("error");
       setMessage("Could not create the phone camera session. Try again or upload the file here.");
@@ -139,7 +184,7 @@ export default function PhoneCameraBridge({ disabled = false, buttonLabel = "Sca
           {qrDataUrl ? (
             <div className="phone-camera-content">
               <div className="phone-camera-qr-wrap"><img className="phone-camera-qr" src={qrDataUrl} alt="QR code to open the PencilProof phone camera" /></div>
-              <div className="phone-camera-instructions"><strong>{message}</strong><ol><li>Open your phone camera.</li><li>Point it at this QR code.</li><li>Tap the link, then take the quote photo.</li></ol><small>The code expires in about 10 minutes. Your photo streams directly to this browser.</small></div>
+              <div className="phone-camera-instructions"><strong>{message}</strong><ol><li>Open your phone camera.</li><li>Point it at this QR code.</li><li>Tap the link, then take the quote photo.</li></ol><small>The code stays active for about 10 minutes. If the phone briefly sleeps or changes network, the connection will try to reconnect automatically.</small></div>
             </div>
           ) : null}
           {status === "error" ? <p className="phone-camera-error" role="alert">{message}</p> : null}

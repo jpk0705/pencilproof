@@ -248,7 +248,7 @@ const handlePhoneSession = async (request: Request, env: Env) => {
     if (!created.ok) return Response.json({ error: "PHONE_SESSION_UNAVAILABLE" }, { status: 503, headers });
     return Response.json({
       expiresAt,
-      phoneUrl: `${env.SITE_ORIGIN}/phone?session=${encodeURIComponent(sessionId)}&token=${encodeURIComponent(token)}`,
+      phoneUrl: `${env.SITE_ORIGIN}/phone?session=${encodeURIComponent(sessionId)}&token=${encodeURIComponent(token)}&expiresAt=${expiresAt}`,
       sessionId,
       token,
     }, { headers });
@@ -1818,9 +1818,9 @@ export class PhoneSessionStore {
   }
 
   webSocketMessage(socket: PhoneSessionSocket, message: string | ArrayBuffer) {
-    const peer = this.peer(socket);
-    if (!peer || peer.readyState !== WebSocket.OPEN) return;
     if (typeof message !== "string") {
+      const peer = this.peer(socket);
+      if (!peer || peer.readyState !== WebSocket.OPEN) return;
       if (message.byteLength > PHONE_SESSION_CHUNK_LIMIT) {
         socket.close(1009, "chunk too large");
         return;
@@ -1834,10 +1834,10 @@ export class PhoneSessionStore {
     }
     try {
       const payload = JSON.parse(message) as { type?: string };
-      if (
-        typeof payload.type !== "string"
-        || !["hello", "photo-start", "photo-end"].includes(payload.type)
-      ) return;
+      if (payload.type === "keepalive") return;
+      if (typeof payload.type !== "string" || !["hello", "photo-start", "photo-end"].includes(payload.type)) return;
+      const peer = this.peer(socket);
+      if (!peer || peer.readyState !== WebSocket.OPEN) return;
       peer.send(message);
     } catch {
       socket.close(1003, "invalid message");
