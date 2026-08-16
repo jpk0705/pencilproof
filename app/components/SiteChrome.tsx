@@ -14,7 +14,6 @@ export function SiteNav() {
         <Link href="/how-it-works">How it works</Link>
         <Link href="/what-it-checks">What it checks</Link>
         <Link href="/pricing">Pricing</Link>
-        <Link className="nav-sales-link" href="/sales">For salespeople</Link>
         <AccountNav />
         <Link className="nav-cta" href="/analyze">Upload your quote</Link>
       </div>

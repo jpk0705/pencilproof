@@ -7,6 +7,7 @@ import { authRedirectOptions, createLoadedClerk } from "@/lib/clerk-client";
 
 const ACCOUNT_URL = "https://audit.pencilproof.com/account";
 const ACCOUNT_API_URL = "https://audit.pencilproof.com";
+const SALES_URL = "https://audit.pencilproof.com/sales";
 
 const syncAccountContact = async (instance: Clerk) => {
   const token = await instance.session?.getToken();
@@ -71,9 +72,9 @@ export default function AccountNav() {
   }, []);
 
   if (!clerk) {
-    return <Link className="nav-account-link" href={ACCOUNT_URL} aria-label="Sign in">Sign in</Link>;
+    return <><Link className="nav-sales-link" href="/sales">For salespeople</Link><Link className="nav-account-link" href={ACCOUNT_URL} aria-label="Sign in">Sign in</Link></>;
   }
   return signedIn
-    ? <span className="nav-account-session"><Link className="nav-account-link" href={isSalesperson ? "https://audit.pencilproof.com/sales" : ACCOUNT_URL}>{isSalesperson ? "Salesperson Dashboard" : "My Audits"}</Link><span className="nav-account-email" title={`Signed in as ${signedInEmail}`}>{signedInEmail || "Signed-in account"}</span></span>
-    : <button className="nav-account-button" type="button" onClick={() => clerk.openSignIn(authRedirectOptions())}>Sign in</button>;
+    ? <>{!isSalesperson ? <Link className="nav-sales-link" href={SALES_URL}>Salesperson Dashboard</Link> : null}<span className="nav-account-session"><Link className="nav-account-link" href={isSalesperson ? SALES_URL : ACCOUNT_URL}>{isSalesperson ? "Salesperson Dashboard" : "My Audits"}</Link><span className="nav-account-email" title={`Signed in as ${signedInEmail}`}>{signedInEmail || "Signed-in account"}</span></span></>
+    : <><Link className="nav-sales-link" href="/sales">For salespeople</Link><button className="nav-account-button" type="button" onClick={() => clerk.openSignIn(authRedirectOptions())}>Sign in</button></>;
 }
