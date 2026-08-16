@@ -41,6 +41,7 @@ assert.match(salesPageSource, /Your credit is still available/);
 assert.match(salesPageSource, /finally \{\s*setBusy\(false\);\s*\}/);
 assert.match(salesPageSource, /No PencilProof credit is available yet/);
 assert.doesNotMatch(salesPageSource, /disabled=\{busy \|\| profile\.availableCredits < 1\}/);
+assert.match(salesPageSource, /message && profile && isActive\(profile\.subscriptionStatus\)/);
 const salesWorkerSource = await readFile(join(projectRoot, "worker/index.ts"), "utf8");
 assert.match(salesWorkerSource, /addSalespersonSubscriptionCredit/);
 assert.match(salesWorkerSource, /stripeRequest\("\/invoiceitems"/);
