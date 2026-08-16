@@ -5,9 +5,9 @@ import { Clerk } from "@clerk/clerk-js";
 import { useEffect, useState } from "react";
 import { authRedirectOptions, createLoadedClerk, getAuthContext, type PencilProofAuthContext } from "@/lib/clerk-client";
 
-const ACCOUNT_URL = "https://audit.pencilproof.com/account";
+const ACCOUNT_URL = "/account";
 const ACCOUNT_API_URL = "https://audit.pencilproof.com";
-const SALES_URL = "https://audit.pencilproof.com/sales";
+const SALES_URL = "/sales";
 
 const syncAccountContact = async (instance: Clerk, authContext: PencilProofAuthContext) => {
   const token = await instance.session?.getToken();
