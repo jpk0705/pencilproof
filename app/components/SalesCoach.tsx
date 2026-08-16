@@ -154,24 +154,13 @@ const respond = (prompt: string, source: Objection[], unlocked: boolean) => {
 export default function SalesCoach({ unlocked = false, playbook = null, onSubscribe, startOpen = false }: SalesCoachProps) {
   const [open, setOpen] = useState(startOpen);
   const [prompt, setPrompt] = useState("");
-  const [librarySearch, setLibrarySearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("All categories");
   const [showAllResponses, setShowAllResponses] = useState(false);
   const [lastAnswers, setLastAnswers] = useState<string[]>([]);
   const [messages, setMessages] = useState<CoachMessage[]>([
-    { role: "coach", text: "Choose one of the five common objections below, or type a customer objection to practice. Each topic has three saved responses and rotates the order for practice." },
+    { role: "coach", text: "Type a customer scenario to practice. I’ll match it to a saved response when it fits the available coaching topics." },
   ]);
   const fullObjections = useMemo(() => unlocked && playbook ? parsePlaybook(playbook) : [], [playbook, unlocked]);
   const practiceObjections = unlocked && fullObjections.length > 0 ? fullObjections : previewObjections;
-  const categories = useMemo(() => ["All categories", ...Array.from(new Set(fullObjections.map((objection) => objection.category)))], [fullObjections]);
-  const filteredObjections = useMemo(() => {
-    const query = librarySearch.trim().toLowerCase();
-    return fullObjections.filter((objection) => {
-      const categoryMatch = categoryFilter === "All categories" || objection.category === categoryFilter;
-      const searchMatch = !query || (objection.question + " " + objection.category + " " + objection.responses.join(" ")).toLowerCase().includes(query);
-      return categoryMatch && searchMatch;
-    });
-  }, [categoryFilter, fullObjections, librarySearch]);
   const lastMessage = useMemo(() => messages[messages.length - 1], [messages]);
 
   const ask = (value = prompt) => {
@@ -191,13 +180,11 @@ export default function SalesCoach({ unlocked = false, playbook = null, onSubscr
   return <div className={"sales-coach " + (open ? "is-open" : "")}>
     {open ? <section id="sales-coach-panel" className="sales-coach-panel" aria-label="PencilProof sales coach">
       <div className="sales-coach-head"><div><p className="kicker">PRIVATE PRACTICE</p><h2>Sales coach</h2></div><button className="sales-coach-close" type="button" onClick={() => setOpen(false)} aria-label="Close sales coach">×</button></div>
-      <p className="sales-coach-note">{unlocked ? "Full subscriber library: browse every category, search the complete playbook, and practice all saved responses privately." : "Free preview: five common dealership objections. Use this when you’re stuck, then subscribe to unlock the complete categorized playbook."}</p>
+      <p className="sales-coach-note">{unlocked ? "Type a customer scenario to practice any saved objection. Your saved responses stay hidden until you ask." : "Free preview: five common dealership objections. You can choose one or type a customer scenario, then subscribe to unlock the complete categorized playbook."}</p>
       <div className="sales-coach-messages" aria-live="polite">{messages.slice(-4).map((message, index) => <p className={"sales-coach-message " + message.role} key={message.role + "-" + index}>{message.text}</p>)}</div>
       {unlocked && lastAnswers.length > 0 ? <div className="sales-coach-response-actions"><button className="button button-quiet" type="button" onClick={() => setShowAllResponses((current) => !current)}>{showAllResponses ? "Hide saved responses" : "Show all " + lastAnswers.length + " saved responses"}</button>{showAllResponses ? <div className="sales-coach-all-responses">{lastAnswers.map((answer, index) => <p key={"answer-" + index}><b>Approach {index + 1}</b>{answer}</p>)}</div> : null}</div> : null}
-      <p className="sales-coach-section-label">TOP 5 QUICK PRACTICE</p>
-      <div className="sales-coach-suggestions">{previewObjections.map((objection) => <button type="button" key={objection.question} onClick={() => ask(objection.question)}><small>{objection.category}</small>{objection.question}</button>)}</div>
-      {unlocked ? <><p className="sales-coach-section-label">FULL PLAYBOOK · {fullObjections.length} OBJECTIONS</p><div className="sales-coach-library-controls"><select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} aria-label="Filter playbook category">{categories.map((category) => <option key={category}>{category}</option>)}</select><input value={librarySearch} onChange={(event) => setLibrarySearch(event.target.value)} placeholder="Search objections…" aria-label="Search full playbook" /></div><div className="sales-coach-library">{filteredObjections.map((objection) => <button type="button" key={objection.category + "-" + objection.question} onClick={() => ask(objection.question)}><small>{objection.category}</small>{objection.question}</button>)}</div>{playbook ? <details className="sales-coach-reference"><summary>Open complete coaching reference</summary><pre>{playbook}</pre></details> : null}</> : <div className="sales-coach-upgrade"><strong>Use this when you’re stuck.</strong><p>Subscribe to unlock the full categorized objection playbook, every saved answer, and the complete coaching reference.</p><button className="button button-primary" type="button" onClick={onSubscribe} disabled={!onSubscribe}>Go to secure checkout</button></div>}
-      <div className="sales-coach-composer"><label className="sales-coach-composer-label" htmlFor="sales-coach-prompt">Ask a practice question</label><form className="sales-coach-form" onSubmit={(event) => { event.preventDefault(); ask(); }}><input id="sales-coach-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Type a customer objection…" aria-label="Ask the sales coach" /><button className="button button-primary sales-coach-submit" type="submit">Ask</button></form></div>
+      {!unlocked ? <><p className="sales-coach-section-label">TOP 5 QUICK PRACTICE</p><div className="sales-coach-suggestions">{previewObjections.map((objection) => <button type="button" key={objection.question} onClick={() => ask(objection.question)}><small>{objection.category}</small>{objection.question}</button>)}</div><div className="sales-coach-upgrade"><strong>Use this when you’re stuck.</strong><p>Subscribe to unlock the complete saved-response library while keeping the practice screen focused on the scenario you type.</p><button className="button button-primary" type="button" onClick={onSubscribe} disabled={!onSubscribe}>Go to secure checkout</button></div></> : null}
+      <div className="sales-coach-composer"><label className="sales-coach-composer-label" htmlFor="sales-coach-prompt">Type a customer scenario</label><form className="sales-coach-form" onSubmit={(event) => { event.preventDefault(); ask(); }}><input id="sales-coach-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Example: The payment is too high…" aria-label="Type a customer scenario" /><button className="button button-primary sales-coach-submit" type="submit">Ask</button></form></div>
       {lastMessage.role === "coach" ? <small className="sales-coach-footer">A.C.I.C.: acknowledge → clarify → isolate → close conditionally. Keep the customer’s choice and the written numbers at the center.</small> : null}
     </section> : null}
     <button className="sales-coach-toggle" type="button" onClick={() => setOpen((current) => !current)} aria-expanded={open} aria-controls="sales-coach-panel"><span aria-hidden="true">✦</span>{open ? "Close coach" : "Practice with sales coach"}</button>

@@ -36,6 +36,7 @@ import {
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const salesPageSource = await readFile(join(projectRoot, "app/sales/page.tsx"), "utf8");
 const accountNavSource = await readFile(join(projectRoot, "app/components/AccountNav.tsx"), "utf8");
+const salesCoachSource = await readFile(join(projectRoot, "app/components/SalesCoach.tsx"), "utf8");
 
 assert.match(salesPageSource, /const PUBLIC_SALES_URL = "https:\/\/pencilproof\.com\/sales"/);
 assert.match(salesPageSource, /Your credit is still available/);
@@ -45,6 +46,8 @@ assert.doesNotMatch(salesPageSource, /disabled=\{busy \|\| profile\.availableCre
 assert.match(salesPageSource, /message && profile && isActive\(profile\.subscriptionStatus\)/);
 assert.match(accountNavSource, /const ACCOUNT_URL = "\/account"/);
 assert.match(accountNavSource, /const SALES_URL = "\/sales"/);
+assert.match(salesCoachSource, /Type a customer scenario/);
+assert.doesNotMatch(salesCoachSource, /FULL PLAYBOOK ·/);
 const salesWorkerSource = await readFile(join(projectRoot, "worker/index.ts"), "utf8");
 assert.match(salesWorkerSource, /addSalespersonSubscriptionCredit/);
 assert.match(salesWorkerSource, /stripeRequest\("\/invoiceitems"/);
