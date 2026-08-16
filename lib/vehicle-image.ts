@@ -20,6 +20,7 @@ export type CommonsVehicleImage = {
   license: string;
   licenseUrl?: string;
   exactYearMatch: boolean;
+  exactTrimMatch?: boolean;
 };
 
 type CommonsImageInfo = {
@@ -406,11 +407,16 @@ export const parseVehicleIdentity = (
 export const buildVehicleImageSearchQueries = (
   identity: VehicleIdentity,
 ) => {
+  const exactWithTrim = [identity.year, identity.make, identity.model, identity.trim]
+    .filter(Boolean)
+    .join(" ");
   const exact = [identity.year, identity.make, identity.model]
     .filter(Boolean)
     .join(" ");
   const representative = `${identity.make} ${identity.model}`;
-  return exact === representative ? [representative] : [exact, representative];
+  return [...new Set(
+    [exactWithTrim, exact, representative].filter(Boolean),
+  )];
 };
 
 const validCommonsUrl = (value?: string) => {
@@ -452,9 +458,11 @@ const validLicenseUrl = (value?: string) => {
 export const selectBestVehicleImage = (
   pages: CommonsPage[],
   identity: VehicleIdentity,
+  options?: { requireTrim?: boolean },
 ): CommonsVehicleImage | null => {
   const makeNeedle = comparable(identity.make);
   const modelNeedles = comparable(identity.model).split(" ").filter(Boolean);
+  const trimNeedles = comparable(identity.trim ?? "").split(" ").filter(Boolean);
   const candidates = pages
     .map<{ image: CommonsVehicleImage; score: number } | null>((page) => {
       const title = normalize((page.title ?? "").replace(/^File:/i, ""));
@@ -476,6 +484,8 @@ export const selectBestVehicleImage = (
       const exactYearMatch = Boolean(
         identity.year && new RegExp(`\\b${identity.year}\\b`).test(title),
       );
+      const exactTrimMatch = trimNeedles.length > 0 && trimNeedles.every((part) => titleComparable.includes(part));
+      if (options?.requireTrim && !exactTrimMatch) return null;
       const creator =
         stripHtml(imageInfo?.extmetadata?.Artist?.value) || "Wikimedia contributor";
       const license = stripHtml(
@@ -498,10 +508,11 @@ export const selectBestVehicleImage = (
         license,
         ...(licenseUrl ? { licenseUrl } : {}),
         exactYearMatch,
+        ...(exactTrimMatch ? { exactTrimMatch: true } : {}),
       };
       return {
         image,
-        score: (exactYearMatch ? 10 : 0) + frontOrExteriorBonus,
+        score: (exactTrimMatch ? 20 : 0) + (exactYearMatch ? 10 : 0) + frontOrExteriorBonus,
       };
     })
     .filter(

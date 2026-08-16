@@ -111,7 +111,16 @@ export default function VehiclePhoto({
       return;
     }
 
-    const cacheKey = resolvedIdentity.displayName.toLowerCase().replace(/\s+/g, "-");
+    const cacheKey = [
+      resolvedIdentity.year,
+      resolvedIdentity.make,
+      resolvedIdentity.model,
+      resolvedIdentity.trim,
+    ]
+      .filter(Boolean)
+      .join("-")
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, "-");
     const cached = readCachedImage(cacheKey);
     if (cached) {
       setPhoto({ status: "ready", image: cached });
@@ -122,7 +131,8 @@ export default function VehiclePhoto({
     setPhoto({ status: "loading" });
 
     const load = async () => {
-      for (const query of buildVehicleImageSearchQueries(resolvedIdentity)) {
+      const queries = buildVehicleImageSearchQueries(resolvedIdentity);
+      for (const [queryIndex, query] of queries.entries()) {
         try {
           const response = await fetch(commonsSearchUrl(query), {
             signal: controller.signal,
@@ -134,6 +144,7 @@ export default function VehiclePhoto({
           const selected = selectBestVehicleImage(
             Object.values(result.query?.pages ?? {}),
             resolvedIdentity,
+            { requireTrim: Boolean(resolvedIdentity.trim && queryIndex === 0) },
           );
           if (selected) {
             cacheImage(cacheKey, selected);
@@ -221,7 +232,7 @@ export default function VehiclePhoto({
           <span>
             {isFallback
               ? "Representative vehicle image · Actual trim and color may vary"
-              : `${image?.exactYearMatch ? "Model-year match" : "Representative model photo"} · Actual trim and color may vary`}
+              : `${image?.exactTrimMatch ? "Trim match" : image?.exactYearMatch ? "Model-year match" : "Representative model photo"} · Actual trim and color may vary`}
           </span>
         </div>
         <div className="vehicle-photo-match-grid" aria-label="Detected vehicle details">

@@ -673,6 +673,7 @@ assert.deepEqual(navigatorIdentity, {
   displayName: "2022 Lincoln Navigator",
 });
 assert.deepEqual(buildVehicleImageSearchQueries(navigatorIdentity), [
+  "2022 Lincoln Navigator Black Label",
   "2022 Lincoln Navigator",
   "Lincoln Navigator",
 ]);
@@ -770,9 +771,26 @@ const commonsImage = selectBestVehicleImage(
   navigatorIdentity,
 );
 assert.equal(commonsImage?.title, "2022 Lincoln Navigator Black Label front.jpg");
+assert.equal(commonsImage?.exactTrimMatch, true);
 assert.equal(commonsImage?.creator, "Anorak Cline");
 assert.equal(commonsImage?.license, "CC BY 2.0");
 assert.equal(commonsImage?.exactYearMatch, true);
+
+const trimOnlyImage = selectBestVehicleImage(
+  [
+    {
+      title: "File:2022 Lincoln Navigator front.jpg",
+      imageinfo: [{
+        thumburl: "https://upload.wikimedia.org/navigator-generic.jpg",
+        descriptionurl: "https://commons.wikimedia.org/wiki/File:2022_Lincoln_Navigator_front.jpg",
+        extmetadata: { LicenseShortName: { value: "CC BY 4.0" } },
+      }],
+    },
+  ],
+  navigatorIdentity,
+  { requireTrim: true },
+);
+assert.equal(trimOnlyImage, null);
 
 const fixtureRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "quote-library");
 const fixtureExpectations = [
