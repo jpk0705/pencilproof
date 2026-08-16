@@ -17,6 +17,7 @@ type Profile = {
 };
 
 const isActive = (status: string) => status === "active" || status === "past_due";
+const SALES_API_URL = "https://audit.pencilproof.com";
 
 export default function SalespersonPage() {
   const configured = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
@@ -37,7 +38,7 @@ export default function SalespersonPage() {
   );
 
   const refresh = async () => {
-    const response = await fetch("/api/salesperson/me", { cache: "no-store" });
+    const response = await fetch(`${SALES_API_URL}/api/salesperson/me`, { cache: "no-store", credentials: "include" });
     if (!response.ok) return;
     const data = await response.json() as { profile?: Profile | null };
     setProfile(data.profile ?? null);
@@ -56,9 +57,10 @@ export default function SalespersonPage() {
     void (async () => {
       const token = await clerk.session?.getToken();
       if (!token) return;
-      await fetch("/api/account/session", {
+      await fetch(`${SALES_API_URL}/api/account/session`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ email, token }),
       });
       await refresh();
@@ -89,9 +91,10 @@ export default function SalespersonPage() {
       return null;
     }
     setNameError("");
-    const response = await fetch("/api/salesperson/me", {
+    const response = await fetch(`${SALES_API_URL}/api/salesperson/me`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ email, displayName: name }),
     });
     if (!response.ok) {
@@ -120,9 +123,10 @@ export default function SalespersonPage() {
     try {
       const current = profile ?? await ensureProfile();
       if (!current) return;
-      const response = await fetch("/api/salesperson/checkout", {
+      const response = await fetch(`${SALES_API_URL}/api/salesperson/checkout`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ email, displayName: current.displayName }),
       });
       const data = await response.json().catch(() => ({})) as { url?: string; error?: string };
@@ -140,7 +144,7 @@ export default function SalespersonPage() {
   const redeemCredit = async () => {
     setBusy(true);
     setMessage("");
-    const response = await fetch("/api/salesperson/credit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "redeem" }) });
+    const response = await fetch(`${SALES_API_URL}/api/salesperson/credit`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ action: "redeem" }) });
     const data = await response.json().catch(() => ({})) as { status?: string };
     setMessage(data.status === "redeemed" ? "$20 was applied to your next PencilProof subscription invoice." : data.status === "billing_not_ready" ? "Your subscription billing profile is still being prepared." : "No available credit was found.");
     await refresh();
@@ -150,7 +154,7 @@ export default function SalespersonPage() {
   const giftCredit = async () => {
     setBusy(true);
     setMessage("");
-    const response = await fetch("/api/salesperson/credit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "gift" }) });
+    const response = await fetch(`${SALES_API_URL}/api/salesperson/credit`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ action: "gift" }) });
     const data = await response.json().catch(() => ({})) as { status?: string; code?: string };
     if (data.status === "created" && data.code) {
       const url = `https://audit.pencilproof.com/sales?gift=${encodeURIComponent(data.code)}`;
@@ -164,7 +168,7 @@ export default function SalespersonPage() {
   const claimGift = async () => {
     if (!giftCode) return;
     setBusy(true);
-    const response = await fetch("/api/salesperson/gift/claim", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: giftCode }) });
+    const response = await fetch(`${SALES_API_URL}/api/salesperson/gift/claim`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ code: giftCode }) });
     const data = await response.json().catch(() => ({})) as { status?: string };
     setMessage(data.status === "claimed" ? "$20 PencilProof credit added to your salesperson account." : data.status === "salesperson_profile_required" ? "Create your salesperson profile first, then claim this gift." : "This gift link is unavailable or has already been claimed.");
     await refresh();
@@ -173,7 +177,7 @@ export default function SalespersonPage() {
 
   const managePlan = async () => {
     setBusy(true);
-    const response = await fetch("/api/salesperson/portal", { method: "POST" });
+    const response = await fetch(`${SALES_API_URL}/api/salesperson/portal`, { method: "POST", credentials: "include" });
     const data = await response.json().catch(() => ({})) as { url?: string };
     if (data.url) window.location.assign(data.url);
     else setMessage("Billing management is temporarily unavailable.");
