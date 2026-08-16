@@ -85,7 +85,7 @@ const keywordsFor = (question: string) => question
   .toLowerCase()
   .replace(/[“”"!?.,/]/g, "")
   .split(/\s+/)
-  .filter((word) => word.length > 3 && !["what", "this", "that", "with", "your", "need", "want", "have", "will", "from", "about", "just", "only", "dont", "doesnt"].includes(word));
+  .filter((word) => word.length > 3 && !["what", "this", "that", "with", "your", "need", "want", "have", "will", "from", "about", "just", "only", "dont", "doesnt", "high"].includes(word));
 
 const parsePlaybook = (source: string): Objection[] => {
   const entries: Objection[] = [];
@@ -109,7 +109,9 @@ const parsePlaybook = (source: string): Objection[] => {
     if (questionMatch) {
       commit();
       const question = cleanPlaybookLine(questionMatch[1]);
-      current = { category, question, keywords: keywordsFor(question), responses: [] };
+      const keywords = keywordsFor(question);
+      if (/\b(?:interest\s+rate|interest\s+rates|annual\s+percentage\s+rate)\b/i.test(question)) keywords.push("apr");
+      current = { category, question, keywords, responses: [] };
       continue;
     }
     if (!current || !line || line === "---" || line.startsWith("**Answer") || line.startsWith("**This ")) continue;
@@ -122,9 +124,25 @@ const parsePlaybook = (source: string): Objection[] => {
   return entries.filter((entry) => entry.responses.length > 0);
 };
 
-const findObjection = (prompt: string, source: Objection[]) => {
+const findObjection = (prompt: string, source: Objection[]): Objection | null => {
   const text = prompt.toLowerCase();
-  return source.find((objection) => objection.keywords.some((keyword) => text.includes(keyword))) ?? null;
+  let bestObjection: Objection | null = null;
+  let bestScore = 0;
+  let bestIndex = Number.MAX_SAFE_INTEGER;
+  source.forEach((objection, index) => {
+    const score = objection.keywords.reduce((total, keyword) => {
+      if (!text.includes(keyword.toLowerCase())) return total;
+      // A specific term such as "rate" or "mileage" should outweigh a
+      // generic overlap such as "high". Phrases get the highest weight.
+      return total + (keyword.includes(" ") ? 4 : keyword.length >= 5 ? 2 : 1);
+    }, 0);
+    if (score > 0 && (score > bestScore || (score === bestScore && index < bestIndex))) {
+      bestObjection = objection;
+      bestScore = score;
+      bestIndex = index;
+    }
+  });
+  return bestObjection;
 };
 
 const shuffled = (items: string[]) => {
