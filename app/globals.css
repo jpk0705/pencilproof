@@ -186,6 +186,7 @@ h1 { max-width: 690px; margin: 0; font-family: Georgia, 'Times New Roman', serif
 .vehicle-photo-match-grid > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 9px 10px; border: 1px solid #d7dfe5; border-radius: 6px; background: #eef3f7; }
 .vehicle-photo-match-grid > div > span { font-size: 9px !important; font-weight: 900; letter-spacing: .1em; }
 .vehicle-photo-match-grid > div > b { color: var(--brand-navy); font-size: 13px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vehicle-photo-match-wide { grid-column: span 3; }
 .vehicle-photo-note { margin: 0; color: #3e5263; font-size: 11px; line-height: 1.45; }
 .vehicle-photo-reference { display: flex; flex-direction: column; gap: 7px; padding-top: 2px; }
 .vehicle-photo-reference-heading { display: flex !important; flex-direction: row !important; justify-content: space-between; gap: 10px; align-items: baseline; }
@@ -496,6 +497,13 @@ footer { border-top: 1px solid var(--line); padding: 34px 0; }
 .verification-field em { color: #718078; font-size: 8px; font-style: normal; line-height: 1.3; }
 .verification-field.confidence-review { border-color: #e4b783; background: #fffaf2; }
 .verification-field.confidence-missing { border-style: dashed; background: #f4f4f1; }
+.vin-verification-field { margin: 12px 0 0; }
+.vin-verification-field > span small,
+.free-vin-field > span small { margin-left: 5px; color: #9a6a27; font-size: 8px; letter-spacing: .08em; }
+.free-vin-field { display: grid; gap: 6px; margin: 12px 18px 0; padding: 12px; border: 1px solid #d8d5cc; border-radius: 6px; background: #fffaf2; }
+.free-vin-field > span { color: #405159; font-size: 10px; font-weight: 800; }
+.free-vin-field input { width: 100%; min-height: 38px; box-sizing: border-box; padding: 8px 9px; border: 1px solid #c9cfc9; border-radius: 4px; color: var(--ink); background: #fff; font: inherit; font-size: 13px; font-weight: 700; letter-spacing: .06em; }
+.free-vin-field > small { color: #718078; font-size: 9px; line-height: 1.4; }
 .verification-actions { display: flex; align-items: center; gap: 15px; margin-top: 19px; }
 .verification-actions .button { min-height: 46px; }
 .verification-actions > button:not(.button) { border: 0; color: var(--muted); background: transparent; font-size: 11px; font-weight: 800; cursor: pointer; text-decoration: underline; }
@@ -1134,6 +1142,10 @@ h3,
 .free-detected-values > div { background: #10264a; border-color: var(--brand-line); }
 .free-detected-values input:focus { border-color: var(--brand-gold); outline-color: rgba(246,195,67,.2); }
 .free-detected-values .confidence-missing { background: rgba(246,195,67,.12); border-color: rgba(246,195,67,.55); }
+.free-vin-field { border-color: rgba(246,195,67,.45); background: rgba(246,195,67,.08); }
+.free-vin-field > span { color: var(--brand-text); }
+.free-vin-field > small { color: var(--brand-muted); }
+.free-vin-field input { color: var(--brand-navy); background: #f5f7fb; border-color: #afbdd0; }
 .free-detected-values .confidence-missing small { color: #ffe19a; }
 .free-import-warning { color: var(--brand-positive); background: rgba(71, 174, 128, .15); border-color: rgba(159,227,198,.4); }
 .free-import-warning-missing { color: #ffe19a; background: rgba(246,195,67,.12); border-color: rgba(246,195,67,.45); }

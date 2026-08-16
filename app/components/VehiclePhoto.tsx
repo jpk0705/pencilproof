@@ -3,14 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   buildVehicleImageSearchQueries,
-  extractVehicleVin,
   parseVehicleIdentity,
   selectBestVehicleImage,
   type CommonsPage,
   type CommonsVehicleImage,
 } from "@/lib/vehicle-image";
 import { lookupVehicleFuelEconomy, type VehicleFuelEconomy } from "@/lib/vehicle-fuel-economy";
-import { decodeVehicleVin } from "@/lib/vehicle-vin";
+import { decodeVehicleVin, extractVinFromText } from "@/lib/vehicle-vin";
 import type { VehicleIdentity } from "@/lib/vehicle-image";
 
 type VehiclePhotoState =
@@ -57,10 +56,12 @@ const commonsSearchUrl = (query: string) => {
 
 export default function VehiclePhoto({
   vehicle,
+  vin: vinValue,
   tone = "light",
   compact = false,
 }: {
   vehicle: string;
+  vin?: string;
   tone?: "light" | "dark";
   compact?: boolean;
 }) {
@@ -75,7 +76,13 @@ export default function VehiclePhoto({
       year: vinIdentity.year ?? identity.year,
       make: vinIdentity.make || identity.make,
       model: vinIdentity.model || identity.model,
-      trim: identity.trim ?? vinIdentity.trim,
+      trim: vinIdentity.trim || identity.trim,
+      vin: vinIdentity.vin || identity.vin,
+      ...(vinIdentity.engineCylinders ? { engineCylinders: vinIdentity.engineCylinders } : {}),
+      ...(vinIdentity.displacementL ? { displacementL: vinIdentity.displacementL } : {}),
+      ...(vinIdentity.driveType ? { driveType: vinIdentity.driveType } : {}),
+      ...(vinIdentity.transmission ? { transmission: vinIdentity.transmission } : {}),
+      ...(vinIdentity.fuelType ? { fuelType: vinIdentity.fuelType } : {}),
       displayName: vinIdentity.displayName || identity.displayName,
     };
   }, [identity, vinIdentity]);
@@ -84,7 +91,7 @@ export default function VehiclePhoto({
   const [fuelEconomyLoading, setFuelEconomyLoading] = useState(false);
 
   useEffect(() => {
-    const vin = identity?.vin ?? extractVehicleVin(vehicle);
+    const vin = vinValue?.trim() || identity?.vin || extractVinFromText(vehicle);
     if (!vin) {
       setVinIdentity(null);
       return;
@@ -94,7 +101,7 @@ export default function VehiclePhoto({
       if (!controller.signal.aborted) setVinIdentity(decoded);
     });
     return () => controller.abort();
-  }, [identity?.vin, vehicle]);
+  }, [identity?.vin, vehicle, vinValue]);
 
   useEffect(() => {
     if (!resolvedIdentity) {
@@ -230,6 +237,12 @@ export default function VehiclePhoto({
             <span>MODEL</span>
             <b>{resolvedIdentity.model}</b>
           </div>
+          {resolvedIdentity.vin ? (
+            <div className="vehicle-photo-match-wide">
+              <span>VIN</span>
+              <b>{resolvedIdentity.vin}</b>
+            </div>
+          ) : null}
         </div>
         <div className="vehicle-photo-reference">
           <div className="vehicle-photo-reference-heading">
