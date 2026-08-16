@@ -48,7 +48,7 @@ assert.equal(DEAL_CAMERA_ACCEPT, "image/*");
 const acroFormImport = parsePdfFormFields([
   { fieldName: "Vehicle_Year", fieldValue: "2016", subtype: "Widget" },
   { fieldName: "Vehicle_Make", fieldValue: "Dodge Challenger", subtype: "Widget" },
-  { fieldName: "Vehicle_IdentificationNumber", fieldValue: "2C3CDZC98GH335601", subtype: "Widget" },
+  { fieldName: "Vehicle_IdentificationNumber", fieldValue: "1HGCM82633A004352", subtype: "Widget" },
   { fieldName: "Loan_Paid_CashPrice_Vehicle_Amount", fieldValue: "49500.00", subtype: "Widget" },
   { fieldName: "Loan_Paid_CashPrice_Accessories_Amount", fieldValue: "699.00", subtype: "Widget" },
   { fieldName: "Loan_Paid_TheftDeterrentDevice2_Amount", fieldValue: "1.00", subtype: "Widget" },
@@ -70,7 +70,7 @@ const acroFormImport = parsePdfFormFields([
   { fieldName: "Loan_Payment4_Amount", fieldValue: "959.32", subtype: "Widget" },
 ]);
 assert.equal(acroFormImport.vehicle, "2016 Dodge Challenger");
-assert.equal(acroFormImport.vin, "2C3CDZC98GH335601");
+assert.equal(acroFormImport.vin, "1HGCM82633A004352");
 closeTo(acroFormImport.sellingPrice, 49500);
 closeTo(acroFormImport.accessories, 999);
 closeTo(acroFormImport.govFees, 968.25);
