@@ -481,9 +481,19 @@ export const selectBestVehicleImage = (
         return null;
       }
 
-      const exactYearMatch = Boolean(
-        identity.year && new RegExp(`\\b${identity.year}\\b`).test(title),
+      const titleTokens = titleComparable.split(" ").filter(Boolean);
+      const yearIndex = identity.year ? titleTokens.indexOf(identity.year) : -1;
+      const makeTokens = makeNeedle.split(" ").filter(Boolean);
+      const makeIndex = titleTokens.findIndex((_, index) =>
+        makeTokens.every((token, offset) => titleTokens[index + offset] === token),
       );
+      const modelIndex = titleTokens.findIndex((_, index) =>
+        index > makeIndex && modelNeedles.every((token, offset) => titleTokens[index + offset] === token),
+      );
+      // A year at the end of a filename can be the photo date (for example,
+      // "Dodge Challenger Eté2016"), not the vehicle model year. Treat the
+      // year as verified only when it precedes the make and model tokens.
+      const exactYearMatch = yearIndex >= 0 && makeIndex > yearIndex && modelIndex > makeIndex;
       if (options?.requireYear && !exactYearMatch) return null;
       const exactTrimMatch = trimNeedles.length > 0 && trimNeedles.every((part) => titleComparable.includes(part));
       if (options?.requireTrim && !exactTrimMatch) return null;

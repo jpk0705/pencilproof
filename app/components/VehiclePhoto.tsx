@@ -146,7 +146,7 @@ export default function VehiclePhoto({
             resolvedIdentity,
             {
               requireTrim: Boolean(resolvedIdentity.trim && queryIndex === 0),
-              requireYear: Boolean(resolvedIdentity.year && queryIndex < 2),
+              requireYear: Boolean(resolvedIdentity.year),
             },
           );
           if (selected) {
