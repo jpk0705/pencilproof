@@ -3,8 +3,6 @@
 import { useState, type FormEvent } from "react";
 import { track } from "@/lib/analytics";
 
-export const FEEDBACK_COMPLETED_KEY = "pencilproof:pre-checkout-feedback-completed";
-
 const worthOptions = [
   { value: "0-9.99", label: "$0-$9.99" },
   { value: "10-19.99", label: "$10-$19.99" },
@@ -23,15 +21,6 @@ const worthValue = (range: string) => {
 
 type Props = {
   onCompleted?: () => void;
-};
-
-export const hasCompletedPreCheckoutFeedback = () => {
-  if (typeof window === "undefined") return false;
-  return window.localStorage.getItem(FEEDBACK_COMPLETED_KEY) === "1";
-};
-
-export const markPreCheckoutFeedbackCompleted = () => {
-  if (typeof window !== "undefined") window.localStorage.setItem(FEEDBACK_COMPLETED_KEY, "1");
 };
 
 export default function PreCheckoutFeedback({ onCompleted }: Props) {
@@ -60,7 +49,6 @@ export default function PreCheckoutFeedback({ onCompleted }: Props) {
       event: "feedback_submitted",
       value: rating,
     });
-    markPreCheckoutFeedbackCompleted();
     setSent(true);
     onCompleted?.();
   };

@@ -26,7 +26,7 @@ import { track } from "@/lib/analytics";
 import VehiclePhoto from "@/app/components/VehiclePhoto";
 import PhoneCameraBridge from "@/app/components/PhoneCameraBridge";
 import PreCheckoutAccountGate from "@/app/components/PreCheckoutAccountGate";
-import PreCheckoutFeedback, { hasCompletedPreCheckoutFeedback, markPreCheckoutFeedbackCompleted } from "@/app/components/PreCheckoutFeedback";
+import PreCheckoutFeedback from "@/app/components/PreCheckoutFeedback";
 import AccountNav from "@/app/components/AccountNav";
 
 type Deal = {
@@ -83,6 +83,7 @@ type CheckoutPayload = {
   offerMatrix: DealOfferMatrix | null;
   selectedOfferId: string | null;
   referralCode?: string;
+  preCheckoutFeedbackCompleted?: boolean;
 };
 
 const PENDING_CHECKOUT_KEY = "pencilproof:pending-checkout";
@@ -234,7 +235,10 @@ export default function AnalyzePage() {
     worth: "",
   });
   const [auditFeedbackSent, setAuditFeedbackSent] = useState(false);
-  const [preCheckoutFeedbackCompleted, setPreCheckoutFeedbackCompleted] = useState<boolean | null>(null);
+  // The survey belongs to the current scan, not to the browser or account globally.
+  // This keeps it visible for a new quote while the handoff flag preserves the
+  // completed-before-payment decision across the checkout redirect.
+  const [preCheckoutFeedbackCompleted, setPreCheckoutFeedbackCompleted] = useState(false);
   const savedAuditKey = useRef("");
   const [accountPromptDismissed, setAccountPromptDismissed] = useState(false);
   const [pendingCheckout, setPendingCheckout] = useState<CheckoutPayload | null>(null);
@@ -252,10 +256,6 @@ export default function AnalyzePage() {
   useEffect(() => () => {
     if (importSource?.url) URL.revokeObjectURL(importSource.url);
   }, [importSource]);
-
-  useEffect(() => {
-    setPreCheckoutFeedbackCompleted(hasCompletedPreCheckoutFeedback());
-  }, []);
 
   useEffect(() => {
     const referralCode = new URLSearchParams(window.location.search).get("ref")?.trim() ?? "";
@@ -292,6 +292,7 @@ export default function AnalyzePage() {
       const payload = JSON.parse(saved) as CheckoutPayload;
       if (!payload.fields || !Object.keys(payload.fields).length) return;
       setPendingCheckout(payload);
+      setPreCheckoutFeedbackCompleted(payload.preCheckoutFeedbackCompleted === true);
       setPendingImport({
         fields: payload.fields,
         confidence: payload.confidence ?? {},
@@ -323,8 +324,10 @@ export default function AnalyzePage() {
         fileName?: string;
         offerMatrix?: DealOfferMatrix | null;
         selectedOfferId?: string | null;
+        preCheckoutFeedbackCompleted?: boolean;
       };
       if (!handoff.fields || !Object.keys(handoff.fields).length) return;
+      setPreCheckoutFeedbackCompleted(handoff.preCheckoutFeedbackCompleted === true);
       const importedFields = { ...handoff.fields } as Partial<Deal> & { protection?: number };
       if (importedFields.protection) {
         importedFields.accessories = (importedFields.accessories ?? 0) + importedFields.protection;
@@ -685,6 +688,7 @@ export default function AnalyzePage() {
         fileName: pendingImport.fileName,
         offerMatrix,
         selectedOfferId: selectedOfferId || null,
+        preCheckoutFeedbackCompleted: preCheckoutFeedbackCompleted === true,
       });
       return;
     }
@@ -947,7 +951,6 @@ export default function AnalyzePage() {
       event: "feedback_submitted",
       value: auditFeedback.scanQuality,
     });
-    markPreCheckoutFeedbackCompleted();
     setAuditFeedbackSent(true);
   };
 
