@@ -14,7 +14,7 @@ const normalized = (value: string) =>
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 
-const epaModelFor = (identity: VehicleIdentity) => {
+const epaModelsFor = (identity: VehicleIdentity) => {
   const make = normalized(identity.make);
   const model = normalized(identity.model);
   const trim = normalized(identity.trim ?? "");
@@ -23,9 +23,9 @@ const epaModelFor = (identity: VehicleIdentity) => {
     /^(ct4|ct5)$/.test(model) &&
     (/\bv(?:series)?\b/.test(trim) || trim.includes("blackwing"))
   ) {
-    return `${identity.model} V`;
+    return [`${identity.model} V`, `${identity.model}-V`, identity.model];
   }
-  return identity.model;
+  return [identity.model];
 };
 
 const readXmlField = (document: Document, name: string) =>
@@ -60,30 +60,35 @@ export const lookupVehicleFuelEconomy = async (
   if (!identity.year) return null;
 
   try {
-    const epaModel = epaModelFor(identity);
-    const menuParams = new URLSearchParams({
-      year: identity.year,
-      make: identity.make,
-      model: epaModel,
-    });
-    const menuDocument = await getXml(
-      `${API_ROOT}/menu/options?${menuParams.toString()}`,
-      signal,
-    );
-    if (!menuDocument) return null;
-
-    const options = Array.from(menuDocument.querySelectorAll("menuItem"))
-      .map((item) => ({
-        id: item.querySelector("value")?.textContent?.trim() ?? "",
-        text: item.querySelector("text")?.textContent?.trim() ?? "",
-      }))
-      .filter((option) => option.id && option.text);
+    let options: { id: string; text: string }[] = [];
+    for (const epaModel of epaModelsFor(identity)) {
+      const menuParams = new URLSearchParams({
+        year: identity.year,
+        make: identity.make,
+        model: epaModel,
+      });
+      const menuDocument = await getXml(
+        `${API_ROOT}/menu/options?${menuParams.toString()}`,
+        signal,
+      );
+      options = Array.from(menuDocument?.querySelectorAll("menuItem") ?? [])
+        .map((item) => ({
+          id: item.querySelector("value")?.textContent?.trim() ?? "",
+          text: item.querySelector("text")?.textContent?.trim() ?? "",
+        }))
+        .filter((option) => option.id && option.text);
+      if (options.length) break;
+    }
     if (!options.length) return null;
 
     const trimTokens = normalized(identity.trim ?? "")
       .split(" ")
       .filter(Boolean);
     const isBlackwing = trimTokens.includes("blackwing");
+    const cylinders = normalized(identity.engineCylinders ?? "");
+    const displacement = normalized(identity.displacementL ?? "");
+    const transmission = normalized(identity.transmission ?? "");
+    const driveType = normalized(identity.driveType ?? "");
     const selected = options
       .map((option, index) => {
         const optionText = normalized(option.text);
@@ -92,13 +97,29 @@ export const lookupVehicleFuelEconomy = async (
         );
         const blackwingEngineMatch = isBlackwing &&
           /6 2|8 cyl|sup charg|supercharged/.test(optionText);
+        const cylinderMatch = cylinders && new RegExp(`\\b${cylinders}\\s*cyl`).test(optionText);
+        const displacementMatch = displacement && optionText.includes(displacement);
+        const transmissionMatch = transmission && (
+          transmission.includes("manual") && /manual|man\s/.test(optionText) ||
+          transmission.includes("automatic") && /auto/.test(optionText)
+        );
+        const driveMatch = driveType && (
+          driveType.includes("all wheel") && /awd|all wheel/.test(optionText) ||
+          driveType.includes("four wheel") && /4wd|4 wheel/.test(optionText) ||
+          driveType.includes("front wheel") && /fwd|front wheel/.test(optionText) ||
+          driveType.includes("rear wheel") && /rwd|rear wheel/.test(optionText)
+        );
         const automaticMatch = /auto/.test(optionText);
-        const manualMatch = /manual|man /.test(optionText);
+        const manualMatch = /manual|man\s/.test(optionText);
         return {
           option,
           score:
-            (trimMatch ? 20 : 0) +
+            (trimMatch ? 35 : 0) +
             (blackwingEngineMatch ? 40 : 0) +
+            (cylinderMatch ? 20 : 0) +
+            (displacementMatch ? 18 : 0) +
+            (transmissionMatch ? 8 : 0) +
+            (driveMatch ? 8 : 0) +
             (automaticMatch ? 2 : 0) -
             (manualMatch ? 2 : 0) -
             index / 1000,

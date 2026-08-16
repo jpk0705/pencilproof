@@ -131,7 +131,7 @@ export default function FreeQuotePreview() {
     rawValue: string,
   ) => {
     const value =
-      field === "vehicle"
+        field === "vehicle" || field === "vin"
         ? rawValue
         : rawValue === ""
           ? undefined
@@ -159,7 +159,7 @@ export default function FreeQuotePreview() {
           keyof ImportedDealFields,
           string | number | undefined
         >;
-        editableFields[field] = field === "vehicle" ? rawValue : Number(rawValue);
+        editableFields[field] = field === "vehicle" || field === "vin" ? rawValue : Number(rawValue);
         fieldConfidence[field] = "review";
       }
 
@@ -587,8 +587,22 @@ export default function FreeQuotePreview() {
 
               <VehiclePhoto
                 vehicle={String(preview.fields.vehicle ?? "")}
+                vin={typeof preview.fields.vin === "string" ? preview.fields.vin : undefined}
                 compact
               />
+              <label className="free-vin-field">
+                <span>VIN for exact trim matching <small>OPTIONAL</small></span>
+                <input
+                  aria-label="VIN for exact trim matching"
+                  type="text"
+                  autoCapitalize="characters"
+                  maxLength={17}
+                  value={typeof preview.fields.vin === "string" ? preview.fields.vin : ""}
+                  placeholder="17-character VIN"
+                  onChange={(event) => updateReadyField("vin", event.target.value.toUpperCase())}
+                />
+                <small>Use the VIN when the quote’s trim text is incomplete. PencilProof will use it to match the engine, drivetrain, and EPA configuration.</small>
+              </label>
 
               <div className={`free-import-warning ${preview.missing.length ? "free-import-warning-missing" : ""}`}>
                 <strong>

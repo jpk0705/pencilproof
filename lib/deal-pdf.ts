@@ -1,5 +1,6 @@
 export type ImportedDealFields = Partial<{
   vehicle: string;
+  vin: string;
   sellingPrice: number;
   tax: number;
   govFees: number;
@@ -19,8 +20,26 @@ export type ImportedDealFields = Partial<{
   quotedPayment: number;
 }>;
 
+const normalizeVehicleVin = (value?: string) => {
+  const normalized = String(value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return /^[A-HJ-NPR-Z0-9]{17}$/.test(normalized) ? normalized : undefined;
+};
+
+const extractVinFromText = (text: string) => {
+  const direct = normalizeVehicleVin(text.match(/\b[A-HJ-NPR-Z0-9]{17}\b/i)?.[0]);
+  if (direct) return direct;
+  const sections = text.split(/\bVIN\s*(?:number|no\.?|#)?\s*[:#-]?/i).slice(1);
+  for (const section of sections.slice(0, 4)) {
+    const candidate = section.match(/(?:[A-HJ-NPR-Z0-9][\s-]*){17}/i)?.[0];
+    const normalized = normalizeVehicleVin(candidate);
+    if (normalized) return normalized;
+  }
+  return undefined;
+};
+
 export const DEAL_FIELD_LABELS: Record<keyof ImportedDealFields, string> = {
   vehicle: "Vehicle",
+  vin: "VIN (optional exact match)",
   sellingPrice: "Selling price",
   tax: "Sales tax",
   govFees: "Government / registration fees",
@@ -223,6 +242,15 @@ export const sanitizeImportedFields = (sourceFields: ImportedDealFields) => {
   };
   const rejected: (keyof ImportedDealFields)[] = [];
 
+  if (fields.vin) {
+    const normalizedVin = normalizeVehicleVin(fields.vin);
+    if (normalizedVin) fields.vin = normalizedVin;
+    else {
+      delete fields.vin;
+      rejected.push("vin");
+    }
+  }
+
   (Object.keys(limits) as (keyof ImportedDealFields)[]).forEach((field) => {
     const value = fields[field];
     const range = limits[field];
@@ -274,9 +302,9 @@ const mergeImportedCandidates = (candidates: ImportedDealFields[]) => {
       .map((candidate) => candidate[field])
       .filter((value): value is string | number => value !== undefined && value !== null);
     if (!values.length) return;
-    if (field === "vehicle") {
+    if (field === "vehicle" || field === "vin") {
       const textValues = values.filter((value): value is string => typeof value === "string");
-      merged.vehicle = [...textValues].sort((a, b) => b.length - a.length)[0] ?? String(values[0]);
+      merged[field] = [...textValues].sort((a, b) => b.length - a.length)[0] ?? String(values[0]);
       return;
     }
 
@@ -694,6 +722,9 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     .map((line) => line.replace(/\s+/g, " ").trim())
     .filter(Boolean);
   const fields: ImportedDealFields = {};
+
+  const vin = extractVinFromText(lines.join(" "));
+  if (vin) fields.vin = vin;
 
   const vehicle = vehicleFromLines(lines);
   if (vehicle) fields.vehicle = vehicle;

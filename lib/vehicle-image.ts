@@ -4,6 +4,11 @@ export type VehicleIdentity = {
   model: string;
   trim?: string;
   vin?: string;
+  engineCylinders?: string;
+  displacementL?: string;
+  driveType?: string;
+  transmission?: string;
+  fuelType?: string;
   displayName: string;
 };
 
