@@ -2111,10 +2111,14 @@ const noStoreHeaders = {
 };
 
 const publicPagePaths = new Set([
+  "/account",
+  "/account/",
   "/how-it-works",
   "/how-it-works/",
   "/pricing",
   "/pricing/",
+  "/sales",
+  "/sales/",
   "/privacy",
   "/privacy/",
   "/questions",

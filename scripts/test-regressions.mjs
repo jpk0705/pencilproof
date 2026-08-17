@@ -60,6 +60,8 @@ assert.match(salesWorkerSource, /profile\.subscriptionStatus !== "active"/);
 assert.match(salesWorkerSource, /accountCall\(env, "\/salesperson", \{ action: "get", userId \}\)/);
 assert.match(salesWorkerSource, /stripeRequest\("\/invoiceitems"/);
 assert.doesNotMatch(salesWorkerSource, /balance_transactions/);
+assert.match(salesWorkerSource, /const publicPagePaths = new Set\(\[\s*"\/account"/);
+assert.match(salesWorkerSource, /"\/sales\/"/);
 
 const closeTo = (actual, expected, tolerance = 0.01) => {
   assert.ok(
