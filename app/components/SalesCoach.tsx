@@ -102,7 +102,7 @@ const matchTokens = (value: string) => value
   .replace(/[-–—]/g, " ")
   .split(/\s+/)
   .map(canonicalTerm)
-  .filter((word) => (word.length > 3 || ["gap", "ev", "otd"].includes(word)) && !stopWords.has(word));
+  .filter((word) => (word.length > 3 || ["fee", "gap", "ev", "otd", "out"].includes(word)) && !stopWords.has(word));
 
 const keywordsFor = (question: string) => [...new Set(matchTokens(question))];
 
