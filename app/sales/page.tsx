@@ -171,6 +171,19 @@ export default function SalespersonPage() {
     setBusy(false);
   };
 
+  const previewSalesCoach = async () => {
+    setBusy(true);
+    setMessage("");
+    try {
+      const created = await ensureProfile();
+      if (created) setShowCoachPreview(true);
+    } catch {
+      setMessage("We could not save your salesperson profile yet. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const startSubscription = async () => {
     setBusy(true);
     setMessage("");
@@ -314,7 +327,7 @@ export default function SalespersonPage() {
         </div>
       </section>
       {giftCode ? <section className="sales-card gift-card"><p className="kicker">PENCILPROOF GIFT</p><h2>You received a $20 salesperson credit.</h2><p>Claim it to your PencilProof salesperson account. A PencilProof account is required.</p><button className="button button-primary" type="button" onClick={() => void claimGift()} disabled={busy}>Claim this credit</button></section> : null}
-      {!profile ? <section className="sales-card"><p className="kicker">GET STARTED</p><h2>Create your referral profile</h2><p>Choose a customer-facing name for your tracked link. It can be your first name, a nickname, or a professional name—it does not need to be your legal name.</p><label className="sales-label" htmlFor="sales-display-name"><span className="sales-label-caption">Display name <span aria-hidden="true">*</span></span><input id="sales-display-name" value={displayName} onChange={(event) => { setDisplayName(event.target.value); if (nameError) setNameError(""); }} placeholder="Hannah or Hannah at PencilProof" maxLength={80} minLength={2} required aria-required="true" aria-invalid={Boolean(nameError)} aria-describedby={nameError ? "sales-display-name-error" : "sales-display-name-help"} /></label><small id="sales-display-name-help" className="sales-field-help">This is the name customers will see—not your legal name.</small>{nameError ? <p id="sales-display-name-error" className="sales-field-error" role="alert">{nameError}</p> : null}<button className="button button-primary" type="button" onClick={() => setShowCoachPreview(true)} disabled={busy}>{"Preview Sales Coach"}</button></section> : null}
+      {!profile ? <section className="sales-card"><p className="kicker">GET STARTED</p><h2>Create your referral profile</h2><p>Choose a customer-facing name for your tracked link. It can be your first name, a nickname, or a professional name—it does not need to be your legal name.</p><label className="sales-label" htmlFor="sales-display-name"><span className="sales-label-caption">Display name <span aria-hidden="true">*</span></span><input id="sales-display-name" value={displayName} onChange={(event) => { setDisplayName(event.target.value); if (nameError) setNameError(""); }} placeholder="Hannah or Hannah at PencilProof" maxLength={80} minLength={2} required aria-required="true" aria-invalid={Boolean(nameError)} aria-describedby={nameError ? "sales-display-name-error" : "sales-display-name-help"} /></label><small id="sales-display-name-help" className="sales-field-help">This is the name customers will see—not your legal name.</small>{nameError ? <p id="sales-display-name-error" className="sales-field-error" role="alert">{nameError}</p> : null}<button className="button button-primary" type="button" onClick={() => void previewSalesCoach()} disabled={busy}>{busy ? "Saving your profile…" : "Preview Sales Coach"}</button></section> : null}
       {profile && !isActive(profile.subscriptionStatus) ? <section id="salesperson-plan" className="sales-card sales-dashboard-onboarding"><p className="kicker">SALESPERSON DASHBOARD</p><h2>{profile.subscriptionStatus === "not_started" ? `Welcome, ${profile.displayName}` : "Resume your salesperson plan"}</h2><p>Your free salesperson account is ready. Activate the $20/month plan to unlock your tracked link, QR code, referral credits, and sales tools.</p><div className="sales-plan-offer"><strong>Try ALPHA1</strong><span>First month for $1 · first 100 redemptions</span></div><button className="button button-primary" type="button" onClick={() => void startSubscription()} disabled={busy}>{busy ? "Opening checkout…" : "Start $20/month plan"}</button>{message ? <p className="sales-message" role="status">{message}</p> : null}</section> : null}
       {profile && isActive(profile.subscriptionStatus) ? <>
         <section className="sales-card sales-audit-access" aria-labelledby="sales-audit-access-title">
