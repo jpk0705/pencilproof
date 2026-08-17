@@ -204,6 +204,60 @@ const dollarsAndCents = (value: number) =>
 
 const PAYMENT_MATCH_TOLERANCE = 5;
 
+type RevisionChange = {
+  field: keyof Deal;
+  before: string;
+  after: string;
+  beforeValue: number;
+  afterValue: number;
+};
+
+const dealMathFor = (value: Deal) => {
+  const addons = value.serviceContract + value.gap + value.prepaidMaintenance + value.tireWheel + value.accessories;
+  const amountFinanced = Math.max(
+    0,
+    value.sellingPrice
+      + value.tax
+      + value.govFees
+      + value.docFee
+      + addons
+      + value.tradePayoff
+      - value.tradeValue
+      - value.cashDown
+      - value.rebate,
+  );
+  return { amountFinanced, calculatedPayment: paymentFor(amountFinanced, value.apr, value.term) };
+};
+
+const counterProposalLabels: Partial<Record<keyof Deal, string>> = {
+  sellingPrice: "Selling price",
+  rebate: "Rebate",
+  tax: "Sales tax",
+  govFees: "Government / registration fees",
+  docFee: "Documentation fee",
+  serviceContract: "VSC / service contract",
+  gap: "GAP protection",
+  prepaidMaintenance: "Prepaid maintenance (PPM)",
+  tireWheel: "Tire & wheel protection",
+  accessories: "Accessories / other add-ons",
+  tradeValue: "Trade allowance",
+  tradePayoff: "Trade loan payoff",
+  cashDown: "Cash down",
+  apr: "Dealer APR",
+  outsideApr: "Desired APR",
+  term: "Loan term",
+  quotedPayment: "Dealer quoted payment",
+};
+
+const counterProposalLabel = (field: keyof Deal) => counterProposalLabels[field] ?? String(field);
+
+const counterProposalDelta = (field: keyof Deal, value: number) => {
+  const amount = Math.abs(value);
+  if (field === "apr" || field === "outsideApr") return `${amount.toFixed(2)} percentage points`;
+  if (field === "term") return `${amount} months`;
+  return dollarsAndCents(amount);
+};
+
 function MoneyField({
   label,
   field,
@@ -482,9 +536,11 @@ export default function AnalyzePage() {
   };
 
   const revisionComparison = useMemo(() => {
-    if (!savedRevision || !deal.vehicle.trim()) return { sameVehicle: false, changes: [] as { field: keyof Deal; before: string; after: string }[] };
+    const revisedMath = dealMathFor(deal);
+    if (!savedRevision || !deal.vehicle.trim()) return { sameVehicle: false, changes: [] as RevisionChange[], originalMath: null, revisedMath };
     const sameVehicle = savedRevision.vehicle.trim().toLowerCase() === deal.vehicle.trim().toLowerCase();
-    if (!sameVehicle) return { sameVehicle, changes: [] as { field: keyof Deal; before: string; after: string }[] };
+    const originalMath = dealMathFor(savedRevision);
+    if (!sameVehicle) return { sameVehicle, changes: [] as RevisionChange[], originalMath, revisedMath };
     const comparableFields: (keyof Deal)[] = [
       "sellingPrice", "rebate", "tax", "govFees", "docFee", "serviceContract", "gap",
       "prepaidMaintenance", "tireWheel", "accessories", "tradeValue", "tradePayoff",
@@ -497,8 +553,14 @@ export default function AnalyzePage() {
     };
     const changes = comparableFields
       .filter((field) => savedRevision[field] !== deal[field])
-      .map((field) => ({ field, before: format(field, savedRevision[field]), after: format(field, deal[field]) }));
-    return { sameVehicle, changes };
+      .map((field) => ({
+        field,
+        before: format(field, savedRevision[field]),
+        after: format(field, deal[field]),
+        beforeValue: Number(savedRevision[field]),
+        afterValue: Number(deal[field]),
+      }));
+    return { sameVehicle, changes, originalMath, revisedMath };
   }, [deal, savedRevision]);
 
   const pendingVerificationSummary = useMemo(() => {
@@ -1096,7 +1158,21 @@ export default function AnalyzePage() {
   const rateRequest = analysis.aprGap >= 0.25
     ? `Show whether the APR can be reduced from ${dealerApr} toward my desired APR of ${desiredApr}.`
     : `Confirm the final APR of ${dealerApr} and ${deal.term}-month term, subject to lender approval.`;
-  const message = `Thanks for working through the ${deal.vehicle || "vehicle"} quote with me. I would like a revised buyer's order that reflects these numbers so I can make a clear decision:\n\n1. Vehicle and price\n   - Selling price: ${dollarsAndCents(deal.sellingPrice)}\n   - Rebate: ${dollarsAndCents(deal.rebate)}\n   - Sales tax: ${dollarsAndCents(deal.tax)}\n   - Government / registration: ${dollarsAndCents(deal.govFees)}\n   - Documentation fee: ${dollarsAndCents(deal.docFee)}\n\n2. Trade and cash\n   - ${tradeRequest}\n\n3. Optional products\n   - ${productRequest}\n\n4. Financing\n   - ${rateRequest}\n   - Show the current estimated amount financed of ${dollarsAndCents(analysis.amountFinanced)}, estimated payment of ${dollarsAndCents(analysis.calculatedPayment)}, quoted payment of ${dollarsAndCents(deal.quotedPayment)}, and total payment over ${deal.term} months.\n\nPlease confirm that there are no other mandatory charges and send the complete out-the-door total, amount financed, APR, term, and payment—not only the monthly payment.`;
+  const counterProposalLines = revisionComparison.sameVehicle
+    ? revisionComparison.changes.map((change) => {
+      const label = counterProposalLabel(change.field);
+      const delta = change.afterValue - change.beforeValue;
+      if (change.beforeValue === 0 && change.afterValue > 0) return `   - Add ${label} at ${change.after}. It was not included in the dealer-given original.`;
+      if (change.afterValue === 0 && change.beforeValue > 0) return `   - Remove ${label}. The original showed ${change.before}; the counter proposal shows ${change.after}.`;
+      if (delta < 0) return `   - Change ${label} from ${change.before} to ${change.after} (down ${counterProposalDelta(change.field, delta)}).`;
+      if (delta > 0) return `   - Change ${label} from ${change.before} to ${change.after} (up ${counterProposalDelta(change.field, delta)}).`;
+      return `   - Confirm ${label} at ${change.after}.`;
+    })
+    : [];
+  const hasCounterProposal = revisionComparison.sameVehicle && counterProposalLines.length > 0;
+  const message = hasCounterProposal
+    ? `Thanks for working through the ${deal.vehicle || "vehicle"} quote with me. Based on the dealer-given original and the revised figures I entered, please review the following counter proposal:\n\n1. Requested changes\n${counterProposalLines.join("\n")}\n\n2. Revised live calculation to confirm\n   - Amount financed: ${dollarsAndCents(revisionComparison.originalMath?.amountFinanced ?? 0)} → ${dollarsAndCents(analysis.amountFinanced)}\n   - Live calculated payment: ${dollarsAndCents(revisionComparison.originalMath?.calculatedPayment ?? 0)} → ${dollarsAndCents(analysis.calculatedPayment)} per month\n   - APR: ${dealerApr}\n   - Term: ${deal.term} months\n   - Dealer-quoted payment on the revised worksheet: ${dollarsAndCents(deal.quotedPayment)}\n\nPlease send a revised buyer's order showing each requested change, all mandatory charges, the complete out-the-door total, amount financed, APR, term, and payment. Please confirm whether any difference between the printed payment and the live calculation comes from an omitted amount, deferred first payment, or another documented term.`
+    : `Thanks for working through the ${deal.vehicle || "vehicle"} quote with me. I would like a revised buyer's order that reflects these numbers so I can make a clear decision:\n\n1. Vehicle and price\n   - Selling price: ${dollarsAndCents(deal.sellingPrice)}\n   - Rebate: ${dollarsAndCents(deal.rebate)}\n   - Sales tax: ${dollarsAndCents(deal.tax)}\n   - Government / registration: ${dollarsAndCents(deal.govFees)}\n   - Documentation fee: ${dollarsAndCents(deal.docFee)}\n\n2. Trade and cash\n   - ${tradeRequest}\n\n3. Optional products\n   - ${productRequest}\n\n4. Financing\n   - ${rateRequest}\n   - Show the current estimated amount financed of ${dollarsAndCents(analysis.amountFinanced)}, estimated payment of ${dollarsAndCents(analysis.calculatedPayment)}, quoted payment of ${dollarsAndCents(deal.quotedPayment)}, and total payment over ${deal.term} months.\n\nPlease confirm that there are no other mandatory charges and send the complete out-the-door total, amount financed, APR, term, and payment—not only the monthly payment.`;
 
   const copyMessage = async () => {
     await navigator.clipboard.writeText(message);
@@ -1454,17 +1530,17 @@ export default function AnalyzePage() {
               <section className="revision-compare" aria-labelledby="revision-compare-title">
                 <div className="revision-compare-head">
                   <div><span>REVISED QUOTE CHECK</span><h3 id="revision-compare-title">Compare a revised quote</h3></div>
-                  <button type="button" onClick={saveCurrentQuote}>{savedRevision ? "Replace baseline" : "Save as baseline"}</button>
+                  <button type="button" onClick={saveCurrentQuote}>{savedRevision ? "Replace dealer original" : "Save dealer-given original"}</button>
                 </div>
                 {savedRevision ? (
                   revisionComparison.sameVehicle ? (
                     <>
-                      <p>{revisionComparison.changes.length ? `${revisionComparison.changes.length} number${revisionComparison.changes.length === 1 ? "" : "s"} changed since your saved quote.` : "No numbers differ yet. Import the revised worksheet above or edit the values below to compare it with your saved quote."}</p>
+                      <p>{revisionComparison.changes.length ? `${revisionComparison.changes.length} number${revisionComparison.changes.length === 1 ? "" : "s"} changed since the dealer-given original. The Message to the Dealer below will turn those changes into a counter proposal.` : "No numbers differ yet. Import the revised worksheet above or edit the values below to build a counter proposal."}</p>
                       {revisionComparison.changes.length ? <div className="revision-change-list">{revisionComparison.changes.slice(0, 5).map((change) => <div key={change.field}><span>{DEAL_FIELD_LABELS[change.field as keyof ImportedDealFields]}</span><b>{change.before} <i>→</i> {change.after}</b></div>)}</div> : null}
                     </>
                   ) : <p>The saved baseline is for {savedRevision.vehicle}. Confirm this is the same vehicle, or replace the baseline to compare the current quote.</p>
-                ) : <p>Save this quote as your private baseline. When the dealer sends a revised worksheet, import it above or edit the values below and the changed numbers will appear here.</p>}
-                {savedRevision ? <div className="revision-compare-actions"><button className="revision-compare-action" type="button" onClick={scrollToQuoteUpload}>Import revised quote to compare ↑</button><button className="revision-clear" type="button" onClick={clearSavedQuote}>Clear saved baseline</button></div> : null}
+                ) : <p>Save the dealer-given original as your private baseline. When the dealer sends a revised worksheet, import it above or edit the values below and PencilProof will detect every number added, removed, increased, or decreased.</p>}
+                {savedRevision ? <div className="revision-compare-actions"><button className="revision-compare-action" type="button" onClick={scrollToQuoteUpload}>Import revised quote to compare ↑</button><button className="revision-clear" type="button" onClick={clearSavedQuote}>Clear dealer original</button></div> : null}
               </section>
             ) : null}
             <p className="score-note">
@@ -1565,7 +1641,8 @@ export default function AnalyzePage() {
               </div> : null}
 
               {showConsumerOnlyAuditSections ? <div className="dealer-message">
-                <div><p>MESSAGE TO THE DEALER</p><button type="button" onClick={copyMessage}>{copied ? "Copied" : "Copy message"}</button></div>
+                <div><p>{hasCounterProposal ? "COUNTER PROPOSAL TO THE DEALER" : "MESSAGE TO THE DEALER"}</p><button type="button" onClick={copyMessage}>{copied ? "Copied" : "Copy message"}</button></div>
+                {hasCounterProposal ? <small className="dealer-message-context">Detected {revisionComparison.changes.length} change{revisionComparison.changes.length === 1 ? "" : "s"} from the dealer-given original. This proposal updates automatically as you edit the numbers.</small> : null}
                 <pre>{message}</pre>
               </div> : null}
               <div className="audit-output-actions">
