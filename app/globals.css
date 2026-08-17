@@ -530,13 +530,24 @@ footer { border-top: 1px solid var(--line); padding: 34px 0; }
 .counter-proposal-status strong { font-size: 13px; line-height: 1.2; }
 .counter-proposal-status small { margin: 0; color: #40566d; font-size: 10px; line-height: 1.35; }
 .credit-score-field { min-height: 45px; }
-.credit-score-estimator { display: grid; gap: 8px; min-height: 45px; padding: 9px 10px 10px; border: 1px solid #aebbd0; border-radius: 4px; color: var(--brand-navy); background: #f5f7fb; }
-.credit-score-estimator select { width: 100%; height: 32px; padding: 0 8px; border: 1px solid #aebbd0; border-radius: 4px; color: var(--brand-navy); background: white; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
-.credit-score-estimator select:focus { border-color: var(--brand-gold); outline: 2px solid rgba(246,195,67,.22); outline-offset: 1px; }
+.credit-score-estimator { display: grid; gap: 11px; min-height: 45px; padding: 12px; border: 1px solid #aebbd0; border-radius: 7px; color: var(--brand-navy); background: linear-gradient(145deg, #f7f9fc 0%, #eaf0f7 100%); }
+.credit-score-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.credit-score-heading > div { display: grid; gap: 3px; }
+.credit-score-heading strong { color: var(--brand-navy); font-size: 13px; line-height: 1.15; }
+.credit-score-heading > span { padding: 4px 6px; border: 1px solid #c3cfdd; border-radius: 999px; color: #52677d; background: #fff; font-size: 8px; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+.credit-score-kicker { color: #8b6500; font-size: 8px; font-weight: 900; letter-spacing: .08em; }
+.credit-score-tier-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
+.credit-score-tier-grid button { min-height: 34px; padding: 5px 3px; border: 1px solid #bdc9d8; border-radius: 5px; color: #3d536b; background: rgba(255,255,255,.72); font: 800 10px/1.1 Manrope, ui-sans-serif, sans-serif; cursor: pointer; }
+.credit-score-tier-grid button:hover { border-color: var(--brand-gold); color: var(--brand-navy); }
+.credit-score-tier-grid button.is-selected { border-color: var(--brand-navy); color: #fff; background: var(--brand-navy); box-shadow: inset 0 0 0 1px var(--brand-navy); }
+.credit-score-tier-grid button:focus-visible { outline: 3px solid var(--brand-gold); outline-offset: 2px; }
+.credit-score-vehicle-type { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #52677d; font-size: 9px; font-weight: 900; }
+.credit-score-vehicle-type select { width: auto; min-width: 126px; height: 30px; padding: 0 8px; border: 1px solid #aebbd0; border-radius: 4px; color: var(--brand-navy); background: white; font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
+.credit-score-vehicle-type select:focus { border-color: var(--brand-gold); outline: 2px solid rgba(246,195,67,.22); outline-offset: 1px; }
 .credit-score-rate { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .credit-score-rate > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 6px 8px; border: 1px solid #c7d1df; border-radius: 4px; background: #edf2f8; }
 .credit-score-rate span { color: #52677d; font-size: 8px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
-.credit-score-rate strong { color: var(--brand-navy); font-size: 14px; line-height: 1.1; }
+.credit-score-rate strong { color: var(--brand-navy); font-size: 15px; line-height: 1.1; }
 .credit-score-note { margin: 0; color: #40566d; font-size: 9px; line-height: 1.35; }
 .live-payment { display: grid; grid-template-columns: minmax(190px, .7fr) 1.3fr; gap: 24px; align-items: center; margin-top: 20px; padding: 17px 19px; border: 1px solid #b9c8bf; border-radius: 7px; background: #edf5f0; }
 .live-payment div { display: flex; flex-direction: column; gap: 5px; }.live-payment span { color: var(--green); font-size: 8px; font-weight: 900; letter-spacing: .1em; }.live-payment strong { font-family: Georgia, serif; font-size: 27px; font-weight: 500; }.live-payment strong small { margin-left: 4px; color: var(--muted); font-family: Manrope, ui-sans-serif, sans-serif; font-size: 8px; font-weight: 700; }
@@ -1347,7 +1358,7 @@ footer { color: var(--brand-text); background: var(--brand-navy); border-top-col
 .input-field input,
 .input-field select,
 .input-money { color: var(--brand-navy); background: #f5f7fb; border-color: #aebbd0; }
-.credit-score-estimator { color: var(--brand-navy); background: #f5f7fb; border-color: #aebbd0; }
+.credit-score-estimator { color: var(--brand-navy); background: linear-gradient(145deg, #f7f9fc 0%, #eaf0f7 100%); border-color: #aebbd0; }
 .credit-score-estimator select { color: var(--brand-navy); background: white; border-color: #aebbd0; }
 .credit-score-rate span,
 .credit-score-note { color: #40566d; }
@@ -1949,6 +1960,8 @@ h1 { font-weight: 700; letter-spacing: -.055em; }
 @media (max-width: 680px) {
   .analyzer-page .pdf-upload-actions .phone-camera-trigger { display: none; }
   .analyzer-page .pdf-upload-actions .pdf-camera-button { display: inline-flex; }
+  .credit-score-tier-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .credit-score-vehicle-type select { flex: 1; }
   .scan-benefits { padding: 17px 18px 19px; }
   .scan-benefits-grid { grid-template-columns: 1fr; gap: 8px; }
   .scan-benefits-grid > div { min-height: 0; }
