@@ -595,12 +595,18 @@ footer { border-top: 1px solid var(--line); padding: 34px 0; }
 .instant-verdict { margin-top: 12px; padding: 13px; border-radius: 7px; border: 1px solid rgba(255,255,255,.16); }
 .instant-verdict-review { color: #fff2d5; background: rgba(174,89,26,.24); border-color: rgba(249,220,191,.35); }
 .instant-verdict-good { color: #d7f0e4; background: rgba(21,84,63,.28); border-color: rgba(207,234,222,.3); }
-.instant-verdict div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.instant-verdict > .instant-verdict-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .instant-verdict span { color: #a8b5bb; font-size: 8px; font-weight: 900; letter-spacing: .14em; }
 .instant-verdict strong { font-family: Georgia, serif; font-size: 18px; font-weight: 500; text-align: right; }
 .instant-verdict p { margin: 7px 0 0; color: #c8d1d4; font-size: 9px; line-height: 1.45; }
+.instant-verdict-review-list { margin-top: 11px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.16); }
+.instant-verdict-review-list > span { color: #ffd07a; }
+.instant-verdict-review-list ul { display: grid; gap: 7px; margin: 7px 0 0; padding: 0; list-style: none; }
+.instant-verdict-review-list li { display: grid; gap: 2px; padding-left: 10px; border-left: 2px solid rgba(255,208,122,.58); }
+.instant-verdict-review-list li strong { color: #fff2d5; font-family: var(--font-ui); font-size: 10px; font-weight: 800; line-height: 1.25; text-align: left; }
+.instant-verdict-review-list li small { color: #d6dfe2; font-size: 9px; line-height: 1.35; }
 .check-good strong { color: #9ce1c8; }.check-warn strong { color: #ffc487; }.check-note strong { color: #d9e2e5; }
-.payment-compare { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; align-items: stretch; margin: 18px 0 0; padding: 14px; background: var(--accent); color: var(--ink); border-radius: 7px; }
+.payment-compare { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; align-items: stretch; margin: 18px 0 0; padding: 14px; background: var(--accent); color: var(--ink); border-radius: 7px; }
 .payment-compare > div { min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 0 10px; border-left: 1px solid rgba(11, 28, 37, .16); }.payment-compare > div:first-child { padding-left: 0; border-left: 0; }.payment-compare > div:last-child { padding-right: 0; text-align: right; }
 .payment-compare span { font-size: 7px; font-weight: 900; letter-spacing: .06em; }.payment-compare strong { font-family: Georgia, serif; font-size: 18px; font-weight: 500; white-space: nowrap; }.payment-compare strong small { font: 8px Manrope, ui-sans-serif, sans-serif; }.payment-compare div > small { color: #4d5d36; font-size: 7px; line-height: 1.35; }
 .result-numbers { display: grid; grid-template-columns: 1fr 1fr; margin: 20px 0 17px; border-top: 1px solid rgba(255,255,255,.14); border-left: 1px solid rgba(255,255,255,.14); }

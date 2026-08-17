@@ -1072,8 +1072,17 @@ export default function AnalyzePage() {
       productInsights.push(productInsight("Accessories and other add-ons", deal.accessories, "Includes appearance, paint/fabric, GPS/theft, etch, nitrogen, physical accessories, and other dealer add-ons. These items increase the amount financed and should be individually priced.", "Please itemize every add-on, its installed price, what has already been applied or installed, and whether the vehicle can be purchased without it."));
     }
 
+    const reviewItems = [
+      ...flags
+        .filter((flag) => flag.tone === "warn")
+        .map((flag) => ({ title: flag.title, detail: flag.detail })),
+      ...missingInformation.map((item) => ({
+        title: `Missing ${item}`,
+        detail: "Add this figure from the dealer worksheet so the comparison is complete.",
+      })),
+    ];
     const warningCount = flags.filter((flag) => flag.tone === "warn").length;
-    const reviewCount = warningCount + missingInformation.length;
+    const reviewCount = reviewItems.length;
     const verdict = reviewCount === 0
       ? { label: "No immediate red flags", detail: "The entered figures are internally consistent. Verify the contracts and buyer's order before signing." }
       : { label: `${reviewCount} area${reviewCount === 1 ? "" : "s"} worth reviewing`, detail: warningCount > 0
@@ -1102,6 +1111,7 @@ export default function AnalyzePage() {
       paymentGap,
       flags,
       productInsights,
+      reviewItems,
       reviewCount,
       verdict,
     };
@@ -1203,8 +1213,11 @@ export default function AnalyzePage() {
     ? analysis.calculatedPayment - (revisionComparison.originalMath?.calculatedPayment ?? 0)
     : 0;
   const counterProposalPaymentLabel = hasCounterProposal
-    ? `${counterProposalPaymentDelta > 0 ? "+" : counterProposalPaymentDelta < 0 ? "−" : ""}${dollarsAndCents(Math.abs(counterProposalPaymentDelta))}`
-    : "—";
+    ? dollarsAndCents(analysis.calculatedPayment)
+    : analysis.hasMinimumData ? dollarsAndCents(analysis.calculatedPayment) : "—";
+  const counterProposalPaymentDetail = hasCounterProposal
+    ? `${counterProposalPaymentDelta === 0 ? "No payment change" : `${counterProposalPaymentDelta > 0 ? "+" : "−"}${dollarsAndCents(Math.abs(counterProposalPaymentDelta))}`} vs dealer original`
+    : analysis.hasMinimumData ? "Matches current live calculation" : savedRevision ? "No changed figures yet" : "Edit figures to model a counter proposal";
   const message = hasCounterProposal
     ? `Thanks for working through the ${deal.vehicle || "vehicle"} quote with me. Based on the dealer-given original and the revised figures I entered, please review the following counter proposal:\n\n1. Requested changes\n${counterProposalLines.join("\n")}\n\n2. Revised live calculation to confirm\n   - Amount financed: ${dollarsAndCents(revisionComparison.originalMath?.amountFinanced ?? 0)} → ${dollarsAndCents(analysis.amountFinanced)}\n   - Live calculated payment: ${dollarsAndCents(revisionComparison.originalMath?.calculatedPayment ?? 0)} → ${dollarsAndCents(analysis.calculatedPayment)} per month\n   - APR: ${dealerApr}\n   - Term: ${deal.term} months\n   - Dealer-quoted payment on the revised worksheet: ${dollarsAndCents(deal.quotedPayment)}\n\nPlease send a revised buyer's order showing each requested change, all mandatory charges, the complete out-the-door total, amount financed, APR, term, and payment. Please confirm whether any difference between the printed payment and the live calculation comes from an omitted amount, deferred first payment, or another documented term.`
     : `Thanks for working through the ${deal.vehicle || "vehicle"} quote with me. I would like a revised buyer's order that reflects these numbers so I can make a clear decision:\n\n1. Vehicle and price\n   - Selling price: ${dollarsAndCents(deal.sellingPrice)}\n   - Rebate: ${dollarsAndCents(deal.rebate)}\n   - Sales tax: ${dollarsAndCents(deal.tax)}\n   - Government / registration: ${dollarsAndCents(deal.govFees)}\n   - Documentation fee: ${dollarsAndCents(deal.docFee)}\n\n2. Trade and cash\n   - ${tradeRequest}\n\n3. Optional products\n   - ${productRequest}\n\n4. Financing\n   - ${rateRequest}\n   - Show the current estimated amount financed of ${dollarsAndCents(analysis.amountFinanced)}, estimated payment of ${dollarsAndCents(analysis.calculatedPayment)}, quoted payment of ${dollarsAndCents(deal.quotedPayment)}, and total payment over ${deal.term} months.\n\nPlease confirm that there are no other mandatory charges and send the complete out-the-door total, amount financed, APR, term, and payment—not only the monthly payment.`;
@@ -1617,14 +1630,21 @@ export default function AnalyzePage() {
               </div>
 
               <div className={`instant-verdict ${analysis.reviewCount ? "instant-verdict-review" : "instant-verdict-good"}`}>
-                <div><span>INSTANT VERDICT</span><strong>{analysis.verdict.label}</strong></div>
+                <div className="instant-verdict-heading"><span>INSTANT VERDICT</span><strong>{analysis.verdict.label}</strong></div>
                 <p>{analysis.verdict.detail}</p>
+                {analysis.reviewItems.length ? <div className="instant-verdict-review-list">
+                  <span>REVIEW NEXT</span>
+                  <ul>
+                    {analysis.reviewItems.map((item) => <li key={item.title}><strong>{item.title}</strong><small>{item.detail}</small></li>)}
+                  </ul>
+                </div> : null}
               </div>
 
               <div className="payment-compare">
-                <div><span>WITH PRODUCTS</span><strong>{dollars(analysis.calculatedPayment)}<small>/mo</small></strong><small>dealer APR and entered term</small></div>
-                <div><span>WITHOUT PRODUCTS</span><strong>{dollars(analysis.paymentWithoutProducts)}<small>/mo</small></strong><small>same dealer APR and term</small></div>
-                <div><span>COUNTER-PROPOSAL IMPACT</span><strong>{counterProposalPaymentLabel}{hasCounterProposal && !isCashDeal ? <small>/mo</small> : null}</strong><small>{hasCounterProposal ? `${counterProposalPaymentDelta === 0 ? "No payment change" : counterProposalPaymentDelta > 0 ? "Higher" : "Lower"} vs dealer original` : savedRevision ? "No changed figures yet" : "Save dealer original to compare"}</small></div>
+                <div className="payment-compare-dealer"><span>DEALER QUOTED PAYMENT</span><strong>{deal.quotedPayment > 0 ? dollars(deal.quotedPayment) : "Not entered"}</strong><small>Printed on quote · stays fixed</small></div>
+                <div><span>WITH PRODUCTS</span><strong>{dollars(analysis.calculatedPayment)}<small>/mo</small></strong><small>Current live calculation</small></div>
+                <div><span>WITHOUT PRODUCTS</span><strong>{dollars(analysis.paymentWithoutProducts)}<small>/mo</small></strong><small>Live calculation without products</small></div>
+                <div><span>COUNTER-PROPOSAL / LIVE</span><strong>{counterProposalPaymentLabel}{counterProposalPaymentLabel !== "—" && !isCashDeal ? <small>/mo</small> : null}</strong><small>{counterProposalPaymentDetail}</small></div>
               </div>
 
               <div className={`payment-truth ${deal.quotedPayment > 0 && Math.abs(analysis.paymentGap) > PAYMENT_MATCH_TOLERANCE ? "payment-truth-warning" : ""}`}>
