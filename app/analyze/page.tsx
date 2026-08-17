@@ -165,6 +165,26 @@ const blank: Deal = {
   quotedPayment: 0,
 };
 
+const numericDealFields: (keyof Deal)[] = [
+  "sellingPrice",
+  "tax",
+  "govFees",
+  "docFee",
+  "serviceContract",
+  "gap",
+  "prepaidMaintenance",
+  "tireWheel",
+  "accessories",
+  "tradeValue",
+  "tradePayoff",
+  "cashDown",
+  "rebate",
+  "apr",
+  "outsideApr",
+  "term",
+  "quotedPayment",
+];
+
 const dollars = (value: number) =>
   new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -244,6 +264,8 @@ export default function AnalyzePage() {
   const [pendingCheckout, setPendingCheckout] = useState<CheckoutPayload | null>(null);
   const [savedRevision, setSavedRevision] = useState<Deal | null>(null);
   const [hasReferralAttribution, setHasReferralAttribution] = useState(false);
+  const [accountRole, setAccountRole] = useState<"consumer" | "salesperson">("consumer");
+  const [accountRoleKnown, setAccountRoleKnown] = useState(false);
   const checkoutGateRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -252,6 +274,54 @@ export default function AnalyzePage() {
       && (window.location.pathname === "/analyze/secure" || window.location.pathname.startsWith("/analyze/secure/")),
     );
   }, []);
+
+  useEffect(() => {
+    if (!isPaidAuditHost) {
+      setAccountRoleKnown(true);
+      return;
+    }
+    setAccountRoleKnown(false);
+    let current = true;
+    void fetch("/api/account/me", { cache: "no-store", credentials: "include" })
+      .then((response) => response.ok ? response.json() as Promise<{ role?: string }> : null)
+      .then((data) => {
+        if (!current) return;
+        setAccountRole(data?.role === "salesperson" ? "salesperson" : "consumer");
+        setAccountRoleKnown(true);
+      })
+      .catch(() => {
+        if (current) setAccountRoleKnown(true);
+      });
+    return () => { current = false; };
+  }, [isPaidAuditHost]);
+
+  useEffect(() => {
+    if (!isPaidAuditHost) return;
+    const auditId = new URLSearchParams(window.location.search).get("audit")?.trim() ?? "";
+    if (!/^[0-9a-f-]{36}$/i.test(auditId)) return;
+    let current = true;
+    void fetch("/api/audits", { cache: "no-store", credentials: "include" })
+      .then((response) => response.ok ? response.json() as Promise<{ audits?: { id: string; data?: Record<string, unknown> }[] }> : null)
+      .then((payload) => {
+        if (!current) return;
+        const saved = payload?.audits?.find((audit) => audit.id === auditId);
+        if (!saved?.data) return;
+        const data = saved.data;
+        const loaded: Deal = {
+          ...blank,
+          vehicle: typeof data.vehicle === "string" ? data.vehicle : "",
+          ...(typeof data.vin === "string" ? { vin: data.vin } : {}),
+        };
+        for (const field of numericDealFields) {
+          if (typeof data[field] === "number" && Number.isFinite(data[field])) loaded[field] = data[field] as never;
+        }
+        savedAuditKey.current = JSON.stringify(loaded);
+        setDeal(loaded);
+        setDealImport({ status: "success", message: "Loaded this saved audit. You can update the figures and run the review again.", fields: [] });
+      })
+      .catch(() => undefined);
+    return () => { current = false; };
+  }, [isPaidAuditHost]);
 
   useEffect(() => () => {
     if (importSource?.url) URL.revokeObjectURL(importSource.url);
@@ -913,24 +983,22 @@ export default function AnalyzePage() {
 
   useEffect(() => {
     if (!isPaidAuditHost || !analysis.hasMinimumData) return;
-    const key = deal.vehicle.trim() || JSON.stringify(deal);
+    const key = JSON.stringify(deal);
     if (key === savedAuditKey.current) return;
     savedAuditKey.current = key;
     void fetch("/api/audits", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ data: {
-        vehicle: deal.vehicle,
-        sellingPrice: deal.sellingPrice,
-        apr: deal.apr,
-        quotedPayment: deal.quotedPayment,
-        term: deal.term,
+        ...deal,
         calculatedPayment: analysis.calculatedPayment,
         verdict: analysis.verdict,
         flags: analysis.flags.map((flag) => ({ name: flag.title, tone: flag.tone, detail: flag.detail })),
       } }),
     }).catch(() => undefined);
   }, [analysis, deal, isPaidAuditHost]);
+
+  const showConsumerOnlyAuditSections = !isPaidAuditHost || (accountRoleKnown && accountRole !== "salesperson");
 
   const submitAuditFeedback = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1395,7 +1463,7 @@ export default function AnalyzePage() {
                 ))}
               </div>
 
-              <div className="product-breakdown">
+              {showConsumerOnlyAuditSections ? <div className="product-breakdown">
                 <div className="result-section-title"><span>WHAT THE PRODUCTS DO</span></div>
                 {analysis.productInsights.length ? analysis.productInsights.map((product) => (
                   <article className="product-insight" key={product.name}>
@@ -1411,14 +1479,14 @@ export default function AnalyzePage() {
                 )) : (
                   <p className="empty-products">Enter any VSC, GAP, PPM, T&W, or accessory/add-on prices shown on the quote to receive product-specific guidance.</p>
                 )}
-              </div>
+              </div> : null}
 
-              <div className="dealer-message">
+              {showConsumerOnlyAuditSections ? <div className="dealer-message">
                 <div><p>YOUR REQUEST TO THE DESK</p><button type="button" onClick={copyMessage}>{copied ? "Copied" : "Copy message"}</button></div>
                 <pre>{message}</pre>
-              </div>
+              </div> : null}
               <button className="print-button" type="button" onClick={() => window.print()}>Print or save this Full Quote Audit</button>
-              {!accountPromptDismissed ? <section className="account-save-prompt" aria-labelledby="account-save-title">
+              {showConsumerOnlyAuditSections && !accountPromptDismissed ? <section className="account-save-prompt" aria-labelledby="account-save-title">
                 <div>
                   <p className="paid-feedback-kicker">OPTIONAL ACCOUNT</p>
                   <h3 id="account-save-title">Save your PencilProof access</h3>

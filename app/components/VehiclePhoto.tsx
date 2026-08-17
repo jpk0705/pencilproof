@@ -220,7 +220,8 @@ export default function VehiclePhoto({
       <img
         src={image?.imageUrl ?? LOCAL_FALLBACK_IMAGE}
         alt={`${isFallback ? "Representative" : "Photo of"} a ${resolvedIdentity.displayName}`}
-        loading="lazy"
+        loading={compact ? "eager" : "lazy"}
+        decoding="async"
         onError={(event) => {
           if (!isFallback) {
             event.currentTarget.src = LOCAL_FALLBACK_IMAGE;

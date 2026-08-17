@@ -2000,7 +2000,7 @@ const noStoreHeaders = {
   "Content-Security-Policy": [
     "default-src 'self'",
     "connect-src 'self'",
-    "img-src 'self' data:",
+    "img-src 'self' data: https://upload.wikimedia.org https://commons.wikimedia.org",
     "script-src 'unsafe-inline'",
     "style-src 'unsafe-inline'",
     "base-uri 'none'",
