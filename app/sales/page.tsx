@@ -9,7 +9,7 @@ import { flushAnalyticsQueue, track } from "@/lib/analytics";
 import { SiteNav } from "@/app/components/SiteChrome";
 import SalesCoach from "@/app/components/SalesCoach";
 import AuditComparison, { type AuditComparisonRecord } from "@/app/components/AuditComparison";
-import { auditAmountFinanced, auditMoney, auditPayment, auditRate, uniqueRealAudits } from "@/lib/audit-history";
+import { auditAmountFinanced, auditHistoryLabel, auditMoney, auditPayment, auditRate, groupAuditsByHistoryKey, uniqueRealAudits } from "@/lib/audit-history";
 
 type Profile = {
   displayName: string;
@@ -117,7 +117,7 @@ export default function SalespersonPage() {
   }, [profile?.referralCode, referralLink]);
 
   useEffect(() => {
-    setSavedAuditPage((current) => Math.min(current, Math.max(1, Math.ceil(savedAudits.length / SAVED_AUDITS_PER_PAGE))));
+    setSavedAuditPage((current) => Math.min(current, Math.max(1, Math.ceil(groupAuditsByHistoryKey(savedAudits).length / SAVED_AUDITS_PER_PAGE))));
   }, [savedAudits.length]);
 
   useEffect(() => {
@@ -335,9 +335,36 @@ export default function SalespersonPage() {
     }
   };
 
-  const savedAuditPageCount = Math.max(1, Math.ceil(savedAudits.length / SAVED_AUDITS_PER_PAGE));
+  const savedAuditGroups = groupAuditsByHistoryKey(savedAudits);
+  const savedAuditPageCount = Math.max(1, Math.ceil(savedAuditGroups.length / SAVED_AUDITS_PER_PAGE));
   const currentSavedAuditPage = Math.min(savedAuditPage, savedAuditPageCount);
-  const visibleSavedAudits = savedAudits.slice((currentSavedAuditPage - 1) * SAVED_AUDITS_PER_PAGE, currentSavedAuditPage * SAVED_AUDITS_PER_PAGE);
+  const visibleSavedAuditGroups = savedAuditGroups.slice((currentSavedAuditPage - 1) * SAVED_AUDITS_PER_PAGE, currentSavedAuditPage * SAVED_AUDITS_PER_PAGE);
+
+  const renderSavedAudit = (audit: SavedAudit) => {
+    const vehicle = String(audit.data.vehicle ?? "PencilProof Full Quote Audit");
+    const verdict = audit.data.verdict && typeof audit.data.verdict === "object"
+      ? String((audit.data.verdict as { label?: unknown }).label ?? "Audit completed")
+      : "Audit completed";
+    const historyLabel = auditHistoryLabel(audit, savedAudits);
+    const isOriginal = historyLabel === "DEALER-GIVEN ORIGINAL";
+    const payment = auditPayment(audit.data, !isOriginal);
+    const amountFinanced = auditAmountFinanced(audit.data);
+    return <article className="sales-saved-audit" key={audit.id}>
+      <div><span className="saved-audit-badge">{historyLabel}</span><strong>{vehicle}</strong><p>{verdict}</p><div className="saved-audit-metrics" aria-label="Saved audit brief history"><span><small>PRICE</small><b>{auditMoney(audit.data.sellingPrice)}</b></span><span><small>{isOriginal ? "PAYMENT" : "LIVE PAYMENT"}</small><b>{payment === null ? "Not entered" : auditMoney(payment)}</b></span><span><small>APR</small><b>{auditRate(audit.data.apr)}</b></span><span><small>AMOUNT FINANCED</small><b>{amountFinanced === null ? "Not entered" : auditMoney(amountFinanced)}</b></span></div><small className="saved-audit-vin">VIN {String(audit.data.vin ?? "not detected")}</small><small>Saved {new Date(audit.createdAt * 1000).toLocaleDateString()} · available until {new Date(audit.expiresAt * 1000).toLocaleDateString()}</small></div>
+      <Link className="button button-quiet" href={`${PAID_AUDIT_URL}?audit=${encodeURIComponent(audit.id)}`}>View audit <span aria-hidden="true">→</span></Link>
+    </article>;
+  };
+
+  const renderSavedAuditGroup = (group: ReturnType<typeof groupAuditsByHistoryKey<SavedAudit>>[number]) => {
+    if (group.audits.length === 1) return renderSavedAudit(group.audits[0]);
+    const first = group.audits[0];
+    const vehicle = String(first.data.vehicle ?? "Saved vehicle");
+    const vin = String(first.data.vin ?? "").trim();
+    return <details className="saved-audit-group" key={group.key}>
+      <summary className="saved-audit-group-summary"><span><small className="saved-audit-badge">SAME VIN · {group.audits.length} SAVED AUDITS</small><strong>{vehicle}</strong><em>VIN {vin}</em></span><b>Show history <span aria-hidden="true">⌄</span></b></summary>
+      <div className="saved-audit-group-list">{group.audits.map(renderSavedAudit)}</div>
+    </details>;
+  };
 
   if (!configured) return <><SiteNav /><main className="sales-page shell"><h1>Salesperson tools are being prepared.</h1><p>PencilProof is finishing the secure account connection.</p></main></>;
   if (!clerk) return <><SiteNav /><main className="sales-page shell"><p>Loading your PencilProof account…</p></main></>;
@@ -384,19 +411,8 @@ export default function SalespersonPage() {
             <span>{savedAudits.length} {savedAudits.length === 1 ? "audit" : "audits"}</span>
           </div>
           <p className="sales-saved-audits-intro">Completed audits save automatically to this dashboard for 30 days. Open one again when a customer sends a revised worksheet or you need to review the numbers.</p>
-          {savedAudits.length ? <div className="sales-saved-audit-list">{visibleSavedAudits.map((audit) => {
-            const vehicle = String(audit.data.vehicle ?? "PencilProof Full Quote Audit");
-            const verdict = audit.data.verdict && typeof audit.data.verdict === "object"
-              ? String((audit.data.verdict as { label?: unknown }).label ?? "Audit completed")
-              : "Audit completed";
-            const payment = auditPayment(audit.data);
-            const amountFinanced = auditAmountFinanced(audit.data);
-            return <article className="sales-saved-audit" key={audit.id}>
-              <div><span className="saved-audit-badge">FULL QUOTE AUDIT</span><strong>{vehicle}</strong><p>{verdict}</p><div className="saved-audit-metrics" aria-label="Saved audit brief history"><span><small>PRICE</small><b>{auditMoney(audit.data.sellingPrice)}</b></span><span><small>PAYMENT</small><b>{payment === null ? "Not entered" : auditMoney(payment)}</b></span><span><small>RATE</small><b>{auditRate(audit.data.apr)}</b></span><span><small>AMOUNT FINANCED</small><b>{amountFinanced === null ? "Not entered" : auditMoney(amountFinanced)}</b></span></div><small className="saved-audit-vin">VIN {String(audit.data.vin ?? "not detected")}</small><small>Saved {new Date(audit.createdAt * 1000).toLocaleDateString()} · available until {new Date(audit.expiresAt * 1000).toLocaleDateString()}</small></div>
-              <Link className="button button-quiet" href={`${PAID_AUDIT_URL}?audit=${encodeURIComponent(audit.id)}`}>View audit <span aria-hidden="true">→</span></Link>
-            </article>;
-          })}</div> : <div className="sales-saved-audits-empty"><strong>No saved audits yet.</strong><p>Upload a quote above. Once the audit has enough information to calculate, it will appear here automatically.</p></div>}
-          {savedAudits.length > SAVED_AUDITS_PER_PAGE ? <nav className="audit-pagination" aria-label="Saved audit pages">
+          {savedAudits.length ? <div className="sales-saved-audit-list">{visibleSavedAuditGroups.map(renderSavedAuditGroup)}</div> : <div className="sales-saved-audits-empty"><strong>No saved audits yet.</strong><p>Upload a quote above. Once the audit has enough information to calculate, it will appear here automatically.</p></div>}
+          {savedAuditGroups.length > SAVED_AUDITS_PER_PAGE ? <nav className="audit-pagination" aria-label="Saved audit pages">
             <button className="button button-quiet" type="button" onClick={() => setSavedAuditPage((current) => Math.max(1, current - 1))} disabled={currentSavedAuditPage === 1}>Previous</button>
             <span className="audit-pagination-label">Page {currentSavedAuditPage} of {savedAuditPageCount}</span>
             <button className="button button-quiet" type="button" onClick={() => setSavedAuditPage((current) => Math.min(savedAuditPageCount, current + 1))} disabled={currentSavedAuditPage === savedAuditPageCount}>Next</button>

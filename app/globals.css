@@ -1778,6 +1778,19 @@ h1 { font-weight: 700; letter-spacing: -.055em; }
 .saved-audit-metrics b { overflow: hidden; color: var(--brand-text); font-size: 12px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
 .saved-audit-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 12px; }
 .saved-audit-actions .button { min-height: 38px; }
+.saved-audit-group { border-bottom: 1px solid var(--brand-line); }
+.saved-audit-group-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 16px; padding: 18px 0; list-style: none; cursor: pointer; }
+.saved-audit-group-summary::-webkit-details-marker { display: none; }
+.saved-audit-group-summary::after { content: "⌄"; grid-column: 2; grid-row: 1; color: var(--brand-gold); font-size: 18px; transition: transform .2s ease; }
+.saved-audit-group[open] .saved-audit-group-summary::after { transform: rotate(180deg); }
+.saved-audit-group-summary > span { display: grid; min-width: 0; gap: 4px; }
+.saved-audit-group-summary .saved-audit-badge { color: var(--brand-gold); font-size: 9px; }
+.saved-audit-group-summary strong { overflow: hidden; color: var(--brand-text); font-size: 16px; text-overflow: ellipsis; white-space: nowrap; }
+.saved-audit-group-summary em { color: var(--brand-muted); font-size: 11px; font-style: normal; }
+.saved-audit-group-summary > b { grid-column: 2; grid-row: 1; margin-right: 25px; color: var(--brand-text); font-size: 11px; white-space: nowrap; }
+.saved-audit-group-list { padding: 0 0 4px 16px; border-left: 2px solid rgba(246,195,67,.4); }
+.saved-audit-group-list .saved-audit,
+.saved-audit-group-list .sales-saved-audit { border-top: 1px solid var(--brand-line); border-bottom: 0; }
 .saved-audit button,
 .account-delete { color: #ffd0c3; }
 .account-empty { padding: 24px 0 4px; }
@@ -1890,6 +1903,9 @@ h1 { font-weight: 700; letter-spacing: -.055em; }
   .saved-audit { align-items: flex-start; flex-direction: column; }
   .saved-audit-actions { justify-content: flex-start; }
   .saved-audit-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .saved-audit-group-summary { grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 10px; }
+  .saved-audit-group-summary > b { align-self: center; font-size: 10px; }
+  .saved-audit-group-list { padding-left: 10px; }
   .audit-compare-heading { align-items: flex-start; flex-direction: column; gap: 7px; }
   .audit-compare-heading > span { align-self: flex-start; }
   .audit-compare-mode-row { grid-template-columns: 1fr; align-items: start; gap: 8px; }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { auditHistoryLabel } from "@/lib/audit-history";
 
 export type AuditComparisonRecord = {
   id: string;
@@ -58,9 +59,10 @@ const valueFor = (audit: AuditComparisonRecord, field: CompareField): string => 
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(number);
 };
 
-const optionLabel = (audit: AuditComparisonRecord) => {
+const optionLabel = (audit: AuditComparisonRecord, mode: CompareMode, audits: AuditComparisonRecord[]) => {
   const vehicle = String(audit.data.vehicle ?? "PencilProof Full Quote Audit");
-  return `${vehicle} · ${date(audit.createdAt)}`;
+  const history = mode === "revision" ? `${auditHistoryLabel(audit, audits)} · ` : "";
+  return `${history}${vehicle} · ${date(audit.createdAt)}`;
 };
 
 export default function AuditComparison({ audits }: { audits: AuditComparisonRecord[] }) {
@@ -97,14 +99,14 @@ export default function AuditComparison({ audits }: { audits: AuditComparisonRec
           <div>
             <p className="kicker">COMPARE SAVED AUDITS</p>
             <h3 id="audit-compare-title">Choose how you want to compare.</h3>
-            <p>{audits.length === 1 ? "Save one more reviewed audit to compare the numbers, products, payment, and VIN." : "Save two reviewed audits to compare the numbers, products, payment, and VIN."}</p>
+            <p>{audits.length === 1 ? "Save one more reviewed audit to compare the dealer-given original with a revision, including live payment math and VIN." : "Save two reviewed audits to compare the dealer-given original, revisions, payment math, and VIN."}</p>
           </div>
           <span>{audits.length} saved</span>
         </div>
         <label className="audit-compare-mode">
           <span>Compare mode</span>
           <select value={mode} onChange={(event) => chooseMode(event.target.value as CompareMode)}>
-            <option value="revision">Original dealer quote vs revised version</option>
+            <option value="revision">Dealer-given original vs revised audit</option>
             <option value="vehicles">Vehicle A vs Vehicle B</option>
           </select>
         </label>
@@ -130,7 +132,7 @@ export default function AuditComparison({ audits }: { audits: AuditComparisonRec
         <div>
           <p className="kicker">COMPARE SAVED AUDITS</p>
           <h3 id="audit-compare-title">See two quote versions side by side.</h3>
-          <p>Compare the written figures, products, trade numbers, payment, and VIN without reopening each audit.</p>
+            <p>Compare the dealer-given original with a revised audit, including the live payment calculation, APR, products, trade numbers, and VIN.</p>
         </div>
         <span>{audits.length} available</span>
       </div>
@@ -139,7 +141,7 @@ export default function AuditComparison({ audits }: { audits: AuditComparisonRec
         <label className="audit-compare-mode">
           <span>Compare mode</span>
           <select value={mode} onChange={(event) => chooseMode(event.target.value as CompareMode)}>
-            <option value="revision">Original dealer quote vs revised version</option>
+            <option value="revision">Dealer-given original vs revised audit</option>
             <option value="vehicles">Vehicle A vs Vehicle B</option>
           </select>
         </label>
@@ -148,15 +150,15 @@ export default function AuditComparison({ audits }: { audits: AuditComparisonRec
 
       <div className="audit-compare-pickers">
         <label>
-          <span>{mode === "revision" ? "Original dealer quote" : "Vehicle A"}</span>
+          <span>{mode === "revision" ? "Dealer-given original" : "Vehicle A"}</span>
           <select value={left.id} onChange={(event) => chooseLeft(event.target.value)} aria-label="First audit to compare">
-            {audits.map((audit) => <option key={audit.id} value={audit.id}>{optionLabel(audit)}</option>)}
+            {audits.map((audit) => <option key={audit.id} value={audit.id}>{optionLabel(audit, mode, audits)}</option>)}
           </select>
         </label>
         <label>
-          <span>{mode === "revision" ? "Revised version" : "Vehicle B"}</span>
+          <span>{mode === "revision" ? "Revised audit" : "Vehicle B"}</span>
           <select value={right.id} onChange={(event) => chooseRight(event.target.value)} aria-label="Second audit to compare">
-            {audits.map((audit) => <option key={audit.id} value={audit.id}>{optionLabel(audit)}</option>)}
+            {audits.map((audit) => <option key={audit.id} value={audit.id}>{optionLabel(audit, mode, audits)}</option>)}
           </select>
         </label>
       </div>
@@ -164,8 +166,8 @@ export default function AuditComparison({ audits }: { audits: AuditComparisonRec
       <div className="audit-compare-table" role="table" aria-label="Saved audit comparison">
         <div className="audit-compare-table-head" role="row">
           <span role="columnheader">What to compare</span>
-          <span role="columnheader"><strong>{mode === "revision" ? "Original dealer quote" : "Vehicle A"}</strong><small>{String(left.data.vehicle ?? "Saved audit")} · {date(left.createdAt)}</small></span>
-          <span role="columnheader"><strong>{mode === "revision" ? "Revised version" : "Vehicle B"}</strong><small>{String(right.data.vehicle ?? "Saved audit")} · {date(right.createdAt)}</small></span>
+          <span role="columnheader"><strong>{mode === "revision" ? "Dealer-given original" : "Vehicle A"}</strong><small>{String(left.data.vehicle ?? "Saved audit")} · {date(left.createdAt)}</small></span>
+          <span role="columnheader"><strong>{mode === "revision" ? "Revised audit" : "Vehicle B"}</strong><small>{String(right.data.vehicle ?? "Saved audit")} · {date(right.createdAt)}</small></span>
         </div>
         {compareFields.map((field) => {
           const leftValue = valueFor(left, field);
@@ -178,7 +180,7 @@ export default function AuditComparison({ audits }: { audits: AuditComparisonRec
           </div>;
         })}
       </div>
-      <p className="audit-compare-note">Highlighted rows differ between the two saved audits. PencilProof shows the figures as entered; verify any revised worksheet before relying on it.</p>
+      <p className="audit-compare-note">Highlighted rows differ between the two saved audits. The dealer-given original keeps its printed payment; revised audits show the saved live calculation when available. Verify any revised worksheet before relying on it.</p>
     </section>
   );
 }
