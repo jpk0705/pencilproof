@@ -87,6 +87,7 @@ const canonicalTerm = (word: string) => {
   if (/^depreciat/.test(word)) return "depreciation";
   if (["apr", "interest", "interests", "rate", "rates"].includes(word)) return "rate";
   if (["carfax", "autocheck", "accident", "accidents", "damage", "damaged", "repair", "repaired", "history"].includes(word)) return "history";
+  if (word === "fees") return "fee";
   if (["husband", "wife", "spouse", "partner"].includes(word)) return "spouse";
   if (["tradein", "allowance", "appraisal", "appraise", "payoff", "equity"].includes(word)) return "trade";
   if (["monthly", "month", "installment"].includes(word)) return "payment";
@@ -145,6 +146,27 @@ const findObjection = (prompt: string, source: Objection[]): Objection | null =>
   const queryTerms = new Set(matchTokens(prompt));
   const normalizedText = [...queryTerms].join(" ");
   const findQuestion = (pattern: RegExp) => source.find((objection) => pattern.test(objection.question.toLowerCase()));
+  const findCategory = (label: string) => source.find((objection) => objection.category.toLowerCase().includes(label));
+  if (/\brate\b/.test(normalizedText)) {
+    const financingObjection = findCategory("financing / apr / credit");
+    if (financingObjection) return financingObjection;
+  }
+  if (/\bfee\b/.test(normalizedText)) {
+    const feeObjection = findCategory("fee / otd");
+    if (feeObjection) return feeObjection;
+  }
+  if (/\b(?:service\s+contract|extended\s+warranty|warranty|maintenance|gap|tire|wheel|paint|protection)\b/.test(normalizedText)) {
+    const productObjection = findCategory("f&i product");
+    if (productObjection) return productObjection;
+  }
+  if (/\binsurance\b/.test(normalizedText)) {
+    const insuranceObjection = findCategory("insurance / ownership cost");
+    if (insuranceObjection) return insuranceObjection;
+  }
+  if (/\b(?:walking\s+out|walk\s+out|leaving|lost\s+my\s+business)\b/.test(normalizedText)) {
+    const walkOutObjection = findCategory("walk-out");
+    if (walkOutObjection) return walkOutObjection;
+  }
   if (/\bhistory\b/.test(normalizedText)) {
     const historyObjection = findQuestion(/accident|history/);
     if (historyObjection) return historyObjection;
