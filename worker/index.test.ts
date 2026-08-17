@@ -1281,6 +1281,46 @@ test("a localized paid session with the exact price receives access", async () =
   assert.equal(await auditResponse.text(), "asset");
 });
 
+test("a valid discounted paid session receives access", async () => {
+  const deviceHash = await sha256Hex(TEST_DEVICE_ID);
+  globalThis.fetch = async (input) => {
+    const requestUrl = String(input);
+    if (requestUrl.endsWith("/line_items?limit=2")) {
+      return Response.json({
+        data: [{
+          price: { id: "price_123TestValid" },
+          quantity: 1,
+        }],
+        has_more: false,
+      });
+    }
+    return Response.json({
+      ...paidSession(deviceHash, "cs_test_discounted"),
+      amount_total: 3235,
+      total_details: {
+        amount_discount: 1000,
+        amount_shipping: 0,
+        amount_tax: 335,
+      },
+    });
+  };
+
+  const response = await handleRequest(
+    new Request(
+      "https://audit.pencilproof.com/success?session_id=cs_test_discounted",
+      { headers: { Cookie: `pp_device=${TEST_DEVICE_ID}` } },
+    ),
+    makeEnv(),
+  );
+
+  assert.equal(response.status, 303);
+  assert.equal(
+    response.headers.get("Location"),
+    "https://audit.pencilproof.com/analyze/secure/",
+  );
+  assert.match(response.headers.get("Set-Cookie") ?? "", /^pp_access=/);
+});
+
 test("a paid session with a different price does not unlock the audit", async () => {
   globalThis.fetch = async (input) => {
     const requestUrl = String(input);

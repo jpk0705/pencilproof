@@ -80,7 +80,11 @@ export default function AccountPage() {
         return;
       }
       setAudits(data.audits ?? []);
-      setExpiresAt(data.expiresAt ?? null);
+      const nextExpiresAt = data.expiresAt ?? null;
+      setExpiresAt(nextExpiresAt);
+      if (nextExpiresAt && nextExpiresAt > Math.floor(Date.now() / 1000)) {
+        setAuditPath("https://audit.pencilproof.com/analyze/secure/");
+      }
     })();
   }, [clerk]);
 

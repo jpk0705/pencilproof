@@ -2527,6 +2527,10 @@ const retrieveRecentRevocationEvents = async (env: Env) => {
 };
 
 const isPaidPencilProofSession = (session: StripeCheckoutSession | null) => {
+  const subtotal = session?.amount_subtotal;
+  const total = session?.amount_total;
+  const discount = session?.total_details?.amount_discount;
+  const shipping = session?.total_details?.amount_shipping;
   const tax = session?.total_details?.amount_tax;
   return Boolean(
     session
@@ -2534,15 +2538,23 @@ const isPaidPencilProofSession = (session: StripeCheckoutSession | null) => {
     && session.payment_status === "paid"
     && session.mode === "payment"
     && session.managed_payments?.enabled === true
-    && typeof session.amount_subtotal === "number"
-    && Number.isInteger(session.amount_subtotal)
-    && session.amount_subtotal > 0
+    && typeof subtotal === "number"
+    && Number.isInteger(subtotal)
+    && subtotal > 0
+    && typeof total === "number"
+    && Number.isInteger(total)
+    && total > 0
+    && typeof discount === "number"
+    && Number.isInteger(discount)
+    && discount >= 0
+    && discount <= subtotal
+    && typeof shipping === "number"
+    && Number.isInteger(shipping)
+    && shipping === 0
     && typeof tax === "number"
     && Number.isInteger(tax)
     && tax >= 0
-    && session.total_details?.amount_discount === 0
-    && session.total_details?.amount_shipping === 0
-    && session.amount_total === session.amount_subtotal + tax
+    && total === subtotal - discount + shipping + tax
     && typeof session.currency === "string"
     && /^[a-z]{3}$/i.test(session.currency)
     && session.metadata?.pencilproof_product === PRODUCT_CODE
@@ -3032,6 +3044,29 @@ const handleSuccess = async (request: Request, env: Env) => {
       return redirect(`${env.SITE_ORIGIN}/recover?reason=${reason}`);
     }
     return redirect(`${env.PUBLIC_SITE_ORIGIN}/?payment=unverified#pricing`);
+  }
+
+  // The account may have been linked after Stripe created the session, or the
+  // webhook may have fulfilled the order before the browser returned here.
+  // Reconcile the signed-in consumer now so a successful payment is usable
+  // from My Audits as well as from this checkout browser.
+  const userId = await currentUser(request, env);
+  if (userId) {
+    try {
+      await accountCall(env, "/migrate", { guestId: deviceHash, userId });
+      await accountCall(env, "/entitlement", {
+        userId,
+        stripeSessionId: sessionId,
+        activatedAt: redemption.expiresAt - accessSeconds(env),
+        exactExpiresAt: redemption.expiresAt,
+      });
+    } catch (error) {
+      console.error("Paid account entitlement reconciliation failed", {
+        message: error instanceof Error ? error.message : "Unknown error",
+        sessionId,
+        userId,
+      });
+    }
   }
 
   const maxAge = Math.max(
