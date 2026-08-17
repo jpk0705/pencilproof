@@ -190,6 +190,22 @@ test("salesperson audit history allows the public dashboard origin to read it", 
   assert.equal(response.headers.get("Access-Control-Allow-Credentials"), "true");
 });
 
+test("an existing salesperson profile overrides a stale consumer role cookie", async () => {
+  const env = makeEnv();
+  env.ACCOUNTS = makeAccountNamespace("active");
+  const userSession = await createUserSession("salesperson-user", env.SESSION_SECRET);
+  const consumerRole = await createAccountRoleSession("consumer", env.SESSION_SECRET);
+  const response = await handleRequest(
+    new Request("https://audit.pencilproof.com/api/account/me", {
+      headers: { Cookie: `pp_user=${userSession}; pp_role=${consumerRole}` },
+    }),
+    env,
+  );
+  assert.equal(response.status, 200);
+  const data = await response.json() as { role?: string };
+  assert.equal(data.role, "salesperson");
+});
+
 const paidSession = (
   deviceHash: string,
   sessionId = "cs_test_paid",

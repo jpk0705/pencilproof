@@ -4,7 +4,7 @@ import Link from "next/link";
 import QRCode from "qrcode";
 import { Clerk } from "@clerk/clerk-js";
 import { useEffect, useMemo, useState } from "react";
-import { authRedirectOptions, createLoadedClerk, getAuthContext } from "@/lib/clerk-client";
+import { authRedirectOptions, createLoadedClerk, getAuthContext, setAuthContext as persistAuthContext } from "@/lib/clerk-client";
 import { SiteNav } from "@/app/components/SiteChrome";
 import SalesCoach from "@/app/components/SalesCoach";
 
@@ -81,18 +81,23 @@ export default function SalespersonPage() {
   useEffect(() => {
     if (!clerk?.user || !clerk.session) return;
     void (async () => {
-      if (getAuthContext() !== "salesperson") {
-        setRoleBlocked(true);
-        return;
-      }
       const token = await clerk.session?.getToken();
       if (!token) return;
-      await fetch(`${SALES_API_URL}/api/account/session`, {
+      const requestedRole = getAuthContext();
+      const response = await fetch(`${SALES_API_URL}/api/account/session`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ email, token, role: getAuthContext() === "salesperson" ? "salesperson" : "consumer" }),
+        body: JSON.stringify({ email, token, role: requestedRole }),
       });
+      const data = await response.json().catch(() => ({})) as { role?: string };
+      const resolvedRole = data.role === "salesperson" ? "salesperson" : "consumer";
+      persistAuthContext(resolvedRole);
+      if (!response.ok || resolvedRole !== "salesperson") {
+        setRoleBlocked(true);
+        return;
+      }
+      setRoleBlocked(false);
       await refresh();
     })();
   }, [clerk, email]);

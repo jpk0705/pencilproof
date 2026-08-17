@@ -1050,8 +1050,20 @@ const requestGuestId = async (request: Request) => {
   return validDeviceId(device) ? sha256Hex(device) : null;
 };
 
-const currentAccountRole = async (request: Request, env: Env): Promise<AccountRole> =>
-  await verifyAccountRoleSession(readCookie(request, ROLE_COOKIE), env.SESSION_SECRET) ?? "consumer";
+const canonicalAccountRole = async (
+  env: Env,
+  userId: string | null,
+  fallback: AccountRole,
+): Promise<AccountRole> => {
+  if (!userId) return fallback;
+  const result = await accountCall(env, "/salesperson", { action: "get", userId });
+  return result?.profile ? "salesperson" : fallback;
+};
+
+const currentAccountRole = async (request: Request, env: Env): Promise<AccountRole> => {
+  const sessionRole = await verifyAccountRoleSession(readCookie(request, ROLE_COOKIE), env.SESSION_SECRET) ?? "consumer";
+  return canonicalAccountRole(env, await currentUser(request, env), sessionRole);
+};
 
 const accountAccess = async (request: Request, env: Env) => {
   if (!env.ACCOUNTS) return null;
@@ -1093,10 +1105,14 @@ const handleAccount = async (request: Request, env: Env) => {
     if (/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(email) && email.length <= 254) {
       await accountCall(env, "/email-contact", { email, userId: user.id });
     }
+    // A salesperson profile is the durable source of truth. This prevents a
+    // consumer-path navigation event from downgrading an existing salesperson
+    // account just because the browser's temporary entry context is stale.
+    const resolvedRole = await canonicalAccountRole(env, user.id, role);
     await accountCall(env, "/account-identity", {
       action: "upsert",
       email: /^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(email) && email.length <= 254 ? email : undefined,
-      role,
+      role: resolvedRole,
       userId: user.id,
     });
     const guestId = await requestGuestId(request);
@@ -1112,8 +1128,8 @@ const handleAccount = async (request: Request, env: Env) => {
     }
     const headers = new Headers(noStoreHeaders);
     headers.append("Set-Cookie", await accountCookie(user.id, env.SESSION_SECRET));
-    headers.append("Set-Cookie", await accountRoleCookie(role, env.SESSION_SECRET));
-    return withAccountCors(Response.json({ ok: true, role, expiresAt: await accountAccess(request, env) }, { headers }), request, env);
+    headers.append("Set-Cookie", await accountRoleCookie(resolvedRole, env.SESSION_SECRET));
+    return withAccountCors(Response.json({ ok: true, role: resolvedRole, expiresAt: await accountAccess(request, env) }, { headers }), request, env);
   }
   const userId = await currentUser(request, env);
   if (!userId) return withAccountCors(Response.json({ error: "account_required" }, { status: 401, headers: noStoreHeaders }), request, env);
