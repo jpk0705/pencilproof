@@ -81,11 +81,29 @@ const cleanPlaybookLine = (line: string) => line
   .replace(/^\*\*|\*\*$/g, "")
   .trim();
 
-const keywordsFor = (question: string) => question
+const stopWords = new Set(["what", "this", "that", "with", "your", "need", "want", "have", "will", "from", "about", "just", "only", "dont", "doesnt", "talk"]);
+
+const canonicalTerm = (word: string) => {
+  if (/^depreciat/.test(word)) return "depreciation";
+  if (["apr", "interest", "interests", "rate", "rates"].includes(word)) return "rate";
+  if (["carfax", "autocheck", "accident", "accidents", "damage", "damaged", "repair", "repaired", "history"].includes(word)) return "history";
+  if (["husband", "wife", "spouse", "partner"].includes(word)) return "spouse";
+  if (["tradein", "allowance", "appraisal", "appraise", "payoff", "equity"].includes(word)) return "trade";
+  if (["monthly", "month", "installment"].includes(word)) return "payment";
+  if (["dealership", "dealerships", "dealer"].includes(word)) return "dealer";
+  if (["negotiating", "negotiation", "negotiate"].includes(word)) return "negotiation";
+  return word;
+};
+
+const matchTokens = (value: string) => value
   .toLowerCase()
   .replace(/[“”‘’"'!?.,/]/g, " ")
+  .replace(/[-–—]/g, " ")
   .split(/\s+/)
-  .filter((word) => (word.length > 3 || ["apr", "gap", "ev", "otd"].includes(word)) && !["what", "this", "that", "with", "your", "need", "want", "have", "will", "from", "about", "just", "only", "dont", "doesnt", "talk"].includes(word));
+  .map(canonicalTerm)
+  .filter((word) => (word.length > 3 || ["gap", "ev", "otd"].includes(word)) && !stopWords.has(word));
+
+const keywordsFor = (question: string) => [...new Set(matchTokens(question))];
 
 const parsePlaybook = (source: string): Objection[] => {
   const entries: Objection[] = [];
@@ -110,7 +128,6 @@ const parsePlaybook = (source: string): Objection[] => {
       commit();
       const question = cleanPlaybookLine(questionMatch[1]);
       const keywords = keywordsFor(question);
-      if (/\b(?:interest\s+rate|interest\s+rates|annual\s+percentage\s+rate)\b/i.test(question)) keywords.push("apr");
       current = { category, question, keywords, responses: [] };
       continue;
     }
@@ -125,22 +142,45 @@ const parsePlaybook = (source: string): Objection[] => {
 };
 
 const findObjection = (prompt: string, source: Objection[]): Objection | null => {
-  const text = prompt.toLowerCase();
-  const tradeValueIntent = /\btrade\b/.test(text) && /\b(?:more|enough|value|worth|allowance|appraisal|appraising)\b/.test(text) && !/\b(?:discount|deal|another|additional)\b/.test(text);
+  const queryTerms = new Set(matchTokens(prompt));
+  const normalizedText = [...queryTerms].join(" ");
+  const findQuestion = (pattern: RegExp) => source.find((objection) => pattern.test(objection.question.toLowerCase()));
+  if (/\bhistory\b/.test(normalizedText)) {
+    const historyObjection = findQuestion(/accident|history/);
+    if (historyObjection) return historyObjection;
+  }
+  if (/\bdepreciation\b/.test(normalizedText)) {
+    const depreciationObjection = findQuestion(/depreciat|resale/);
+    if (depreciationObjection) return depreciationObjection;
+  }
+  if (/\bback\s+forth\b/.test(normalizedText)) {
+    const backAndForthObjection = findQuestion(/back-and-forth|back and forth/);
+    if (backAndForthObjection) return backAndForthObjection;
+  }
+  const tradeValueIntent = /\btrade\b/.test(normalizedText) && /\b(?:more|enough|value|worth|allowance|appraisal|appraising)\b/.test(normalizedText) && !/\b(?:discount|deal|another|additional)\b/.test(normalizedText);
   if (tradeValueIntent) {
     const tradeObjection = source.find((objection) => objection.category.toLowerCase().includes("trade-in"));
     if (tradeObjection) return tradeObjection;
   }
+  const termSets = source.map((objection) => new Set([...objection.keywords.flatMap((keyword) => matchTokens(keyword)), ...matchTokens(objection.question)]));
+  const documentFrequency = new Map<string, number>();
+  termSets.forEach((terms) => terms.forEach((term) => documentFrequency.set(term, (documentFrequency.get(term) ?? 0) + 1)));
+  const promptPhrase = [...queryTerms].join(" ");
   let bestObjection: Objection | null = null;
   let bestScore = 0;
   let bestIndex = Number.MAX_SAFE_INTEGER;
   source.forEach((objection, index) => {
-    const score = objection.keywords.reduce((total, keyword) => {
-      if (!text.includes(keyword.toLowerCase())) return total;
-      // A specific term such as "rate" or "mileage" should outweigh a
-      // generic overlap such as "high". Phrases get the highest weight.
-      return total + (keyword.includes(" ") ? 4 : keyword.length >= 5 ? 2 : 1);
-    }, 0);
+    const terms = termSets[index];
+    let score = 0;
+    queryTerms.forEach((term) => {
+      if (terms.has(term)) {
+        const frequency = documentFrequency.get(term) ?? source.length;
+        score += 1 + Math.log((source.length + 1) / (frequency + 1));
+      }
+    });
+    const questionPhrase = matchTokens(objection.question).join(" ");
+    if (questionPhrase && promptPhrase === questionPhrase) score += 8;
+    if (questionPhrase && promptPhrase.includes(questionPhrase)) score += 4;
     if (score > 0 && (score > bestScore || (score === bestScore && index < bestIndex))) {
       bestObjection = objection;
       bestScore = score;
