@@ -223,6 +223,74 @@ test("salesperson checkout keeps public-origin errors readable by the dashboard"
   assert.deepEqual(await response.json(), { error: "account_required" });
 });
 
+test("salesperson checkout applies only the configured salesperson promotion", async () => {
+  const env = makeEnv();
+  env.ACCOUNTS = makeAccountNamespace("not_started");
+  env.STRIPE_SALESPERSON_PRICE_ID = "price_salespersonTest";
+  env.STRIPE_SALESPERSON_PROMOTION_CODE_ID = "promo_salespersonTest";
+  const session = await createUserSession("salesperson-checkout-user", env.SESSION_SECRET);
+  const requests: string[] = [];
+  let checkoutBody = "";
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    requests.push(url.pathname);
+    if (url.pathname === "/v1/promotion_codes/promo_salespersonTest") {
+      return Response.json({ active: true, max_redemptions: 100, times_redeemed: 1 });
+    }
+    if (url.pathname === "/v1/checkout/sessions") {
+      checkoutBody = String(init?.body ?? "");
+      return Response.json({ id: "cs_salesperson", url: "https://checkout.stripe.com/c/pay/cs_salesperson" });
+    }
+    return Response.json({});
+  };
+  const response = await handleRequest(
+    new Request("https://audit.pencilproof.com/api/salesperson/checkout", {
+      method: "POST",
+      headers: { Cookie: `pp_user=${session}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "sales@example.com", displayName: "Hannah" }),
+    }),
+    env,
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(requests, ["/v1/promotion_codes/promo_salespersonTest", "/v1/checkout/sessions"]);
+  const parameters = new URLSearchParams(checkoutBody);
+  assert.equal(parameters.get("discounts[0][promotion_code]"), "promo_salespersonTest");
+  assert.equal(parameters.get("allow_promotion_codes"), null);
+});
+
+test("salesperson checkout falls back to full price after the configured promotion limit", async () => {
+  const env = makeEnv();
+  env.ACCOUNTS = makeAccountNamespace("not_started");
+  env.STRIPE_SALESPERSON_PRICE_ID = "price_salespersonTest";
+  env.STRIPE_SALESPERSON_PROMOTION_CODE_ID = "promo_salespersonTest";
+  const session = await createUserSession("salesperson-limit-user", env.SESSION_SECRET);
+  let checkoutBody = "";
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    if (url.pathname === "/v1/promotion_codes/promo_salespersonTest") {
+      return Response.json({ active: true, max_redemptions: 100, times_redeemed: 100 });
+    }
+    if (url.pathname === "/v1/checkout/sessions") {
+      checkoutBody = String(init?.body ?? "");
+      return Response.json({ id: "cs_salesperson", url: "https://checkout.stripe.com/c/pay/cs_salesperson" });
+    }
+    return Response.json({});
+  };
+  const response = await handleRequest(
+    new Request("https://audit.pencilproof.com/api/salesperson/checkout", {
+      method: "POST",
+      headers: { Cookie: `pp_user=${session}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "sales@example.com", displayName: "Hannah" }),
+    }),
+    env,
+  );
+  assert.equal(response.status, 200);
+  const parameters = new URLSearchParams(checkoutBody);
+  assert.equal(parameters.get("discounts[0][promotion_code]"), null);
+  assert.equal(parameters.get("allow_promotion_codes"), null);
+  assert.equal(parameters.get("line_items[0][price]"), "price_salespersonTest");
+});
+
 test("an existing salesperson profile overrides a stale consumer role cookie", async () => {
   const env = makeEnv();
   env.ACCOUNTS = makeAccountNamespace("active");

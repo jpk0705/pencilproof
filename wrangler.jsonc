@@ -47,6 +47,7 @@
     "SITE_ORIGIN": "https://audit.pencilproof.com",
     "STRIPE_PRICE_ID": "price_1Tu1GEEopq0gcXsNeXF2QMry",
     "STRIPE_SALESPERSON_PRICE_ID": "price_1U4rJAEopq0gcXsNNZynvZBO",
+    "STRIPE_SALESPERSON_PROMOTION_CODE_ID": "promo_1U4seTEopq0gcXsNEWx8t641",
     "CLERK_ISSUER": "https://clerk.pencilproof.com",
     "CLERK_JWKS_URL": "https://clerk.pencilproof.com/.well-known/jwks.json"
   },

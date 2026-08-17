@@ -83,6 +83,7 @@ export interface Env {
   SITE_ORIGIN: string;
   STRIPE_PRICE_ID: string;
   STRIPE_SALESPERSON_PRICE_ID?: string;
+  STRIPE_SALESPERSON_PROMOTION_CODE_ID?: string;
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET?: string;
   GEMINI_API_KEY?: string;
@@ -2372,7 +2373,6 @@ const createSalespersonCheckoutSession = async (
   const stripeSecretKey = typeof env.STRIPE_SECRET_KEY === "string" ? env.STRIPE_SECRET_KEY.trim() : "";
   if (!stripeSecretKey) throw new CheckoutError("stripe_secret_key_invalid", "Stripe secret key is not configured");
   const parameters = new URLSearchParams({
-    allow_promotion_codes: "true",
     cancel_url: `${env.SITE_ORIGIN}/sales?billing=cancelled`,
     "customer_email": email,
     "line_items[0][quantity]": "1",
@@ -2384,6 +2384,23 @@ const createSalespersonCheckoutSession = async (
     "subscription_data[metadata][pencilproof_product]": SALESPERSON_PRODUCT_CODE,
     "subscription_data[metadata][pencilproof_user_id]": userId,
   });
+  const promotionCodeId = typeof env.STRIPE_SALESPERSON_PROMOTION_CODE_ID === "string"
+    ? env.STRIPE_SALESPERSON_PROMOTION_CODE_ID.trim()
+    : "";
+  if (/^promo_[A-Za-z0-9]+$/.test(promotionCodeId)) {
+    const promotionResponse = await stripeRequest(`/promotion_codes/${encodeURIComponent(promotionCodeId)}`, env);
+    const promotion = await promotionResponse.json() as {
+      active?: boolean;
+      max_redemptions?: number | null;
+      times_redeemed?: number;
+    };
+    const withinLimit = promotion.max_redemptions === null
+      || promotion.max_redemptions === undefined
+      || (promotion.times_redeemed ?? 0) < promotion.max_redemptions;
+    if (promotionResponse.ok && promotion.active === true && withinLimit) {
+      parameters.set("discounts[0][promotion_code]", promotionCodeId);
+    }
+  }
   const response = await stripeRequest("/checkout/sessions", env, { body: parameters, method: "POST" });
   const session = await response.json() as StripeCheckoutSession & { error?: { message?: string; code?: string; param?: string } };
   if (!response.ok || !session.url || !session.url.startsWith("https://checkout.stripe.com/")) {
