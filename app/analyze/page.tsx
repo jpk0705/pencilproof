@@ -1503,7 +1503,7 @@ export default function AnalyzePage() {
               </div> : null}
               {!showConsumerOnlyAuditSections ? <div className="sales-audit-save-action"><button type="button" onClick={() => { savedAuditKey.current = ""; setAuditSaveMessage("Saving this audit…"); setAuditSaveRequest((current) => current + 1); }}>Save this audit to dashboard</button>{auditSaveMessage ? <span role="status">{auditSaveMessage}</span> : null}</div> : null}
               <button className="print-button" type="button" onClick={() => window.print()}>Print or save this Full Quote Audit</button>
-              {showConsumerOnlyAuditSections && !accountPromptDismissed ? <section className="account-save-prompt" aria-labelledby="account-save-title">
+              {!isPaidAuditHost && showConsumerOnlyAuditSections && !accountPromptDismissed ? <section className="account-save-prompt" aria-labelledby="account-save-title">
                 <div>
                   <p className="paid-feedback-kicker">OPTIONAL ACCOUNT</p>
                   <h3 id="account-save-title">Save your PencilProof access</h3>
