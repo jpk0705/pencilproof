@@ -15,6 +15,8 @@ type CompareField = {
   kind: "text" | "money" | "percent" | "months" | "verdict";
 };
 
+type CompareMode = "revision" | "vehicles";
+
 const compareFields: CompareField[] = [
   { key: "vehicle", label: "Vehicle", kind: "text" },
   { key: "vin", label: "VIN", kind: "text" },
@@ -62,17 +64,53 @@ const optionLabel = (audit: AuditComparisonRecord) => {
 };
 
 export default function AuditComparison({ audits }: { audits: AuditComparisonRecord[] }) {
-  const [leftId, setLeftId] = useState(audits[0]?.id ?? "");
-  const [rightId, setRightId] = useState(audits[1]?.id ?? "");
+  const [mode, setMode] = useState<CompareMode>("revision");
+  const [leftId, setLeftId] = useState(audits[audits.length - 1]?.id ?? "");
+  const [rightId, setRightId] = useState(audits[0]?.id ?? "");
 
   useEffect(() => {
-    if (!audits.some((audit) => audit.id === leftId)) setLeftId(audits[0]?.id ?? "");
+    if (!audits.some((audit) => audit.id === leftId)) setLeftId(audits[audits.length - 1]?.id ?? "");
     if (!audits.some((audit) => audit.id === rightId) || leftId === rightId) {
       setRightId(audits.find((audit) => audit.id !== leftId)?.id ?? "");
     }
   }, [audits, leftId, rightId]);
 
-  if (audits.length < 2) return null;
+  const modeDescription = mode === "revision"
+    ? "Choose the original dealer quote and the revised version to see exactly what changed."
+    : "Choose two different vehicles to compare their prices, terms, products, trade figures, and payments.";
+
+  const chooseMode = (nextMode: CompareMode) => {
+    setMode(nextMode);
+    if (nextMode === "revision") {
+      setLeftId(audits[audits.length - 1]?.id ?? "");
+      setRightId(audits[0]?.id ?? "");
+    } else {
+      setLeftId(audits[0]?.id ?? "");
+      setRightId(audits.find((audit) => audit.id !== audits[0]?.id)?.id ?? "");
+    }
+  };
+
+  if (audits.length < 2) {
+    return (
+      <section className="audit-compare audit-compare-empty" aria-labelledby="audit-compare-title">
+        <div className="audit-compare-heading">
+          <div>
+            <p className="kicker">COMPARE SAVED AUDITS</p>
+            <h3 id="audit-compare-title">Choose how you want to compare.</h3>
+            <p>{audits.length === 1 ? "Save one more reviewed audit to compare the numbers, products, payment, and VIN." : "Save two reviewed audits to compare the numbers, products, payment, and VIN."}</p>
+          </div>
+          <span>{audits.length} saved</span>
+        </div>
+        <label className="audit-compare-mode">
+          <span>Compare mode</span>
+          <select value={mode} onChange={(event) => chooseMode(event.target.value as CompareMode)}>
+            <option value="revision">Original dealer quote vs revised version</option>
+            <option value="vehicles">Vehicle A vs Vehicle B</option>
+          </select>
+        </label>
+      </section>
+    );
+  }
 
   const left = audits.find((audit) => audit.id === leftId) ?? audits[0];
   const right = audits.find((audit) => audit.id === rightId) ?? audits.find((audit) => audit.id !== left.id) ?? audits[1];
@@ -97,15 +135,26 @@ export default function AuditComparison({ audits }: { audits: AuditComparisonRec
         <span>{audits.length} available</span>
       </div>
 
+      <div className="audit-compare-mode-row">
+        <label className="audit-compare-mode">
+          <span>Compare mode</span>
+          <select value={mode} onChange={(event) => chooseMode(event.target.value as CompareMode)}>
+            <option value="revision">Original dealer quote vs revised version</option>
+            <option value="vehicles">Vehicle A vs Vehicle B</option>
+          </select>
+        </label>
+        <p>{modeDescription}</p>
+      </div>
+
       <div className="audit-compare-pickers">
         <label>
-          <span>First audit</span>
+          <span>{mode === "revision" ? "Original dealer quote" : "Vehicle A"}</span>
           <select value={left.id} onChange={(event) => chooseLeft(event.target.value)} aria-label="First audit to compare">
             {audits.map((audit) => <option key={audit.id} value={audit.id}>{optionLabel(audit)}</option>)}
           </select>
         </label>
         <label>
-          <span>Second audit</span>
+          <span>{mode === "revision" ? "Revised version" : "Vehicle B"}</span>
           <select value={right.id} onChange={(event) => chooseRight(event.target.value)} aria-label="Second audit to compare">
             {audits.map((audit) => <option key={audit.id} value={audit.id}>{optionLabel(audit)}</option>)}
           </select>
@@ -115,8 +164,8 @@ export default function AuditComparison({ audits }: { audits: AuditComparisonRec
       <div className="audit-compare-table" role="table" aria-label="Saved audit comparison">
         <div className="audit-compare-table-head" role="row">
           <span role="columnheader">What to compare</span>
-          <span role="columnheader"><strong>{String(left.data.vehicle ?? "First audit")}</strong><small>Completed {date(left.createdAt)}</small></span>
-          <span role="columnheader"><strong>{String(right.data.vehicle ?? "Second audit")}</strong><small>Completed {date(right.createdAt)}</small></span>
+          <span role="columnheader"><strong>{mode === "revision" ? "Original dealer quote" : "Vehicle A"}</strong><small>{String(left.data.vehicle ?? "Saved audit")} · {date(left.createdAt)}</small></span>
+          <span role="columnheader"><strong>{mode === "revision" ? "Revised version" : "Vehicle B"}</strong><small>{String(right.data.vehicle ?? "Saved audit")} · {date(right.createdAt)}</small></span>
         </div>
         {compareFields.map((field) => {
           const leftValue = valueFor(left, field);

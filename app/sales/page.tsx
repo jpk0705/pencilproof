@@ -9,7 +9,7 @@ import { flushAnalyticsQueue, track } from "@/lib/analytics";
 import { SiteNav } from "@/app/components/SiteChrome";
 import SalesCoach from "@/app/components/SalesCoach";
 import AuditComparison, { type AuditComparisonRecord } from "@/app/components/AuditComparison";
-import { isExampleAudit } from "@/lib/audit-history";
+import { auditAmountFinanced, auditMoney, auditPayment, auditRate, uniqueRealAudits } from "@/lib/audit-history";
 
 type Profile = {
   displayName: string;
@@ -61,7 +61,7 @@ export default function SalespersonPage() {
     // This page is already inside the salesperson experience. Do not discard
     // the user's audit history if a separate auth-context refresh briefly
     // reports the default consumer role while cookies settle.
-    setSavedAudits((data.audits ?? []).filter((audit) => !isExampleAudit(audit)));
+    setSavedAudits(uniqueRealAudits(data.audits ?? []));
   };
 
   const refresh = async () => {
@@ -389,8 +389,10 @@ export default function SalespersonPage() {
             const verdict = audit.data.verdict && typeof audit.data.verdict === "object"
               ? String((audit.data.verdict as { label?: unknown }).label ?? "Audit completed")
               : "Audit completed";
+            const payment = auditPayment(audit.data);
+            const amountFinanced = auditAmountFinanced(audit.data);
             return <article className="sales-saved-audit" key={audit.id}>
-              <div><span className="saved-audit-badge">FULL QUOTE AUDIT</span><strong>{vehicle}</strong><p>{verdict}</p><small className="saved-audit-vin">VIN {String(audit.data.vin ?? "not detected")}</small><small>Saved {new Date(audit.createdAt * 1000).toLocaleDateString()} · available until {new Date(audit.expiresAt * 1000).toLocaleDateString()}</small></div>
+              <div><span className="saved-audit-badge">FULL QUOTE AUDIT</span><strong>{vehicle}</strong><p>{verdict}</p><div className="saved-audit-metrics" aria-label="Saved audit brief history"><span><small>PRICE</small><b>{auditMoney(audit.data.sellingPrice)}</b></span><span><small>PAYMENT</small><b>{payment === null ? "Not entered" : auditMoney(payment)}</b></span><span><small>RATE</small><b>{auditRate(audit.data.apr)}</b></span><span><small>AMOUNT FINANCED</small><b>{amountFinanced === null ? "Not entered" : auditMoney(amountFinanced)}</b></span></div><small className="saved-audit-vin">VIN {String(audit.data.vin ?? "not detected")}</small><small>Saved {new Date(audit.createdAt * 1000).toLocaleDateString()} · available until {new Date(audit.expiresAt * 1000).toLocaleDateString()}</small></div>
               <Link className="button button-quiet" href={`${PAID_AUDIT_URL}?audit=${encodeURIComponent(audit.id)}`}>View audit <span aria-hidden="true">→</span></Link>
             </article>;
           })}</div> : <div className="sales-saved-audits-empty"><strong>No saved audits yet.</strong><p>Upload a quote above. Once the audit has enough information to calculate, it will appear here automatically.</p></div>}

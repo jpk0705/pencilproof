@@ -272,6 +272,7 @@ export default function AnalyzePage() {
   const [accountRoleKnown, setAccountRoleKnown] = useState(false);
   const [auditSaveRequest, setAuditSaveRequest] = useState(0);
   const [auditSaveMessage, setAuditSaveMessage] = useState("");
+  const printAfterSaveRef = useRef(false);
   const checkoutGateRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -1019,7 +1020,7 @@ export default function AnalyzePage() {
   }, [deal]);
 
   useEffect(() => {
-    if (sampleLoaded || !isPaidAuditHost || !accountRoleKnown || !analysis.hasMinimumData) return;
+    if (auditSaveRequest === 0 || sampleLoaded || !isPaidAuditHost || !accountRoleKnown || !analysis.hasMinimumData) return;
     const key = JSON.stringify(deal);
     if (key === savedAuditKey.current) return;
     void fetch("/api/audits", {
@@ -1028,6 +1029,7 @@ export default function AnalyzePage() {
       credentials: "include",
       body: JSON.stringify({ data: {
         ...deal,
+        amountFinanced: analysis.amountFinanced,
         calculatedPayment: analysis.calculatedPayment,
         verdict: analysis.verdict,
         flags: analysis.flags.map((flag) => ({ name: flag.title, tone: flag.tone, detail: flag.detail })),
@@ -1037,13 +1039,19 @@ export default function AnalyzePage() {
       if (response.ok && typeof payload.id === "string") {
         savedAuditKey.current = key;
         setAuditSaveMessage(accountRole === "salesperson" ? "Saved to your salesperson dashboard." : "Saved to My Audits.");
+        if (printAfterSaveRef.current) {
+          printAfterSaveRef.current = false;
+          window.setTimeout(() => window.print(), 150);
+        }
       } else {
+        printAfterSaveRef.current = false;
         setAuditSaveMessage("This audit could not be saved yet. Try Save this audit again.");
       }
     }).catch(() => {
+      printAfterSaveRef.current = false;
       setAuditSaveMessage("This audit could not be saved yet. Try Save this audit again.");
     });
-  }, [analysis, auditSaveRequest, accountRole, accountRoleKnown, deal, isPaidAuditHost, sampleLoaded]);
+  }, [auditSaveRequest]);
 
   const showConsumerOnlyAuditSections = !isPaidAuditHost || (accountRoleKnown && accountRole !== "salesperson");
 
@@ -1096,11 +1104,12 @@ export default function AnalyzePage() {
     window.setTimeout(() => setCopied(false), 1800);
   };
 
-  const requestAuditSave = () => {
+  const requestAuditSave = (printAfterSave = false) => {
     if (sampleLoaded) {
       setAuditSaveMessage("The built-in sample is for demonstration and cannot be saved.");
       return;
     }
+    printAfterSaveRef.current = printAfterSave;
     savedAuditKey.current = "";
     setAuditSaveMessage("Saving this audit…");
     setAuditSaveRequest((current) => current + 1);
@@ -1465,7 +1474,7 @@ export default function AnalyzePage() {
             </p>
             {isPaidAuditHost && analysis.hasMinimumData ? <div className="sales-audit-save-action sales-audit-save-action-top">
               <div><strong>Save this audit</strong><span>Keep the reviewed numbers in {accountRole === "salesperson" ? "your salesperson dashboard" : "My Audits"}.</span></div>
-              <button type="button" onClick={requestAuditSave}>Save audit</button>
+              <button type="button" onClick={() => requestAuditSave()}>Save audit</button>
               {auditSaveMessage ? <span role="status">{auditSaveMessage}</span> : null}
             </div> : null}
 
@@ -1559,7 +1568,10 @@ export default function AnalyzePage() {
                 <div><p>MESSAGE TO THE DEALER</p><button type="button" onClick={copyMessage}>{copied ? "Copied" : "Copy message"}</button></div>
                 <pre>{message}</pre>
               </div> : null}
-              <button className="print-button" type="button" onClick={() => window.print()}>Print or save this Full Quote Audit</button>
+              <div className="audit-output-actions">
+                <button className="print-button" type="button" onClick={() => window.print()}>Print this Full Quote Audit</button>
+                {isPaidAuditHost ? <button className="audit-save-print-button" type="button" onClick={() => requestAuditSave(true)}>Save &amp; print audit</button> : null}
+              </div>
               {!isPaidAuditHost && showConsumerOnlyAuditSections && !accountPromptDismissed ? <section className="account-save-prompt" aria-labelledby="account-save-title">
                 <div>
                   <p className="paid-feedback-kicker">OPTIONAL ACCOUNT</p>

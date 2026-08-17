@@ -197,7 +197,16 @@ export class AccountStore {
   }
   revoke(stripeSessionId: string) { this.sql.exec(`UPDATE entitlements SET status = 'revoked' WHERE stripe_session_id = ?`, stripeSessionId); }
   audits(ownerId: string) { this.purge(); return this.sql.exec<{ id: string; created_at: number; expires_at: number; data: string }>(`SELECT id, created_at, expires_at, data FROM audits WHERE owner_id = ? ORDER BY created_at DESC`, ownerId).toArray().map((row) => ({ id: row.id, ownerId, createdAt: row.created_at, expiresAt: row.expires_at, data: JSON.parse(row.data) })); }
-  saveAudit(ownerId: string, data: Record<string, unknown>) { this.purge(); const now = isoNow(); const id = crypto.randomUUID(); this.sql.exec(`INSERT INTO audits VALUES (?, ?, ?, ?, ?)`, id, ownerId, now, now + 60 * 60 * 24 * 30, JSON.stringify(data)); return id; }
+  saveAudit(ownerId: string, data: Record<string, unknown>) {
+    this.purge();
+    const serialized = JSON.stringify(data);
+    const existing = this.sql.exec<{ id: string; data: string }>(`SELECT id, data FROM audits WHERE owner_id = ? ORDER BY created_at DESC`, ownerId).toArray().find((row) => row.data === serialized);
+    if (existing) return existing.id;
+    const now = isoNow();
+    const id = crypto.randomUUID();
+    this.sql.exec(`INSERT INTO audits VALUES (?, ?, ?, ?, ?)`, id, ownerId, now, now + 60 * 60 * 24 * 30, serialized);
+    return id;
+  }
   deleteAudit(ownerId: string, id: string) { this.sql.exec(`DELETE FROM audits WHERE id = ? AND owner_id = ?`, id, ownerId); }
   saveEmailContact(userId: string, email: string) {
     const now = isoNow();

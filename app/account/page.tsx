@@ -7,13 +7,14 @@ import { authRedirectOptions, createLoadedClerk, getAuthContext } from "@/lib/cl
 import { flushAnalyticsQueue, track } from "@/lib/analytics";
 import { SiteNav } from "@/app/components/SiteChrome";
 import AuditComparison, { type AuditComparisonRecord } from "@/app/components/AuditComparison";
-import { isExampleAudit } from "@/lib/audit-history";
+import { auditAmountFinanced, auditMoney, auditPayment, auditRate, uniqueRealAudits } from "@/lib/audit-history";
 
 type Audit = AuditComparisonRecord;
 
 const date = (seconds: number) => new Date(seconds * 1000).toLocaleDateString();
 const AUDITS_PER_PAGE = 5;
 const ACCOUNT_API_URL = "https://audit.pencilproof.com";
+const PAID_AUDIT_URL = "https://audit.pencilproof.com/analyze/secure/";
 
 export default function AccountPage() {
   const configured = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
@@ -84,7 +85,7 @@ export default function AccountPage() {
         setAccountRole("salesperson");
         return;
       }
-      setAudits((data.audits ?? []).filter((audit) => !isExampleAudit(audit)));
+      setAudits(uniqueRealAudits(data.audits ?? []));
       const nextExpiresAt = data.expiresAt ?? null;
       setExpiresAt(nextExpiresAt);
       if (nextExpiresAt && nextExpiresAt > Math.floor(Date.now() / 1000)) {
@@ -199,9 +200,11 @@ export default function AccountPage() {
         {audits.length ? visibleAudits.map((audit) => {
           const vehicle = String(audit.data.vehicle ?? "PencilProof Full Quote Audit");
           const verdict = audit.data.verdict && typeof audit.data.verdict === "object" ? String((audit.data.verdict as { label?: unknown }).label ?? "Audit completed") : "Audit completed";
+          const payment = auditPayment(audit.data);
+          const amountFinanced = auditAmountFinanced(audit.data);
           return <article className="saved-audit" key={audit.id}>
-            <div className="saved-audit-copy"><span className="saved-audit-badge">FULL QUOTE AUDIT</span><strong>{vehicle}</strong><p>{verdict}</p><small className="saved-audit-vin">VIN {String(audit.data.vin ?? "not detected")}</small><small>Completed {date(audit.createdAt)} · available until {date(audit.expiresAt)}</small></div>
-            <button type="button" onClick={() => void deleteAudit(audit.id)}>Delete</button>
+            <div className="saved-audit-copy"><span className="saved-audit-badge">FULL QUOTE AUDIT</span><strong>{vehicle}</strong><p>{verdict}</p><div className="saved-audit-metrics" aria-label="Saved audit brief history"><span><small>PRICE</small><b>{auditMoney(audit.data.sellingPrice)}</b></span><span><small>PAYMENT</small><b>{payment === null ? "Not entered" : auditMoney(payment)}</b></span><span><small>RATE</small><b>{auditRate(audit.data.apr)}</b></span><span><small>AMOUNT FINANCED</small><b>{amountFinanced === null ? "Not entered" : auditMoney(amountFinanced)}</b></span></div><small className="saved-audit-vin">VIN {String(audit.data.vin ?? "not detected")}</small><small>Completed {date(audit.createdAt)} · available until {date(audit.expiresAt)}</small></div>
+            <div className="saved-audit-actions"><Link className="button button-quiet" href={`${PAID_AUDIT_URL}?audit=${encodeURIComponent(audit.id)}`}>Open audit <span aria-hidden="true">→</span></Link><button type="button" onClick={() => void deleteAudit(audit.id)}>Delete</button></div>
           </article>;
         }) : <div className="account-empty"><strong>No paid audits yet.</strong><p>Your completed Full Quote Audits will appear here automatically.</p><Link className="text-link" href={auditPath}>Start a quote scan →</Link></div>}
         {audits.length > AUDITS_PER_PAGE ? <nav className="audit-pagination" aria-label="Paid audit history pages">
