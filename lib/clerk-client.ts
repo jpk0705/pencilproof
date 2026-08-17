@@ -88,6 +88,13 @@ export const getAuthContext = (): PencilProofAuthContext => {
 export const authRedirectOptions = (context: PencilProofAuthContext = "consumer") => {
   setAuthContext(context);
   const redirectUrl = new URL(window.location.href);
+  // The shared site navigation can open consumer sign-in while the visitor is
+  // viewing the salesperson marketing page. Do not send that consumer back to
+  // the salesperson route after authentication; their account home is My Audits.
+  if (context === "consumer" && redirectUrl.pathname.startsWith("/sales")) {
+    redirectUrl.pathname = "/account";
+    redirectUrl.search = "";
+  }
   redirectUrl.searchParams.set("auth_context", context);
   const url = redirectUrl.toString();
   return {
