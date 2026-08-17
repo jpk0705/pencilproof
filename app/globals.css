@@ -1770,6 +1770,7 @@ h1 { font-weight: 700; letter-spacing: -.055em; }
 .saved-audit-copy strong { font-size: 16px; }
 .saved-audit-copy p { margin: 0; color: var(--brand-muted); font-size: 13px; }
 .saved-audit-copy small { color: #aebbd0; font-size: 11px; }
+.saved-audit-vin { color: var(--brand-text) !important; font-weight: 800; letter-spacing: .02em; }
 .saved-audit-badge { width: fit-content; font-size: 9px; font-weight: 900; letter-spacing: .12em; }
 .saved-audit button,
 .account-delete { color: #ffd0c3; }
@@ -1787,6 +1788,35 @@ h1 { font-weight: 700; letter-spacing: -.055em; }
 .account-support > p:not(.kicker) { margin: 0; color: var(--brand-muted); }
 .account-support-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
 .account-support-actions .button { width: auto; min-height: 42px; }
+.audit-compare { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--brand-line); }
+.audit-compare-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; }
+.audit-compare-heading h3 { margin: 4px 0 7px; color: var(--brand-text); font-size: 21px; }
+.audit-compare-heading p:not(.kicker) { max-width: 620px; margin: 0; color: var(--brand-muted); font-size: 12px; line-height: 1.55; }
+.audit-compare-heading > span { color: var(--brand-gold); font-size: 11px; font-weight: 900; white-space: nowrap; }
+.audit-compare-pickers { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 18px; }
+.audit-compare-pickers label { display: grid; gap: 7px; }
+.audit-compare-pickers label > span { color: var(--brand-gold); font-size: 10px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.audit-compare-pickers select { width: 100%; min-height: 42px; border: 1px solid var(--brand-line); border-radius: 8px; padding: 0 11px; color: var(--brand-text); background: var(--brand-navy); font: inherit; font-size: 12px; }
+.audit-compare-pickers select:focus-visible { outline: 3px solid var(--brand-gold); outline-offset: 2px; }
+.audit-compare-table { margin-top: 18px; overflow: hidden; border: 1px solid var(--brand-line); border-radius: 12px; }
+.audit-compare-table-head,
+.audit-compare-row { display: grid; grid-template-columns: minmax(170px, 1.15fr) minmax(0, 1fr) minmax(0, 1fr); gap: 0; }
+.audit-compare-table-head { background: rgba(246,195,67,.1); }
+.audit-compare-table-head > span,
+.audit-compare-row > span,
+.audit-compare-row > strong { min-width: 0; padding: 12px 13px; border-right: 1px solid var(--brand-line); }
+.audit-compare-table-head > span:last-child,
+.audit-compare-row > strong:last-child { border-right: 0; }
+.audit-compare-table-head > span { display: grid; gap: 4px; color: var(--brand-gold); font-size: 10px; font-weight: 900; letter-spacing: .07em; text-transform: uppercase; }
+.audit-compare-table-head strong { overflow: hidden; color: var(--brand-text); font-size: 12px; letter-spacing: normal; text-overflow: ellipsis; text-transform: none; white-space: nowrap; }
+.audit-compare-table-head small { color: var(--brand-muted); font-size: 10px; font-weight: 600; letter-spacing: normal; text-transform: none; }
+.audit-compare-row { border-top: 1px solid var(--brand-line); background: rgba(255,255,255,.02); }
+.audit-compare-row:nth-child(even) { background: rgba(255,255,255,.045); }
+.audit-compare-row > span { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--brand-muted); font-size: 11px; font-weight: 800; }
+.audit-compare-row > span em { flex: none; padding: 3px 5px; border-radius: 999px; color: var(--brand-navy); background: var(--brand-gold); font-size: 8px; font-style: normal; font-weight: 900; letter-spacing: .03em; text-transform: uppercase; }
+.audit-compare-row > strong { overflow-wrap: anywhere; color: var(--brand-text); font-size: 12px; font-weight: 800; }
+.audit-compare-row.is-changed > strong { color: var(--brand-gold); background: rgba(246,195,67,.06); }
+.audit-compare-note { margin: 11px 0 0; color: var(--brand-muted); font-size: 10px; line-height: 1.5; }
 .delete-account-prompt { margin-top: 30px; padding: 24px 26px; border: 1px solid var(--brand-line); border-radius: 16px; background: var(--brand-navy-2); box-shadow: 0 16px 40px rgba(0,0,0,.16); }
 .delete-account-prompt h2 { margin: 5px 0 9px; }
 .delete-account-prompt > p:not(.kicker) { margin: 0 0 18px; color: var(--brand-muted); }
@@ -1842,6 +1872,16 @@ h1 { font-weight: 700; letter-spacing: -.055em; }
   .account-history { padding: 20px; }
   .account-section-heading { align-items: flex-start; flex-direction: column; gap: 4px; }
   .saved-audit { align-items: flex-start; flex-direction: column; }
+  .audit-compare-heading { align-items: flex-start; flex-direction: column; gap: 7px; }
+  .audit-compare-heading > span { align-self: flex-start; }
+  .audit-compare-pickers { grid-template-columns: 1fr; }
+  .audit-compare-table-head,
+  .audit-compare-row { grid-template-columns: minmax(120px, .9fr) minmax(0, 1fr) minmax(0, 1fr); }
+  .audit-compare-table-head > span,
+  .audit-compare-row > span,
+  .audit-compare-row > strong { padding: 10px 8px; }
+  .audit-compare-row > span { display: block; font-size: 10px; }
+  .audit-compare-row > span em { display: block; width: fit-content; margin-top: 5px; }
   .audit-pagination { flex-wrap: wrap; justify-content: center; }
   .audit-pagination-label { order: -1; width: 100%; text-align: center; }
   .audit-pagination .button { flex: 1; }

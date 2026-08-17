@@ -6,13 +6,9 @@ import { useEffect, useState, type ReactNode } from "react";
 import { authRedirectOptions, createLoadedClerk, getAuthContext } from "@/lib/clerk-client";
 import { flushAnalyticsQueue, track } from "@/lib/analytics";
 import { SiteNav } from "@/app/components/SiteChrome";
+import AuditComparison, { type AuditComparisonRecord } from "@/app/components/AuditComparison";
 
-type Audit = {
-  id: string;
-  createdAt: number;
-  expiresAt: number;
-  data: Record<string, unknown>;
-};
+type Audit = AuditComparisonRecord;
 
 const date = (seconds: number) => new Date(seconds * 1000).toLocaleDateString();
 const AUDITS_PER_PAGE = 5;
@@ -203,7 +199,7 @@ export default function AccountPage() {
           const vehicle = String(audit.data.vehicle ?? "PencilProof Full Quote Audit");
           const verdict = audit.data.verdict && typeof audit.data.verdict === "object" ? String((audit.data.verdict as { label?: unknown }).label ?? "Audit completed") : "Audit completed";
           return <article className="saved-audit" key={audit.id}>
-            <div className="saved-audit-copy"><span className="saved-audit-badge">FULL QUOTE AUDIT</span><strong>{vehicle}</strong><p>{verdict}</p><small>Completed {date(audit.createdAt)} · available until {date(audit.expiresAt)}</small></div>
+            <div className="saved-audit-copy"><span className="saved-audit-badge">FULL QUOTE AUDIT</span><strong>{vehicle}</strong><p>{verdict}</p><small className="saved-audit-vin">VIN {String(audit.data.vin ?? "not detected")}</small><small>Completed {date(audit.createdAt)} · available until {date(audit.expiresAt)}</small></div>
             <button type="button" onClick={() => void deleteAudit(audit.id)}>Delete</button>
           </article>;
         }) : <div className="account-empty"><strong>No paid audits yet.</strong><p>Your completed Full Quote Audits will appear here automatically.</p><Link className="text-link" href={auditPath}>Start a quote scan →</Link></div>}
@@ -212,6 +208,7 @@ export default function AccountPage() {
           <span className="audit-pagination-label">Page {currentAuditPage} of {auditPageCount}</span>
           <button className="button button-quiet" type="button" onClick={() => setAuditPage((current) => Math.min(auditPageCount, current + 1))} disabled={currentAuditPage === auditPageCount}>Next</button>
         </nav> : null}
+        <AuditComparison audits={audits} />
       </section>
 
       <section className="account-support" aria-labelledby="account-support-title">
