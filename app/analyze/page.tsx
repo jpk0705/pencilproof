@@ -87,6 +87,7 @@ type CheckoutPayload = {
 };
 
 const PENDING_CHECKOUT_KEY = "pencilproof:pending-checkout";
+const PAID_AUDIT_FEEDBACK_KEY = "pencilproof:paid-audit-feedback-completed";
 const QUOTE_BASELINE_KEY = "pencilproof:quote-baseline";
 const REFERRAL_CODE_KEY = "pencilproof:referral-code";
 
@@ -358,6 +359,10 @@ export default function AnalyzePage() {
   }, [pendingCheckout]);
 
   useEffect(() => {
+    if (sessionStorage.getItem(PAID_AUDIT_FEEDBACK_KEY) === "true") setAuditFeedbackSent(true);
+  }, []);
+
+  useEffect(() => {
     const saved = sessionStorage.getItem(PENDING_CHECKOUT_KEY);
     if (!saved) return;
     try {
@@ -537,6 +542,21 @@ export default function AnalyzePage() {
     const payload = pendingCheckout;
     setPendingCheckout(null);
     startCheckout(payload);
+  };
+
+  const completePreCheckoutFeedback = () => {
+    setPreCheckoutFeedbackCompleted(true);
+    const saved = sessionStorage.getItem(PENDING_CHECKOUT_KEY);
+    if (saved) {
+      try {
+        const payload = JSON.parse(saved) as CheckoutPayload;
+        const completedPayload = { ...payload, preCheckoutFeedbackCompleted: true };
+        sessionStorage.setItem(PENDING_CHECKOUT_KEY, JSON.stringify(completedPayload));
+      } catch {
+        sessionStorage.removeItem(PENDING_CHECKOUT_KEY);
+      }
+    }
+    setPendingCheckout((current) => current ? { ...current, preCheckoutFeedbackCompleted: true } : current);
   };
 
   const importDealFile = async (file: File) => {
@@ -1035,6 +1055,7 @@ export default function AnalyzePage() {
       event: "feedback_submitted",
       value: auditFeedback.scanQuality,
     });
+    sessionStorage.setItem(PAID_AUDIT_FEEDBACK_KEY, "true");
     setAuditFeedbackSent(true);
   };
 
@@ -1314,7 +1335,7 @@ export default function AnalyzePage() {
             <div className="verification-actions">
               <button className="button button-primary" type="button" onClick={confirmPendingImport}>{isPaidAuditHost ? "Confirm values and run audit" : "Confirm values and continue to checkout"} <Arrow /></button>
             </div>
-            {preCheckoutFeedbackCompleted === false ? <PreCheckoutFeedback onCompleted={() => setPreCheckoutFeedbackCompleted(true)} /> : null}
+            {preCheckoutFeedbackCompleted === false ? <PreCheckoutFeedback onCompleted={completePreCheckoutFeedback} /> : null}
             {pendingCheckout !== null ? <div ref={checkoutGateRef} className="checkout-gate-anchor"><PreCheckoutAccountGate onContinue={continueCheckout} /></div> : null}
           </section>
         ) : null}
