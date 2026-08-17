@@ -105,9 +105,11 @@ export default function PreCheckoutAccountGate({ onContinue }: Props) {
             Create free account
           </button>
         )}
-        <button className="button button-quiet" type="button" onClick={continueAsGuest} disabled={busy}>
-          Continue as guest
-        </button>
+        {!accountReady ? (
+          <button className="button button-quiet" type="button" onClick={continueAsGuest} disabled={busy}>
+            Continue as guest
+          </button>
+        ) : null}
         {!accountReady && clerk ? (
           <button className="pre-checkout-signin" type="button" onClick={() => clerk.openSignIn(authRedirectOptions("consumer"))} disabled={busy}>
             Already have an account? Sign in
