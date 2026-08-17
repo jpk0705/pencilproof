@@ -528,7 +528,16 @@ footer { border-top: 1px solid var(--line); padding: 34px 0; }
 .counter-proposal-field { min-height: 45px; }
 .counter-proposal-status { min-height: 45px; display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 0 13px; border: 1px solid #aebbd0; border-radius: 4px; background: #f5f7fb; color: var(--brand-navy); }
 .counter-proposal-status strong { font-size: 13px; line-height: 1.2; }
-.counter-proposal-status small { margin: 0; color: #607084; font-size: 10px; line-height: 1.35; }
+.counter-proposal-status small { margin: 0; color: #40566d; font-size: 10px; line-height: 1.35; }
+.credit-score-field { min-height: 45px; }
+.credit-score-estimator { display: grid; gap: 8px; min-height: 45px; padding: 9px 10px 10px; border: 1px solid #aebbd0; border-radius: 4px; color: var(--brand-navy); background: #f5f7fb; }
+.credit-score-estimator select { width: 100%; height: 32px; padding: 0 8px; border: 1px solid #aebbd0; border-radius: 4px; color: var(--brand-navy); background: white; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
+.credit-score-estimator select:focus { border-color: var(--brand-gold); outline: 2px solid rgba(246,195,67,.22); outline-offset: 1px; }
+.credit-score-rate { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.credit-score-rate > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 6px 8px; border: 1px solid #c7d1df; border-radius: 4px; background: #edf2f8; }
+.credit-score-rate span { color: #52677d; font-size: 8px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
+.credit-score-rate strong { color: var(--brand-navy); font-size: 14px; line-height: 1.1; }
+.credit-score-note { margin: 0; color: #40566d; font-size: 9px; line-height: 1.35; }
 .live-payment { display: grid; grid-template-columns: minmax(190px, .7fr) 1.3fr; gap: 24px; align-items: center; margin-top: 20px; padding: 17px 19px; border: 1px solid #b9c8bf; border-radius: 7px; background: #edf5f0; }
 .live-payment div { display: flex; flex-direction: column; gap: 5px; }.live-payment span { color: var(--green); font-size: 8px; font-weight: 900; letter-spacing: .1em; }.live-payment strong { font-family: Georgia, serif; font-size: 27px; font-weight: 500; }.live-payment strong small { margin-left: 4px; color: var(--muted); font-family: Manrope, ui-sans-serif, sans-serif; font-size: 8px; font-weight: 700; }
 .live-payment p { margin: 0; color: #516168; font-size: 9px; line-height: 1.55; }
@@ -1284,7 +1293,8 @@ footer { color: var(--brand-text); background: var(--brand-navy); border-top-col
 .pdf-import-main > div:nth-child(2) > p:last-child,
 .pdf-import-note,
 .form-section-title p,
-.input-field small { color: var(--brand-muted); }
+.input-field small { color: #c4d0df; }
+.analyzer-page .input-field { color: var(--brand-text); }
 .scan-benefits { padding: 18px 23px 20px; border-top: 1px solid var(--brand-line); background: rgba(255,255,255,.025); }
 .scan-benefits-kicker { margin: 0 0 12px; color: var(--brand-gold); font-size: 8px; font-weight: 900; letter-spacing: .14em; }
 .scan-benefits-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
@@ -1337,6 +1347,10 @@ footer { color: var(--brand-text); background: var(--brand-navy); border-top-col
 .input-field input,
 .input-field select,
 .input-money { color: var(--brand-navy); background: #f5f7fb; border-color: #aebbd0; }
+.credit-score-estimator { color: var(--brand-navy); background: #f5f7fb; border-color: #aebbd0; }
+.credit-score-estimator select { color: var(--brand-navy); background: white; border-color: #aebbd0; }
+.credit-score-rate span,
+.credit-score-note { color: #40566d; }
 .vehicle-photo:not(.vehicle-photo-dark) {
   color: var(--brand-navy);
   background: #fff;

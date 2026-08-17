@@ -102,6 +102,15 @@ const auditFeedbackRatings = [
 
 const auditFeedbackWorth = ["0", "9.99", "19.99", "29.99", "39.99"] as const;
 
+type CreditTier = "excellent" | "veryGood" | "good" | "fair";
+
+const creditTierEstimates: Record<CreditTier, { label: string; adjustment: number }> = {
+  excellent: { label: "Excellent credit", adjustment: -1.5 },
+  veryGood: { label: "Very good credit", adjustment: -0.75 },
+  good: { label: "Good credit", adjustment: 0.25 },
+  fair: { label: "Fair credit", adjustment: 1.75 },
+};
+
 const verificationFields: (keyof ImportedDealFields)[] = [
   "vehicle",
   "sellingPrice",
@@ -325,6 +334,7 @@ export default function AnalyzePage() {
   const [accountRoleKnown, setAccountRoleKnown] = useState(false);
   const [auditSaveRequest, setAuditSaveRequest] = useState(0);
   const [auditSaveMessage, setAuditSaveMessage] = useState("");
+  const [creditTier, setCreditTier] = useState<CreditTier>("good");
   const printAfterSaveRef = useRef(false);
   const checkoutGateRef = useRef<HTMLDivElement | null>(null);
 
@@ -1071,6 +1081,10 @@ export default function AnalyzePage() {
   }, [deal, revisionComparison, savedRevision]);
 
   const isCashDeal = deal.term === 1 && deal.apr === 0 && deal.quotedPayment > 0;
+  const selectedCreditTier = creditTierEstimates[creditTier];
+  const creditScoreEstimatedApr = deal.apr > 0
+    ? Math.max(0, deal.apr + selectedCreditTier.adjustment)
+    : 0;
 
   useEffect(() => {
     if (auditSaveRequest === 0 || sampleLoaded || !isPaidAuditHost || !accountRoleKnown || !analysis.hasMinimumData) return;
@@ -1479,7 +1493,19 @@ export default function AnalyzePage() {
             </div>
             <div className="field-grid field-grid-four">
               <label className="input-field"><span>Dealer APR</span><div className="input-money input-percent"><input aria-label="Dealer APR" inputMode="decimal" type="number" min="0" step="0.01" value={deal.apr || ""} onChange={(event) => setNumber("apr", event.target.value)} /><i>%</i></div><small>{isCashDeal ? "Cash purchase: one payment at 0%" : "Use the rate printed on the quote"}</small></label>
-              <div className="input-field counter-proposal-field" aria-live="polite"><span>Counter proposal</span><div className="counter-proposal-status"><strong>{!savedRevision ? "Save the dealer original first" : !revisionComparison.sameVehicle ? "Different vehicle" : revisionComparison.changes.length ? `${revisionComparison.changes.length} change${revisionComparison.changes.length === 1 ? "" : "s"} detected` : "No changes yet"}</strong><small>{!savedRevision ? "Then edit or import a revised quote to compare." : !revisionComparison.sameVehicle ? "Use the same vehicle to compare revisions." : revisionComparison.changes.length ? "Message to Dealer updates from these figures." : "Edit or import revised figures to build a proposal."}</small></div></div>
+              <div className="input-field credit-score-field" aria-live="polite">
+                <span>Credit score estimate</span>
+                <div className="credit-score-estimator">
+                  <select aria-label="Credit score estimate" value={creditTier} onChange={(event) => setCreditTier(event.target.value as CreditTier)}>
+                    {Object.entries(creditTierEstimates).map(([value, profile]) => <option key={value} value={value}>{profile.label}</option>)}
+                  </select>
+                  <div className="credit-score-rate">
+                    <div><span>Current rate</span><strong>{deal.apr > 0 ? `${deal.apr.toFixed(2)}%` : "—"}</strong></div>
+                    <div><span>Estimated rate</span><strong>{isCashDeal ? "Cash" : deal.apr > 0 ? `${creditScoreEstimatedApr.toFixed(2)}%` : "—"}</strong></div>
+                  </div>
+                  <small className="credit-score-note">{isCashDeal ? "Cash purchase: no financing rate estimate." : deal.apr > 0 ? "Planning estimate only; lender approval and final terms may differ." : "Enter the dealer APR to see a planning estimate."}</small>
+                </div>
+              </div>
               <label className="input-field"><span>Loan term</span><select aria-label="Loan term" value={deal.term} onChange={(event) => setNumber("term", event.target.value)}>{[1, 24, 30, 36, 39, 42, 48, 54, 60, 63, 66, 72, 75, 78, 83, 84, 96].map((term) => <option key={term} value={term}>{term === 1 ? "1 payment (cash)" : `${term} months`}</option>)}</select></label>
               <MoneyField label={isCashDeal ? "Cash due / finance amount" : "Dealer's quoted monthly payment"} field="quotedPayment" value={deal.quotedPayment} onChange={setNumber} hint={isCashDeal ? "The one payment shown on the quote" : "Keeps the amount printed on the quote for comparison"} />
             </div>
