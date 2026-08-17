@@ -650,6 +650,7 @@ footer { border-top: 1px solid var(--line); padding: 34px 0; }
 .results-sticky .dealer-message { border-top-color: rgba(255,255,255,.26); }
 .results-sticky .dealer-message p { color: #ffe19a; }
 .results-sticky .dealer-message pre { color: #f0f5fb; background: #0b1b38; border: 1px solid rgba(255,255,255,.16); }
+.sales-audit-save-action{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px;padding:11px 12px;border:1px solid rgba(246,195,67,.35);border-radius:7px;background:rgba(246,195,67,.08)}.sales-audit-save-action button{min-height:34px;padding:0 12px;border:1px solid var(--brand-gold);border-radius:6px;color:var(--brand-navy);background:var(--brand-gold);font-size:10px;font-weight:900;cursor:pointer}.sales-audit-save-action span{color:#d6e1ee;font-size:10px;text-align:right}
 .paid-feedback-worth-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
 .paid-feedback-worth span { display: grid; min-height: 42px; place-items: center; padding: 5px 2px; border: 1px solid rgba(255,255,255,.16); border-radius: 5px; color: #d8e0e3; background: rgba(255,255,255,.05); font-size: 11px; font-weight: 800; }
 .paid-feedback-submit { min-height: 43px; border: 1px solid var(--accent); border-radius: 4px; color: var(--ink); background: var(--accent); font-size: 12px; font-weight: 900; cursor: pointer; }

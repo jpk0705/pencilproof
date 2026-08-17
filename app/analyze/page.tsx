@@ -266,6 +266,8 @@ export default function AnalyzePage() {
   const [hasReferralAttribution, setHasReferralAttribution] = useState(false);
   const [accountRole, setAccountRole] = useState<"consumer" | "salesperson">("consumer");
   const [accountRoleKnown, setAccountRoleKnown] = useState(false);
+  const [auditSaveRequest, setAuditSaveRequest] = useState(0);
+  const [auditSaveMessage, setAuditSaveMessage] = useState("");
   const checkoutGateRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -982,21 +984,30 @@ export default function AnalyzePage() {
   }, [deal]);
 
   useEffect(() => {
-    if (!isPaidAuditHost || !analysis.hasMinimumData) return;
+    if (!isPaidAuditHost || !accountRoleKnown || !analysis.hasMinimumData) return;
     const key = JSON.stringify(deal);
     if (key === savedAuditKey.current) return;
-    savedAuditKey.current = key;
     void fetch("/api/audits", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ data: {
         ...deal,
         calculatedPayment: analysis.calculatedPayment,
         verdict: analysis.verdict,
         flags: analysis.flags.map((flag) => ({ name: flag.title, tone: flag.tone, detail: flag.detail })),
       } }),
-    }).catch(() => undefined);
-  }, [analysis, deal, isPaidAuditHost]);
+    }).then((response) => {
+      if (response.ok) {
+        savedAuditKey.current = key;
+        if (accountRole === "salesperson") setAuditSaveMessage("Saved to your salesperson dashboard.");
+      } else if (accountRole === "salesperson") {
+        setAuditSaveMessage("This audit could not be saved yet. Try Save this audit again.");
+      }
+    }).catch(() => {
+      if (accountRole === "salesperson") setAuditSaveMessage("This audit could not be saved yet. Try Save this audit again.");
+    });
+  }, [analysis, auditSaveRequest, accountRole, accountRoleKnown, deal, isPaidAuditHost]);
 
   const showConsumerOnlyAuditSections = !isPaidAuditHost || (accountRoleKnown && accountRole !== "salesperson");
 
@@ -1485,6 +1496,7 @@ export default function AnalyzePage() {
                 <div><p>YOUR REQUEST TO THE DESK</p><button type="button" onClick={copyMessage}>{copied ? "Copied" : "Copy message"}</button></div>
                 <pre>{message}</pre>
               </div> : null}
+              {!showConsumerOnlyAuditSections ? <div className="sales-audit-save-action"><button type="button" onClick={() => { savedAuditKey.current = ""; setAuditSaveMessage("Saving this audit…"); setAuditSaveRequest((current) => current + 1); }}>Save this audit to dashboard</button>{auditSaveMessage ? <span role="status">{auditSaveMessage}</span> : null}</div> : null}
               <button className="print-button" type="button" onClick={() => window.print()}>Print or save this Full Quote Audit</button>
               {showConsumerOnlyAuditSections && !accountPromptDismissed ? <section className="account-save-prompt" aria-labelledby="account-save-title">
                 <div>
