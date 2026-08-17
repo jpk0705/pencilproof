@@ -1038,18 +1038,36 @@ export default function AnalyzePage() {
     setAuditFeedbackSent(true);
   };
 
-  const productRequest = analysis.addons > 0
-    ? `Removes the entered optional products totaling ${dollars(analysis.addons)} and shows the revised payment without them.`
-    : "Confirms in writing whether any optional products are included or required.";
+  const productLines = [
+    ["VSC / service contract", deal.serviceContract],
+    ["GAP protection", deal.gap],
+    ["Prepaid maintenance", deal.prepaidMaintenance],
+    ["Tire & wheel protection", deal.tireWheel],
+    ["Accessories / other add-ons", deal.accessories],
+  ].filter(([, amount]) => Number(amount) > 0).map(([label, amount]) => `${label}: ${dollarsAndCents(Number(amount))}`);
+  const productRequest = productLines.length
+    ? `Please itemize and confirm each optional product currently shown (${productLines.join(", ")}), then show the revised payment with any product I decline removed.`
+    : "Please confirm in writing that no optional products or add-ons are included unless I approve them individually.";
+  const tradeRequest = deal.tradeValue > 0 || deal.tradePayoff > 0 || deal.cashDown > 0
+    ? `Show the trade allowance of ${dollarsAndCents(deal.tradeValue)}, trade payoff of ${dollarsAndCents(deal.tradePayoff)}, resulting trade equity of ${dollarsAndCents(analysis.tradeEquity)}, and cash down of ${dollarsAndCents(deal.cashDown)} as separate lines.`
+    : "Show any trade allowance, trade payoff, trade equity, and cash down as separate lines if they apply.";
+  const dealerApr = deal.apr > 0 ? `${deal.apr.toFixed(2)}%` : "not entered";
+  const desiredApr = deal.outsideApr > 0 ? `${deal.outsideApr.toFixed(2)}%` : "not entered";
   const rateRequest = analysis.aprGap >= 0.25
-    ? `Shows whether you can match or beat my desired APR of ${deal.outsideApr.toFixed(2)}%.`
-    : "Confirms the final APR and term, subject only to lender approval.";
-  const message = `Thanks for the quote on the ${deal.vehicle || "vehicle"}. Before I move forward, please send a revised buyer's order that:\n\n1. Shows the selling price of ${dollars(deal.sellingPrice)} before tax and government fees.\n2. Separately itemizes every dealer fee and optional product.\n3. ${productRequest}\n4. ${rateRequest}\n5. Confirms there are no additional mandatory dealer charges beyond the revised buyer's order.\n\nPlease quote the out-the-door total, amount financed, APR, term, and payment—not only the monthly payment.`;
+    ? `Show whether the APR can be reduced from ${dealerApr} toward my desired APR of ${desiredApr}.`
+    : `Confirm the final APR of ${dealerApr} and ${deal.term}-month term, subject to lender approval.`;
+  const message = `Thanks for working through the ${deal.vehicle || "vehicle"} quote with me. I would like a revised buyer's order that reflects these numbers so I can make a clear decision:\n\n1. Vehicle and price\n   - Selling price: ${dollarsAndCents(deal.sellingPrice)}\n   - Rebate: ${dollarsAndCents(deal.rebate)}\n   - Sales tax: ${dollarsAndCents(deal.tax)}\n   - Government / registration: ${dollarsAndCents(deal.govFees)}\n   - Documentation fee: ${dollarsAndCents(deal.docFee)}\n\n2. Trade and cash\n   - ${tradeRequest}\n\n3. Optional products\n   - ${productRequest}\n\n4. Financing\n   - ${rateRequest}\n   - Show the current estimated amount financed of ${dollarsAndCents(analysis.amountFinanced)}, estimated payment of ${dollarsAndCents(analysis.calculatedPayment)}, quoted payment of ${dollarsAndCents(deal.quotedPayment)}, and total payment over ${deal.term} months.\n\nPlease confirm that there are no other mandatory charges and send the complete out-the-door total, amount financed, APR, term, and payment—not only the monthly payment.`;
 
   const copyMessage = async () => {
     await navigator.clipboard.writeText(message);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1800);
+  };
+
+  const requestAuditSave = () => {
+    savedAuditKey.current = "";
+    setAuditSaveMessage("Saving this audit…");
+    setAuditSaveRequest((current) => current + 1);
   };
 
   return (
@@ -1410,6 +1428,11 @@ export default function AnalyzePage() {
                 ? `${analysis.missingInformation.length} important item${analysis.missingInformation.length === 1 ? "" : "s"} still missing: ${analysis.missingInformation.join(", ") || "none"}.`
                 : "Not enough information to evaluate this deal. Enter the selling price, dealer APR, and term or confirm an imported quote."}
             </p>
+            {!showConsumerOnlyAuditSections && analysis.hasMinimumData ? <div className="sales-audit-save-action sales-audit-save-action-top">
+              <div><strong>Keep this audit</strong><span>Save the reviewed numbers to your salesperson dashboard.</span></div>
+              <button type="button" onClick={requestAuditSave}>Save audit</button>
+              {auditSaveMessage ? <span role="status">{auditSaveMessage}</span> : null}
+            </div> : null}
 
             {analysis.hasMinimumData ? <>
               <VehiclePhoto vehicle={deal.vehicle} vin={deal.vin} tone="dark" compact />
@@ -1498,10 +1521,9 @@ export default function AnalyzePage() {
               </div> : null}
 
               {showConsumerOnlyAuditSections ? <div className="dealer-message">
-                <div><p>YOUR REQUEST TO THE DESK</p><button type="button" onClick={copyMessage}>{copied ? "Copied" : "Copy message"}</button></div>
+                <div><p>MESSAGE TO THE DEALER</p><button type="button" onClick={copyMessage}>{copied ? "Copied" : "Copy message"}</button></div>
                 <pre>{message}</pre>
               </div> : null}
-              {!showConsumerOnlyAuditSections ? <div className="sales-audit-save-action"><button type="button" onClick={() => { savedAuditKey.current = ""; setAuditSaveMessage("Saving this audit…"); setAuditSaveRequest((current) => current + 1); }}>Save this audit to dashboard</button>{auditSaveMessage ? <span role="status">{auditSaveMessage}</span> : null}</div> : null}
               <button className="print-button" type="button" onClick={() => window.print()}>Print or save this Full Quote Audit</button>
               {!isPaidAuditHost && showConsumerOnlyAuditSections && !accountPromptDismissed ? <section className="account-save-prompt" aria-labelledby="account-save-title">
                 <div>
