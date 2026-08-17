@@ -915,15 +915,16 @@ export default function AnalyzePage() {
     const totalPayments = calculatedPayment * deal.term;
     const aprCost = desiredPayment > 0 ? Math.max(0, (calculatedPayment - desiredPayment) * deal.term) : 0;
     const aprGap = deal.outsideApr > 0 ? deal.apr - deal.outsideApr : 0;
+    const isCashDeal = deal.term === 1 && deal.apr === 0;
 
     const missingInformation = [
       !deal.sellingPrice ? "selling price" : "",
       !deal.tax ? "sales-tax amount" : "",
-      !deal.apr ? "dealer APR" : "",
+      !deal.apr && !isCashDeal ? "dealer APR" : "",
       !deal.term ? "loan term" : "",
       !deal.quotedPayment ? "dealer's printed payment" : "",
     ].filter(Boolean);
-    const hasMinimumData = Boolean(deal.sellingPrice && deal.apr && deal.term);
+    const hasMinimumData = Boolean(deal.sellingPrice && deal.term && (deal.apr || isCashDeal));
     const paymentStatus = !deal.quotedPayment
       ? { label: "Not checked", tone: "note" as const, detail: "Enter the payment printed on the quote." }
       : Math.abs(paymentGap) <= PAYMENT_MATCH_TOLERANCE
@@ -1090,6 +1091,8 @@ export default function AnalyzePage() {
       verdict,
     };
   }, [deal, revisionComparison, savedRevision]);
+
+  const isCashDeal = deal.term === 1 && deal.apr === 0 && deal.quotedPayment > 0;
 
   useEffect(() => {
     if (auditSaveRequest === 0 || sampleLoaded || !isPaidAuditHost || !accountRoleKnown || !analysis.hasMinimumData) return;
@@ -1492,14 +1495,14 @@ export default function AnalyzePage() {
               <MoneyField label="Trade loan payoff" field="tradePayoff" value={deal.tradePayoff} onChange={setNumber} />
             </div>
             <div className="field-grid field-grid-four">
-              <label className="input-field"><span>Dealer APR</span><div className="input-money input-percent"><input aria-label="Dealer APR" inputMode="decimal" type="number" min="0" step="0.01" value={deal.apr || ""} onChange={(event) => setNumber("apr", event.target.value)} /><i>%</i></div></label>
+              <label className="input-field"><span>Dealer APR</span><div className="input-money input-percent"><input aria-label="Dealer APR" inputMode="decimal" type="number" min="0" step="0.01" value={deal.apr || ""} onChange={(event) => setNumber("apr", event.target.value)} /><i>%</i></div><small>{isCashDeal ? "Cash purchase: one payment at 0%" : "Use the rate printed on the quote"}</small></label>
               <label className="input-field"><span>Your desired APR</span><div className="input-money input-percent"><input aria-label="Your desired APR" inputMode="decimal" type="number" min="0" step="0.01" value={deal.outsideApr || ""} onChange={(event) => setNumber("outsideApr", event.target.value)} /><i>%</i></div><small>See the estimated payment at your target rate</small></label>
-              <label className="input-field"><span>Loan term</span><select aria-label="Loan term" value={deal.term} onChange={(event) => setNumber("term", event.target.value)}>{[24, 30, 36, 39, 42, 48, 54, 60, 63, 66, 72, 75, 78, 83, 84, 96].map((term) => <option key={term} value={term}>{term} months</option>)}</select></label>
-              <MoneyField label="Dealer's quoted monthly payment" field="quotedPayment" value={deal.quotedPayment} onChange={setNumber} hint="Keeps the amount printed on the quote for comparison" />
+              <label className="input-field"><span>Loan term</span><select aria-label="Loan term" value={deal.term} onChange={(event) => setNumber("term", event.target.value)}>{[1, 24, 30, 36, 39, 42, 48, 54, 60, 63, 66, 72, 75, 78, 83, 84, 96].map((term) => <option key={term} value={term}>{term === 1 ? "1 payment (cash)" : `${term} months`}</option>)}</select></label>
+              <MoneyField label={isCashDeal ? "Cash due / finance amount" : "Dealer's quoted monthly payment"} field="quotedPayment" value={deal.quotedPayment} onChange={setNumber} hint={isCashDeal ? "The one payment shown on the quote" : "Keeps the amount printed on the quote for comparison"} />
             </div>
             <div className="live-payment" aria-live="polite">
-              <div><span>LIVE CALCULATED PAYMENT</span><strong>{dollarsAndCents(analysis.calculatedPayment)}<small>/month</small></strong></div>
-              <p>This amount updates immediately when you change the price, tax, fees, products, trade, cash down, APR, or term. The dealer&apos;s quoted payment above stays unchanged so PencilProof can compare the two.</p>
+              <div><span>{isCashDeal ? "LIVE CALCULATED CASH DUE" : "LIVE CALCULATED PAYMENT"}</span><strong>{dollarsAndCents(analysis.calculatedPayment)}{isCashDeal ? null : <small>/month</small>}</strong></div>
+              <p>{isCashDeal ? "This one-payment cash total updates immediately when you change the price, tax, fees, products, trade, cash down, or rebate." : "This amount updates immediately when you change the price, tax, fees, products, trade, cash down, APR, or term. The dealer&apos;s quoted payment above stays unchanged so PencilProof can compare the two."}</p>
             </div>
           </section>
           {!isPaidAuditHost ? (

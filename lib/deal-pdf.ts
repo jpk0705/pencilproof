@@ -367,7 +367,7 @@ const confidenceFor = (
     Object.keys(fields).map((field) => [field, confidence]),
   ) as DealPdfResult["fieldConfidence"];
 
-const allowedLoanTerms = [24, 30, 36, 39, 42, 48, 54, 60, 63, 66, 72, 75, 78, 83, 84, 96];
+const allowedLoanTerms = [1, 24, 30, 36, 39, 42, 48, 54, 60, 63, 66, 72, 75, 78, 83, 84, 96];
 
 const criticalImportFields: (keyof ImportedDealFields)[] = [
   "sellingPrice",
@@ -400,7 +400,7 @@ export const sanitizeImportedFields = (sourceFields: ImportedDealFields) => {
     rebate: [0, 50000],
     apr: [0, 40],
     outsideApr: [0, 40],
-    term: [24, 96],
+    term: [1, 96],
     quotedPayment: [50, 5000],
   };
   const rejected: (keyof ImportedDealFields)[] = [];
@@ -416,7 +416,9 @@ export const sanitizeImportedFields = (sourceFields: ImportedDealFields) => {
 
   (Object.keys(limits) as (keyof ImportedDealFields)[]).forEach((field) => {
     const value = fields[field];
-    const range = limits[field];
+    const range = field === "quotedPayment" && fields.term === 1 && (fields.apr === undefined || fields.apr === 0)
+      ? [50, 250000] as [number, number]
+      : limits[field];
     if (typeof value !== "number" || !Number.isFinite(value) || !range) return;
     if (value < range[0] || value > range[1]) {
       delete fields[field];
@@ -764,13 +766,19 @@ const findPercent = (lines: string[], labels: RegExp[]) => {
 };
 
 const findTerm = (lines: string[]) => {
+  const documentText = lines.join(" ");
+  const looksLikeCashDocument = /\b(?:cash\s+due|cash\s+(?:purchase|sale)|paid\s+in\s+full|cash\s+transaction)\b/i.test(documentText);
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
     if (!/(?:loan\s+)?term|number of payments|months/i.test(line)) continue;
     const nearby = lines.slice(index, index + 2).join(" ");
-    const months = nearby.match(/\b(24|30|36|39|42|48|54|60|63|66|72|75|78|84|96)\s*(?:months?|mos?\.?|payments?)?\b/i) ??
+    const months = nearby.match(/\b(1|24|30|36|39|42|48|54|60|63|66|72|75|78|84|96)\s*(?:months?|mos?\.?|payments?)?\b/i) ??
       nearby.match(/\b(\d)\s+(\d)\s*(?:months?|mos?\.?|payments?)\b/i);
-    if (months) return months[2] ? Number(`${months[1]}${months[2]}`) : Number(months[1]);
+    if (months) {
+      const value = months[2] ? Number(`${months[1]}${months[2]}`) : Number(months[1]);
+      if (value === 1 && !looksLikeCashDocument) continue;
+      return value;
+    }
   }
   return undefined;
 };
@@ -1131,6 +1139,21 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     if (reconciledSellingPrice >= 1000 && (!fields.sellingPrice || fields.sellingPrice < 1000)) {
       fields.sellingPrice = Math.round(reconciledSellingPrice * 100) / 100;
     }
+
+    // Some dealer layouts print a complete TOTAL SALES AMOUNT but omit one
+    // or more fee rows from the readable labels. Preserve the authoritative
+    // total by carrying a bounded, still-unclassified remainder into the
+    // government/registration bucket instead of silently understating the
+    // amount financed. This only runs when the document gives us a total and
+    // the remainder is plausibly a missing fee, never for a large unknown gap.
+    const knownSalesAmount = (fields.sellingPrice ?? 0) + (fields.tax ?? 0) +
+      (fields.govFees ?? 0) + (fields.docFee ?? 0) + (fields.serviceContract ?? 0) +
+      (fields.gap ?? 0) + (fields.prepaidMaintenance ?? 0) + (fields.tireWheel ?? 0) +
+      (fields.accessories ?? 0);
+    const unclassifiedFeeRemainder = totalSalesAmount - knownSalesAmount;
+    if (unclassifiedFeeRemainder > 0.5 && unclassifiedFeeRemainder <= Math.max(500, totalSalesAmount * 0.15)) {
+      fields.govFees = Math.round(((fields.govFees ?? 0) + unclassifiedFeeRemainder) * 100) / 100;
+    }
   }
 
   const apr = findPercent(lines, [
@@ -1138,12 +1161,27 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     /\bannual percentage rate\b/i,
     /\binterest rate\b/i,
   ]);
-  const termAndApr = lines.join(" ").match(/\b(24|30|36|39|42|48|54|60|63|66|72|75|78|84|96)\s*months?\s*@\s*(\d{1,2}(?:\.\d{1,4})?)\s*%/i);
+  const termAndApr = lines.join(" ").match(/\b(1|24|30|36|39|42|48|54|60|63|66|72|75|78|84|96)\s*months?\s*@\s*(\d{1,2}(?:\.\d{1,4})?)\s*%/i);
   const resolvedApr = apr ?? (termAndApr ? Number(termAndApr[2]) : undefined);
   if (resolvedApr !== undefined) fields.apr = resolvedApr;
 
   const term = findTerm(lines);
   if (term) fields.term = term;
+
+  const cashDueAmount = findAmount(lines, [
+    /\bcash\s+due\s*\/\s*(?:finance\s+)?amount\b/i,
+    /\btotal\s+cash\s+due\b/i,
+    /\bamount\s+due\s+at\s+(?:signing|delivery)\b/i,
+    /\bcash\s+(?:purchase|sale)\s+amount\b/i,
+  ]);
+  const cashDocumentText = lines.join(" ");
+  const isCashDeal = cashDueAmount !== undefined && fields.term === 1 &&
+    (fields.apr === undefined || fields.apr === 0) &&
+    /\b(?:cash\s+due|cash\s+(?:purchase|sale)|paid\s+in\s+full|cash\s+transaction)\b/i.test(cashDocumentText);
+  if (isCashDeal) {
+    fields.apr = 0;
+    fields.term = 1;
+  }
 
   const paymentLabels = [
     /\bmonthly payment\b/i,
@@ -1169,7 +1207,12 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     fields.rebate,
   ].filter((value): value is number => value !== undefined);
 
-  if (labeledQuotedPayment && labeledQuotedPayment >= 50 && labeledQuotedPayment <= 5000) {
+  if (isCashDeal && cashDueAmount !== undefined) {
+    // For a one-payment cash quote, the amount due is the quote's one
+    // payment. Keeping it in the existing quotedPayment field lets the same
+    // calculator prove that the imported total balances.
+    fields.quotedPayment = cashDueAmount;
+  } else if (labeledQuotedPayment && labeledQuotedPayment >= 50 && labeledQuotedPayment <= 5000) {
     fields.quotedPayment = labeledQuotedPayment;
   }
 

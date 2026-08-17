@@ -136,6 +136,8 @@ assert.match(analyzeSource, /Live calculated payment:/);
 assert.match(analyzeSource, /name: "Counter proposal"/);
 assert.match(analyzeSource, /const productSummary/);
 assert.match(analyzeSource, /Accessories/);
+assert.match(phoneWorkerSource, /1 Months @ 0%/);
+assert.match(phoneWorkerSource, /CASH DUE \/ FINANCE AMOUNT/);
 assert.match(phoneWorkerSource, /class PhoneSessionStore/);
 assert.match(phoneWorkerSource, /PHONE_SESSIONS/);
 assert.match(wranglerSource, /"PhoneSessionStore"/);
@@ -315,6 +317,58 @@ closeTo(dalyCityPhotoQuote.serviceContract, 3632);
 closeTo(dalyCityPhotoQuote.quotedPayment, 387.97);
 closeTo(dalyCityPhotoQuote.apr, 5.59);
 assert.equal(dalyCityPhotoQuote.term, 72);
+
+const cashPriusQuote = parseDealerText([
+  "2022 Toyota Prius Limited Hatchback 4D",
+  "VIN: JTDKAMFU1N3176973",
+  "Estimated Payment $30,462.63",
+  "1 Months @ 0%",
+  "Asking Price $27,500.00",
+  "Discount (-) $1,501.00",
+  "Sales Price $25,999.00",
+  "Catalytic Marking - VC 24020 - Declined** $0.00",
+  "Theft DNA DLP** $1.00",
+  "Appearance** $699.00",
+  "Connected Car 1 Year Plan** $299.00",
+  "DMV License / Title Fees* $278.00",
+  "DMV Reg / Transfer Fees* $327.00",
+  "Doc Fee $85.00",
+  "Smog Fee $50.00",
+  "Smog Certification Fee $8.25",
+  "Electronic Filing Fee $37.00",
+  "Sales Tax: 9.875% $2,679.38",
+  "TOTAL SALES AMOUNT $30,462.63",
+  "Deposit / Cash Down (-) $0.00",
+  "CASH DUE / FINANCE AMOUNT $30,462.63",
+]);
+closeTo(cashPriusQuote.sellingPrice, 25999);
+closeTo(cashPriusQuote.tax, 2679.38);
+closeTo(cashPriusQuote.govFees, 700.25);
+closeTo(cashPriusQuote.docFee, 85);
+closeTo(cashPriusQuote.accessories, 999);
+closeTo(cashPriusQuote.apr, 0);
+assert.equal(cashPriusQuote.term, 1);
+closeTo(cashPriusQuote.quotedPayment, 30462.63);
+closeTo(
+  cashPriusQuote.sellingPrice +
+    cashPriusQuote.tax +
+    cashPriusQuote.govFees +
+    cashPriusQuote.docFee +
+    cashPriusQuote.accessories -
+    cashPriusQuote.cashDown,
+  cashPriusQuote.quotedPayment,
+);
+const cashSanitized = sanitizeImportedFields({ term: 1, apr: 0, quotedPayment: 30462.63 });
+closeTo(cashSanitized.fields.quotedPayment, 30462.63);
+
+const missingFeeRecoveredFromTotal = parseDealerText([
+  "Sales Price $20,000.00",
+  "Sales Tax $2,000.00",
+  "Government Fees $500.00",
+  "Doc Fee $85.00",
+  "TOTAL SALES AMOUNT $22,735.00",
+]);
+closeTo(missingFeeRecoveredFromTotal.govFees, 650);
 
 const paymentColumnMustNotBecomeAccessory = parseDealerText([
   "2024 Toyota RAV4 Adventure Sport Utility 4D",
