@@ -1105,6 +1105,48 @@ const accountAccess = async (request: Request, env: Env) => {
   return null;
 };
 
+const restorePaidAccountAccess = async (request: Request, env: Env) => {
+  const userId = await currentUser(request, env);
+  if (!userId) return redirect(`${env.PUBLIC_SITE_ORIGIN}/account?restore=sign_in`);
+
+  const url = new URL(request.url);
+  let sessionId = url.searchParams.get("session_id")?.trim() ?? "";
+  if (request.method === "POST") {
+    const form = await request.formData().catch(() => null);
+    const submittedSessionId = form?.get("session_id");
+    if (typeof submittedSessionId === "string") sessionId = submittedSessionId.trim();
+  }
+  if (!/^cs_(test_|live_)?[A-Za-z0-9]+$/.test(sessionId)) {
+    return redirect(`${env.SITE_ORIGIN}/recover?reason=unverified`);
+  }
+
+  const session = await retrieveCheckoutSession(sessionId, env);
+  if (!isPaidPencilProofSession(session)) {
+    return redirect(`${env.SITE_ORIGIN}/recover?reason=unverified`);
+  }
+  const expectedPriceId = env.STRIPE_PRICE_ID.trim();
+  const lineItems = await retrieveCheckoutLineItems(sessionId, env);
+  if (!hasExactPencilProofLineItem(lineItems, expectedPriceId)) {
+    return redirect(`${env.SITE_ORIGIN}/recover?reason=unverified`);
+  }
+
+  const activatedAt = Number.isInteger(session.created) && (session.created ?? 0) > 0
+    ? session.created as number
+    : Math.floor(Date.now() / 1000);
+  const expiresAt = activatedAt + accessSeconds(env);
+  if (expiresAt <= Math.floor(Date.now() / 1000)) {
+    return redirect(`${env.SITE_ORIGIN}/recover?reason=expired`);
+  }
+
+  await accountCall(env, "/entitlement", {
+    userId,
+    stripeSessionId: sessionId,
+    activatedAt,
+    exactExpiresAt: expiresAt,
+  });
+  return redirect(`${env.PUBLIC_SITE_ORIGIN}/account?restore=success`);
+};
+
 const handleAccount = async (request: Request, env: Env) => {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") {
@@ -3135,11 +3177,12 @@ const recoverPage = (reason = "") => {
       <div class="brand">PencilProof</div>
       <h1>Restore your audit</h1>
       <p>${message}</p>
-      <form action="/recover/access" method="get">
+      <form action="/recover/account" method="post">
         <label for="session_id">Checkout Session ID</label>
         <input id="session_id" name="session_id" pattern="cs_[A-Za-z0-9_]+" required autocomplete="off">
-        <button type="submit">Restore access</button>
+        <button type="submit">Restore to my signed-in account</button>
       </form>
+      <p>Sign in to the PencilProof account that should receive the paid access before submitting this form.</p>
       <p><a href="mailto:support@pencilproof.com">Contact PencilProof support</a></p>
     </main>
   </body>
@@ -3208,6 +3251,12 @@ export const handleRequest = async (request: Request, env: Env) => {
   }
   if (url.pathname === "/recover" || url.pathname === "/recover/") {
     return recoverPage(url.searchParams.get("reason") ?? "");
+  }
+  if (
+    url.pathname === "/recover/account"
+    || url.pathname === "/recover/account/"
+  ) {
+    return restorePaidAccountAccess(request, env);
   }
   if (
     url.pathname === "/recover/access"

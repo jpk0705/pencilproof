@@ -1208,7 +1208,8 @@ test("the recovery page preserves a manual support path", async () => {
   assert.equal(response.status, 200);
   assert.match(body, /Restore your audit/);
   assert.match(body, /support@pencilproof\.com/);
-  assert.match(body, /action="\/recover\/access"/);
+  assert.match(body, /action="\/recover\/account"/);
+  assert.match(body, /Restore to my signed-in account/);
   assert.match(
     response.headers.get("Content-Security-Policy") ?? "",
     /form-action 'self'/,
