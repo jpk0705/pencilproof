@@ -15,6 +15,7 @@ type Audit = {
 };
 
 const date = (seconds: number) => new Date(seconds * 1000).toLocaleDateString();
+const AUDITS_PER_PAGE = 5;
 
 export default function AccountPage() {
   const configured = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
@@ -29,6 +30,7 @@ export default function AccountPage() {
   const [deleteDetails, setDeleteDetails] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [accountRole, setAccountRole] = useState<"consumer" | "salesperson">("consumer");
+  const [auditPage, setAuditPage] = useState(1);
 
   useEffect(() => {
     if (window.location.hostname.toLowerCase() === "audit.pencilproof.com") setAuditPath("/analyze/secure/");
@@ -82,6 +84,10 @@ export default function AccountPage() {
     })();
   }, [clerk]);
 
+  useEffect(() => {
+    setAuditPage((current) => Math.min(current, Math.max(1, Math.ceil(audits.length / AUDITS_PER_PAGE))));
+  }, [audits.length]);
+
   const shell = (content: ReactNode) => <><SiteNav />{content}</>;
 
   if (!configured) {
@@ -102,6 +108,9 @@ export default function AccountPage() {
 
   const days = expiresAt ? Math.max(0, Math.ceil((expiresAt * 1000 - Date.now()) / 86400000)) : 0;
   const signedInEmail = clerk.user.primaryEmailAddress?.emailAddress.trim() ?? "Signed-in account";
+  const auditPageCount = Math.max(1, Math.ceil(audits.length / AUDITS_PER_PAGE));
+  const currentAuditPage = Math.min(auditPage, auditPageCount);
+  const visibleAudits = audits.slice((currentAuditPage - 1) * AUDITS_PER_PAGE, currentAuditPage * AUDITS_PER_PAGE);
   const deleteAudit = async (id: string) => {
     await fetch("/api/account/audits", {
       method: "DELETE",
@@ -148,7 +157,7 @@ export default function AccountPage() {
 
       <section className="account-history" aria-labelledby="audit-history-title">
         <div className="account-section-heading"><div><p className="kicker">YOUR PURCHASES</p><h2 id="audit-history-title">Paid audit history</h2></div><span>{audits.length} {audits.length === 1 ? "audit" : "audits"}</span></div>
-        {audits.length ? audits.map((audit) => {
+        {audits.length ? visibleAudits.map((audit) => {
           const vehicle = String(audit.data.vehicle ?? "PencilProof Full Quote Audit");
           const verdict = audit.data.verdict && typeof audit.data.verdict === "object" ? String((audit.data.verdict as { label?: unknown }).label ?? "Audit completed") : "Audit completed";
           return <article className="saved-audit" key={audit.id}>
@@ -156,6 +165,11 @@ export default function AccountPage() {
             <button type="button" onClick={() => void deleteAudit(audit.id)}>Delete</button>
           </article>;
         }) : <div className="account-empty"><strong>No paid audits yet.</strong><p>Your completed Full Quote Audits will appear here automatically.</p><Link className="text-link" href={auditPath}>Start a quote scan →</Link></div>}
+        {audits.length > AUDITS_PER_PAGE ? <nav className="audit-pagination" aria-label="Paid audit history pages">
+          <button className="button button-quiet" type="button" onClick={() => setAuditPage((current) => Math.max(1, current - 1))} disabled={currentAuditPage === 1}>Previous</button>
+          <span className="audit-pagination-label">Page {currentAuditPage} of {auditPageCount}</span>
+          <button className="button button-quiet" type="button" onClick={() => setAuditPage((current) => Math.min(auditPageCount, current + 1))} disabled={currentAuditPage === auditPageCount}>Next</button>
+        </nav> : null}
       </section>
 
       <section className="account-support" aria-labelledby="account-support-title">

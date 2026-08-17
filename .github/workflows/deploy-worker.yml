@@ -5,6 +5,7 @@ on:
     branches: ["main"]
     paths:
       - "app/account/page.tsx"
+      - "app/sales/page.tsx"
       - "app/components/AccountNav.tsx"
       - "app/components/PhoneCameraBridge.tsx"
       - "app/components/PreCheckoutAccountGate.tsx"

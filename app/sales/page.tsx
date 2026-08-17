@@ -27,6 +27,7 @@ const isActive = (status: string) => status === "active";
 const SALES_API_URL = "https://audit.pencilproof.com";
 const PUBLIC_SALES_URL = "https://pencilproof.com/sales";
 const PAID_AUDIT_URL = "https://audit.pencilproof.com/analyze/secure/";
+const SAVED_AUDITS_PER_PAGE = 5;
 
 export default function SalespersonPage() {
   const configured = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
@@ -43,6 +44,7 @@ export default function SalespersonPage() {
   const [roleBlocked, setRoleBlocked] = useState(false);
   const [showCoachPreview, setShowCoachPreview] = useState(false);
   const [savedAudits, setSavedAudits] = useState<SavedAudit[]>([]);
+  const [savedAuditPage, setSavedAuditPage] = useState(1);
 
   const email = clerk?.user?.primaryEmailAddress?.emailAddress.trim().toLowerCase() ?? "";
   const referralLink = useMemo(
@@ -111,6 +113,10 @@ export default function SalespersonPage() {
       color: { dark: "#07152d", light: "#ffffff" },
     }).then(setQrDataUrl).catch(() => setQrDataUrl(""));
   }, [profile?.referralCode, referralLink]);
+
+  useEffect(() => {
+    setSavedAuditPage((current) => Math.min(current, Math.max(1, Math.ceil(savedAudits.length / SAVED_AUDITS_PER_PAGE))));
+  }, [savedAudits.length]);
 
   useEffect(() => {
     if (!profile || !isActive(profile.subscriptionStatus)) {
@@ -272,6 +278,10 @@ export default function SalespersonPage() {
     window.location.assign("/");
   };
 
+  const savedAuditPageCount = Math.max(1, Math.ceil(savedAudits.length / SAVED_AUDITS_PER_PAGE));
+  const currentSavedAuditPage = Math.min(savedAuditPage, savedAuditPageCount);
+  const visibleSavedAudits = savedAudits.slice((currentSavedAuditPage - 1) * SAVED_AUDITS_PER_PAGE, currentSavedAuditPage * SAVED_AUDITS_PER_PAGE);
+
   if (!configured) return <><SiteNav /><main className="sales-page shell"><h1>Salesperson tools are being prepared.</h1><p>PencilProof is finishing the secure account connection.</p></main></>;
   if (!clerk) return <><SiteNav /><main className="sales-page shell"><p>Loading your PencilProof account…</p></main></>;
   if (roleBlocked) return <><SiteNav /><main className="sales-page shell"><p className="kicker">CONSUMER ACCOUNT</p><h1>My Audits is your account home.</h1><p>Salesperson tools are kept separate from consumer audits. Open the account page to review your saved audits.</p><Link className="button button-primary" href="/account">Go to My Audits</Link></main></>;
@@ -317,7 +327,7 @@ export default function SalespersonPage() {
             <span>{savedAudits.length} {savedAudits.length === 1 ? "audit" : "audits"}</span>
           </div>
           <p className="sales-saved-audits-intro">Completed audits save automatically to this dashboard for 30 days. Open one again when a customer sends a revised worksheet or you need to review the numbers.</p>
-          {savedAudits.length ? <div className="sales-saved-audit-list">{savedAudits.map((audit) => {
+          {savedAudits.length ? <div className="sales-saved-audit-list">{visibleSavedAudits.map((audit) => {
             const vehicle = String(audit.data.vehicle ?? "PencilProof Full Quote Audit");
             const verdict = audit.data.verdict && typeof audit.data.verdict === "object"
               ? String((audit.data.verdict as { label?: unknown }).label ?? "Audit completed")
@@ -327,6 +337,11 @@ export default function SalespersonPage() {
               <Link className="button button-quiet" href={`${PAID_AUDIT_URL}?audit=${encodeURIComponent(audit.id)}`}>View audit <span aria-hidden="true">→</span></Link>
             </article>;
           })}</div> : <div className="sales-saved-audits-empty"><strong>No saved audits yet.</strong><p>Upload a quote above. Once the audit has enough information to calculate, it will appear here automatically.</p></div>}
+          {savedAudits.length > SAVED_AUDITS_PER_PAGE ? <nav className="audit-pagination" aria-label="Saved audit pages">
+            <button className="button button-quiet" type="button" onClick={() => setSavedAuditPage((current) => Math.max(1, current - 1))} disabled={currentSavedAuditPage === 1}>Previous</button>
+            <span className="audit-pagination-label">Page {currentSavedAuditPage} of {savedAuditPageCount}</span>
+            <button className="button button-quiet" type="button" onClick={() => setSavedAuditPage((current) => Math.min(savedAuditPageCount, current + 1))} disabled={currentSavedAuditPage === savedAuditPageCount}>Next</button>
+          </nav> : null}
         </section>
         <section className="sales-card sales-dashboard"><div><p className="kicker">YOUR TRACKED LINK</p><h2>{profile.displayName}</h2><p>Customers who use this link are attributed to you. They are told that a paid audit may generate subscription credit for the person who shared the link.</p><div className="sales-link-row"><input readOnly value={referralLink} aria-label="Your referral link" /><button className="button button-quiet" type="button" onClick={() => void navigator.clipboard.writeText(referralLink)}>Copy link</button></div></div>{qrDataUrl ? <img className="sales-qr" src={qrDataUrl} alt="QR code for your PencilProof referral link" width="280" height="280" /> : null}</section>
         <section className="sales-card sales-credit-card"><div><p className="kicker">REFERRAL CREDITS</p><h2>${profile.availableCredits * 20} available</h2><p>{profile.earnedCredits} credit{profile.earnedCredits === 1 ? "" : "s"} earned. There is no six-referral cap: every verified paid Full Quote Audit adds another $20 credit.</p><p className="sales-field-help">PencilProof credits have no cash value. They can only be applied to your PencilProof salesperson subscription or gifted to another salesperson.</p></div><div className="sales-credit-actions"><button className="button button-primary" type="button" onClick={() => void redeemCredit()} disabled={busy}>Use for my renewal</button><button className="button button-quiet" type="button" onClick={() => void giftCredit()} disabled={busy}>Gift $20 to someone</button><button className="button button-quiet" type="button" onClick={() => void managePlan()} disabled={busy}>Manage subscription</button></div>{giftUrl ? <div className="gift-link"><strong>Gift link</strong><input readOnly value={giftUrl} aria-label="Gift link" /><button className="button button-quiet" type="button" onClick={() => void navigator.clipboard.writeText(giftUrl)}>Copy gift link</button></div> : null}</section>

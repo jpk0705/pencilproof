@@ -1772,6 +1772,10 @@ h1 { font-weight: 700; letter-spacing: -.055em; }
 .account-empty { padding: 24px 0 4px; }
 .account-empty strong { display: block; margin-bottom: 6px; }
 .account-empty .text-link { display: inline-block; margin-top: 8px; color: var(--brand-gold); }
+.audit-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--brand-line); }
+.audit-pagination-label { color: var(--brand-muted); font-size: 12px; font-weight: 800; }
+.audit-pagination .button { min-width: 96px; }
+.audit-pagination .button:disabled { cursor: not-allowed; opacity: .42; }
 .account-delete { display: inline-flex; margin-top: 24px; padding: 0; border: 0; color: var(--brand-muted); background: transparent; cursor: pointer; font: 600 10px/1.4 Manrope,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; opacity: .78; text-decoration: underline; text-underline-offset: 3px; }
 .account-delete:hover { color: var(--brand-gold); opacity: 1; }
 .account-support { margin-top: 30px; padding: 24px 26px; border: 1px solid var(--brand-line); border-radius: 16px; background: var(--brand-navy-2); }
@@ -1834,6 +1838,9 @@ h1 { font-weight: 700; letter-spacing: -.055em; }
   .account-history { padding: 20px; }
   .account-section-heading { align-items: flex-start; flex-direction: column; gap: 4px; }
   .saved-audit { align-items: flex-start; flex-direction: column; }
+  .audit-pagination { flex-wrap: wrap; justify-content: center; }
+  .audit-pagination-label { order: -1; width: 100%; text-align: center; }
+  .audit-pagination .button { flex: 1; }
   .feedback-worth-grid { grid-template-columns: 1fr 1fr; }
   .delete-account-prompt { padding: 20px; }
   .delete-account-actions { flex-direction: column-reverse; }
