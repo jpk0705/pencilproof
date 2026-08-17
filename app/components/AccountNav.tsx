@@ -8,6 +8,8 @@ import { authRedirectOptions, createLoadedClerk, getAuthContext, setAuthContext 
 const ACCOUNT_URL = "/account";
 const ACCOUNT_API_URL = "https://audit.pencilproof.com";
 const SALES_URL = "/sales";
+const PAID_AUDIT_URL = "https://audit.pencilproof.com/analyze/secure/";
+const PUBLIC_ANALYZE_URL = "https://pencilproof.com/analyze";
 
 const syncAccountContact = async (instance: Clerk, authContext: PencilProofAuthContext): Promise<PencilProofAuthContext> => {
   const token = await instance.session?.getToken();
@@ -78,9 +80,9 @@ export default function AccountNav() {
   }, []);
 
   if (!clerk) {
-    return <><Link className="nav-sales-link" href="/sales">For salespeople</Link><Link className="nav-account-link" href={ACCOUNT_URL} aria-label="Sign in">Sign in</Link></>;
+    return <><Link className="nav-sales-link" href="/sales">For salespeople</Link><Link className="nav-account-link" href={ACCOUNT_URL} aria-label="Sign in">Sign in</Link><Link className="nav-cta" href={PUBLIC_ANALYZE_URL}>Upload your quote</Link></>;
   }
   return signedIn
-    ? <><span className="nav-account-session"><Link className="nav-account-link" href={authContext === "salesperson" ? SALES_URL : ACCOUNT_URL}>{authContext === "salesperson" ? "Salesperson Dashboard" : "My Audits"}</Link><span className="nav-account-email" title={`Signed in as ${signedInEmail}`}>{signedInEmail || "Signed-in account"}</span></span></>
-    : <><Link className="nav-sales-link" href="/sales">For salespeople</Link><button className="nav-account-button" type="button" onClick={() => clerk.openSignIn(authRedirectOptions("consumer"))}>Sign in</button></>;
+    ? <><span className="nav-account-session"><Link className="nav-account-link" href={authContext === "salesperson" ? SALES_URL : ACCOUNT_URL}>{authContext === "salesperson" ? "Salesperson Dashboard" : "My Audits"}</Link><span className="nav-account-email" title={`Signed in as ${signedInEmail}`}>{signedInEmail || "Signed-in account"}</span></span><Link className="nav-cta" href={PAID_AUDIT_URL}>Upload your quote</Link></>
+    : <><Link className="nav-sales-link" href="/sales">For salespeople</Link><button className="nav-account-button" type="button" onClick={() => clerk.openSignIn(authRedirectOptions("consumer"))}>Sign in</button><Link className="nav-cta" href={PUBLIC_ANALYZE_URL}>Upload your quote</Link></>;
 }

@@ -242,6 +242,7 @@ export default function AnalyzePage() {
   // Default to the public state so an unauthenticated visitor never gets a
   // client-side glimpse of the paid calculator while the host is being read.
   const [isPaidAuditHost, setIsPaidAuditHost] = useState(false);
+  const [auditHostResolved, setAuditHostResolved] = useState(false);
   const [deal, setDeal] = useState<Deal>(blank);
   const [copied, setCopied] = useState(false);
   const [dealImport, setDealImport] = useState<DealImportState>({ status: "idle", message: "", fields: [] });
@@ -278,6 +279,7 @@ export default function AnalyzePage() {
       window.location.hostname.toLowerCase() === "audit.pencilproof.com"
       && (window.location.pathname === "/analyze/secure" || window.location.pathname.startsWith("/analyze/secure/")),
     );
+    setAuditHostResolved(true);
   }, []);
 
   useEffect(() => {
@@ -1110,7 +1112,6 @@ export default function AnalyzePage() {
           <Link href="/what-it-checks">What it checks</Link>
           <Link href="/pricing">Pricing</Link>
           <AccountNav />
-          <Link className="nav-cta" href={PUBLIC_ANALYZE_URL}>Upload your quote</Link>
         </div>
         <span className="privacy-chip">Your deal inputs stay in this browser · <a href="mailto:support@pencilproof.com">Contact support</a></span>
       </nav>
@@ -1342,9 +1343,9 @@ export default function AnalyzePage() {
               </div>
             ) : null}
             <div className="verification-actions">
-              <button className="button button-primary" type="button" onClick={confirmPendingImport}>{isPaidAuditHost ? "Confirm values and run audit" : "Confirm values and continue to checkout"} <Arrow /></button>
+              <button className="button button-primary" type="button" onClick={confirmPendingImport}>{isPaidAuditHost ? "Confirm values and see audits" : "Confirm values and continue to checkout"} <Arrow /></button>
             </div>
-            {preCheckoutFeedbackCompleted === false ? <PreCheckoutFeedback onCompleted={completePreCheckoutFeedback} /> : null}
+            {!isPaidAuditHost && auditHostResolved && preCheckoutFeedbackCompleted === false ? <PreCheckoutFeedback onCompleted={completePreCheckoutFeedback} /> : null}
             {pendingCheckout !== null ? <div ref={checkoutGateRef} className="checkout-gate-anchor"><PreCheckoutAccountGate onContinue={continueCheckout} /></div> : null}
           </section>
         ) : null}
