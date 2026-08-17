@@ -62,6 +62,7 @@ assert.match(salesWorkerSource, /stripeRequest\("\/invoiceitems"/);
 assert.doesNotMatch(salesWorkerSource, /balance_transactions/);
 assert.match(salesWorkerSource, /const publicPagePaths = new Set\(\[\s*"\/account"/);
 assert.match(salesWorkerSource, /"\/sales\/"/);
+assert.match(salesWorkerSource, /url\.pathname\.replace/);
 
 const closeTo = (actual, expected, tolerance = 0.01) => {
   assert.ok(

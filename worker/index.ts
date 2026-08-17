@@ -2133,7 +2133,7 @@ const publicPagePaths = new Set([
 
 const publicPageRedirect = (url: URL, env: Env) => {
   const destination = new URL(env.PUBLIC_SITE_ORIGIN);
-  destination.pathname = url.pathname;
+  destination.pathname = url.pathname.length > 1 ? url.pathname.replace(/\/$/, "") : url.pathname;
   destination.search = url.search;
   return redirect(destination.toString());
 };
