@@ -309,15 +309,33 @@ export default function SalespersonPage() {
         comment: deleteDetails.trim(),
       }),
     });
-    await flushAnalyticsQueue();
-    const response = await fetch(`${SALES_API_URL}/api/account/delete`, { method: "POST", credentials: "include" });
+    // Feedback delivery is best effort and must never hold up account deletion.
+    void flushAnalyticsQueue();
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 10000);
+    let response: Response;
+    try {
+      response = await fetch(`${SALES_API_URL}/api/account/delete`, { method: "POST", credentials: "include", signal: controller.signal });
+    } catch {
+      setMessage("We could not delete your account right now. Please try again.");
+      setDeleteBusy(false);
+      return;
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
     if (!response.ok) {
       setMessage("We could not delete your account right now. Please try again.");
       setDeleteBusy(false);
       return;
     }
-    await clerk?.signOut();
-    window.location.assign("/");
+    try {
+      await Promise.race([
+        clerk?.signOut() ?? Promise.resolve(),
+        new Promise<void>((resolve) => window.setTimeout(resolve, 1500)),
+      ]);
+    } finally {
+      window.location.assign("/");
+    }
   };
 
   const savedAuditPageCount = Math.max(1, Math.ceil(savedAudits.length / SAVED_AUDITS_PER_PAGE));

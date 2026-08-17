@@ -133,12 +133,33 @@ export default function AccountPage() {
         comment: deleteDetails.trim(),
       }),
     });
-    await flushAnalyticsQueue();
-    await fetch("/api/account/delete", { method: "POST" });
-    await clerk.signOut();
-    setMessage("Your account and saved PencilProof data were deleted.");
-    setShowDeletePrompt(false);
-    setDeleteBusy(false);
+    // Feedback delivery is best effort and must never hold up account deletion.
+    void flushAnalyticsQueue();
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 10000);
+    let response: Response;
+    try {
+      response = await fetch("/api/account/delete", { method: "POST", signal: controller.signal });
+    } catch {
+      setMessage("We could not delete your account right now. Please try again.");
+      setDeleteBusy(false);
+      return;
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+    if (!response.ok) {
+      setMessage("We could not delete your account right now. Please try again.");
+      setDeleteBusy(false);
+      return;
+    }
+    try {
+      await Promise.race([
+        clerk.signOut(),
+        new Promise<void>((resolve) => window.setTimeout(resolve, 1500)),
+      ]);
+    } finally {
+      window.location.assign("/");
+    }
   };
 
   return shell(
