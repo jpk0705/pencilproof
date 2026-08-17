@@ -161,13 +161,15 @@ test("active salesperson subscriptions unlock unlimited protected audits", async
   );
   assert.equal(securePage.status, 200);
 
-  env.ACCOUNTS = makeAccountNamespace("canceled");
-  const canceled = await handleRequest(
+  for (const status of ["past_due", "canceled"]) {
+    env.ACCOUNTS = makeAccountNamespace(status);
+    const blocked = await handleRequest(
     new Request("https://audit.pencilproof.com/analyze/secure/", { headers }),
     env,
-  );
-  assert.equal(canceled.status, 303);
-  assert.equal(canceled.headers.get("Location"), "https://pencilproof.com/analyze");
+    );
+    assert.equal(blocked.status, 303);
+    assert.equal(blocked.headers.get("Location"), "https://pencilproof.com/analyze");
+  }
 });
 
 const paidSession = (

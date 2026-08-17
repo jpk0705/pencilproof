@@ -1063,13 +1063,13 @@ const accountAccess = async (request: Request, env: Env) => {
   if (typeof expiresAt === "number" && expiresAt > now) return expiresAt;
 
   // A paid salesperson plan includes the same protected audit workspace as a
-  // customer pass, but its access is renewed by the subscription status rather
+  // customer pass, but its access is renewed by an active subscription rather
   // than expiring after 30 days. Re-check the profile on each protected request
-  // so cancellation or failed billing removes access without a stale cookie.
+  // so a failed payment or cancellation removes access without a stale cookie.
   if (userId) {
     const salesperson = await accountCall(env, "/salesperson", { action: "get", userId });
     const profile = salesperson?.profile as { subscriptionStatus?: unknown } | undefined;
-    if (profile?.subscriptionStatus === "active" || profile?.subscriptionStatus === "past_due") {
+    if (profile?.subscriptionStatus === "active") {
       return now + 24 * 60 * 60;
     }
   }
@@ -1137,7 +1137,7 @@ const handleAccount = async (request: Request, env: Env) => {
     const result = await accountCall(env, "/salesperson", { action: "get", userId });
     const profile = result?.profile as { subscriptionStatus?: string } | undefined;
     if (!profile) return withAccountCors(Response.json({ error: "salesperson_profile_required" }, { status: 404, headers: noStoreHeaders }), request, env);
-    if (profile.subscriptionStatus !== "active" && profile.subscriptionStatus !== "past_due") {
+    if (profile.subscriptionStatus !== "active") {
       return withAccountCors(Response.json({ error: "salesperson_subscription_required" }, { status: 403, headers: noStoreHeaders }), request, env);
     }
     return withAccountCors(Response.json({ playbook: fullSalesCoachPlaybook }, { headers: noStoreHeaders }), request, env);

@@ -16,7 +16,7 @@ type Profile = {
   availableCredits: number;
 };
 
-const isActive = (status: string) => status === "active" || status === "past_due";
+const isActive = (status: string) => status === "active";
 const SALES_API_URL = "https://audit.pencilproof.com";
 const PUBLIC_SALES_URL = "https://pencilproof.com/sales";
 const PAID_AUDIT_URL = "https://audit.pencilproof.com/analyze/secure/";
