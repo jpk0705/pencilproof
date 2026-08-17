@@ -33,8 +33,8 @@ const questions = [
     answer: "Yes. When PencilProof recognizes an option matrix, it shows the detected finance rows so you can select the one you are considering. Always compare imported values with the original document.",
   },
   {
-    question: "Does a desired APR mean I am approved?",
-    answer: "No. It is a what-if scenario showing the payment at a rate you choose. Only a lender can approve an APR and final loan terms.",
+    question: "Does a counter proposal guarantee a better deal?",
+    answer: "No. It turns the figures you entered into a clear request for the dealer to review. The dealer and lender must confirm the final price, APR, term, products, and payment in an official written quote.",
   },
   {
     question: "Who created PencilProof?",

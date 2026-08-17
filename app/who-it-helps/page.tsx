@@ -25,7 +25,7 @@ export default function WhoItHelpsPage() {
           <div className="desk-copy">
             <p className="kicker">FOR SHOPPERS</p>
             <h2>Ask for the deal you actually want to review.</h2>
-            <p>Instead of waiting while numbers move back and forth, start with the quote in front of you. Compare the payment without optional products, test a desired APR, review trade equity, and ask for an itemized buyer&apos;s order.</p>
+            <p>Instead of waiting while numbers move back and forth, start with the quote in front of you. Compare the payment without optional products, review trade equity, see what changed in a revision, and ask for an itemized buyer&apos;s order.</p>
             <p className="desk-limit">PencilProof does not negotiate, approve discounts, or replace the dealer&apos;s official worksheet. It helps you understand the request you want the dealership to price.</p>
           </div>
           <div className="audience-grid">
