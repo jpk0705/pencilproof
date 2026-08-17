@@ -9,7 +9,7 @@ import {
   verifyAccessToken,
   verifyStripeSignature,
 } from "./index.ts";
-import { createAccountRoleSession, verifyAccountRoleSession } from "./accounts.ts";
+import { createAccountRoleSession, createUserSession, verifyAccountRoleSession } from "./accounts.ts";
 
 const originalFetch = globalThis.fetch;
 const TEST_DEVICE_ID = "A".repeat(43);
@@ -58,6 +58,23 @@ const makePhoneSessionNamespace = (): Env["PHONE_SESSIONS"] => ({
   idFromName: (name: string) => name,
   get: () => ({
     fetch: async () => Response.json({ created: true }),
+  }),
+});
+
+const makeAccountNamespace = (subscriptionStatus: string | null): Env["ACCOUNTS"] => ({
+  idFromName: (name: string) => name,
+  get: () => ({
+    fetch: async (request: Request) => {
+      const path = new URL(request.url).pathname;
+      if (path === "/access") return Response.json({ expiresAt: null });
+      if (path === "/salesperson") {
+        return Response.json(subscriptionStatus
+          ? { profile: { subscriptionStatus } }
+          : { profile: null });
+      }
+      if (path === "/audits") return Response.json({ id: "audit-test-1" });
+      return Response.json({});
+    },
   }),
 });
 
@@ -120,6 +137,37 @@ test("account role sessions preserve the sign-in entry context", async () => {
   assert.equal(await verifyAccountRoleSession(salesperson, secret), "salesperson");
   assert.equal(await verifyAccountRoleSession(consumer, secret), "consumer");
   assert.equal(await verifyAccountRoleSession(`${salesperson}tampered`, secret), null);
+});
+
+test("active salesperson subscriptions unlock unlimited protected audits", async () => {
+  const env = makeEnv();
+  env.ACCOUNTS = makeAccountNamespace("active");
+  const session = await createUserSession("salesperson-user", env.SESSION_SECRET);
+  const headers = { Cookie: `pp_user=${session}` };
+
+  const audit = await handleRequest(
+    new Request("https://audit.pencilproof.com/api/audits", {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ data: { vehicle: "2025 Honda Accord" } }),
+    }),
+    env,
+  );
+  assert.equal(audit.status, 200);
+
+  const securePage = await handleRequest(
+    new Request("https://audit.pencilproof.com/analyze/secure/", { headers }),
+    env,
+  );
+  assert.equal(securePage.status, 200);
+
+  env.ACCOUNTS = makeAccountNamespace("canceled");
+  const canceled = await handleRequest(
+    new Request("https://audit.pencilproof.com/analyze/secure/", { headers }),
+    env,
+  );
+  assert.equal(canceled.status, 303);
+  assert.equal(canceled.headers.get("Location"), "https://pencilproof.com/analyze");
 });
 
 const paidSession = (

@@ -1059,7 +1059,21 @@ const accountAccess = async (request: Request, env: Env) => {
   const guestId = userId ? null : await requestGuestId(request);
   const result = await accountCall(env, "/access", { userId, guestId });
   const expiresAt = result?.expiresAt;
-  return typeof expiresAt === "number" && expiresAt > Math.floor(Date.now() / 1000) ? expiresAt : null;
+  const now = Math.floor(Date.now() / 1000);
+  if (typeof expiresAt === "number" && expiresAt > now) return expiresAt;
+
+  // A paid salesperson plan includes the same protected audit workspace as a
+  // customer pass, but its access is renewed by the subscription status rather
+  // than expiring after 30 days. Re-check the profile on each protected request
+  // so cancellation or failed billing removes access without a stale cookie.
+  if (userId) {
+    const salesperson = await accountCall(env, "/salesperson", { action: "get", userId });
+    const profile = salesperson?.profile as { subscriptionStatus?: unknown } | undefined;
+    if (profile?.subscriptionStatus === "active" || profile?.subscriptionStatus === "past_due") {
+      return now + 24 * 60 * 60;
+    }
+  }
+  return null;
 };
 
 const handleAccount = async (request: Request, env: Env) => {
