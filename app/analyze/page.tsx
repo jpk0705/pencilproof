@@ -87,6 +87,7 @@ type CheckoutPayload = {
 };
 
 const PENDING_CHECKOUT_KEY = "pencilproof:pending-checkout";
+const PRECHECKOUT_FEEDBACK_KEY = "pencilproof:pre-checkout-feedback-completed";
 const PAID_AUDIT_FEEDBACK_KEY = "pencilproof:paid-audit-feedback-completed";
 const QUOTE_BASELINE_KEY = "pencilproof:quote-baseline";
 const REFERRAL_CODE_KEY = "pencilproof:referral-code";
@@ -359,6 +360,7 @@ export default function AnalyzePage() {
   }, [pendingCheckout]);
 
   useEffect(() => {
+    if (localStorage.getItem(PRECHECKOUT_FEEDBACK_KEY) === "true") setPreCheckoutFeedbackCompleted(true);
     if (sessionStorage.getItem(PAID_AUDIT_FEEDBACK_KEY) === "true") setAuditFeedbackSent(true);
   }, []);
 
@@ -546,6 +548,7 @@ export default function AnalyzePage() {
 
   const completePreCheckoutFeedback = () => {
     setPreCheckoutFeedbackCompleted(true);
+    localStorage.setItem(PRECHECKOUT_FEEDBACK_KEY, "true");
     const saved = sessionStorage.getItem(PENDING_CHECKOUT_KEY);
     if (saved) {
       try {
