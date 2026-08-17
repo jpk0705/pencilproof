@@ -133,6 +133,8 @@ const verificationFields: (keyof ImportedDealFields)[] = [
 
 const Arrow = () => <span aria-hidden="true">→</span>;
 const PUBLIC_ANALYZE_URL = "https://pencilproof.com/analyze";
+const ACCOUNT_API_URL = "https://audit.pencilproof.com";
+const PAID_AUDIT_URL = "https://audit.pencilproof.com/analyze/secure/";
 
 const sample: Deal = {
   vehicle: "2026 Toyota RAV4 XLE Premium",
@@ -364,6 +366,29 @@ export default function AnalyzePage() {
         if (current) setAccountRoleKnown(true);
       });
     return () => { current = false; };
+  }, [isPaidAuditHost]);
+
+  useEffect(() => {
+    // A public scan link is still the correct entry for guests, but an account
+    // with an active pass or salesperson subscription must not be sent through
+    // checkout again. The account API is on the audit host because that is where
+    // the signed account cookie and entitlement are maintained.
+    if (isPaidAuditHost) return;
+    let current = true;
+    const redirectIfPaid = async () => {
+      const response = await fetch(`${ACCOUNT_API_URL}/api/account/me`, { cache: "no-store", credentials: "include" }).catch(() => null);
+      if (!current || !response?.ok) return;
+      const data = await response.json().catch(() => ({})) as { expiresAt?: unknown };
+      if (typeof data.expiresAt === "number" && data.expiresAt > Math.floor(Date.now() / 1000)) {
+        window.location.replace(PAID_AUDIT_URL);
+      }
+    };
+    void redirectIfPaid();
+    const retryTimer = window.setTimeout(() => void redirectIfPaid(), 900);
+    return () => {
+      current = false;
+      window.clearTimeout(retryTimer);
+    };
   }, [isPaidAuditHost]);
 
   useEffect(() => {
