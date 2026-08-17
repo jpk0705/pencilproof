@@ -5,9 +5,9 @@ import { Clerk } from "@clerk/clerk-js";
 import { useEffect, useState } from "react";
 import { authRedirectOptions, createLoadedClerk, getAuthContext, setAuthContext as persistAuthContext, type PencilProofAuthContext } from "@/lib/clerk-client";
 
-const ACCOUNT_URL = "/account";
+const ACCOUNT_URL = "https://pencilproof.com/account";
 const ACCOUNT_API_URL = "https://audit.pencilproof.com";
-const SALES_URL = "/sales";
+const SALES_URL = "https://pencilproof.com/sales";
 const PAID_AUDIT_URL = "https://audit.pencilproof.com/analyze/secure/";
 const PUBLIC_ANALYZE_URL = "https://pencilproof.com/analyze";
 
@@ -80,7 +80,7 @@ export default function AccountNav() {
   }, []);
 
   if (!clerk) {
-    return <><Link className="nav-sales-link" href="/sales">For salespeople</Link><Link className="nav-account-link" href={ACCOUNT_URL} aria-label="Sign in">Sign in</Link><Link className="nav-cta" href={PUBLIC_ANALYZE_URL}>Upload your quote</Link></>;
+    return <><Link className="nav-sales-link" href={SALES_URL}>For salespeople</Link><Link className="nav-account-link" href={ACCOUNT_URL} aria-label="Sign in">Sign in</Link><Link className="nav-cta" href={PUBLIC_ANALYZE_URL}>Upload your quote</Link></>;
   }
   return signedIn
     ? <><span className="nav-account-session"><Link className="nav-account-link" href={authContext === "salesperson" ? SALES_URL : ACCOUNT_URL}>{authContext === "salesperson" ? "Salesperson Dashboard" : "My Audits"}</Link><span className="nav-account-email" title={`Signed in as ${signedInEmail}`}>{signedInEmail || "Signed-in account"}</span></span><Link className="nav-cta" href={PAID_AUDIT_URL}>Upload your quote</Link></>
