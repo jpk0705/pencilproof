@@ -53,8 +53,11 @@ export default function SalespersonPage() {
   const refreshSavedAudits = async () => {
     const response = await fetch(`${SALES_API_URL}/api/account/me`, { cache: "no-store", credentials: "include" });
     if (!response.ok) return;
-    const data = await response.json() as { role?: string; audits?: SavedAudit[] };
-    setSavedAudits(data.role === "salesperson" ? data.audits ?? [] : []);
+    const data = await response.json() as { audits?: SavedAudit[] };
+    // This page is already inside the salesperson experience. Do not discard
+    // the user's audit history if a separate auth-context refresh briefly
+    // reports the default consumer role while cookies settle.
+    setSavedAudits(data.audits ?? []);
   };
 
   const refresh = async () => {
