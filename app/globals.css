@@ -553,6 +553,9 @@ footer { border-top: 1px solid var(--line); padding: 34px 0; }
 .revision-change-list span { color: #9fb0b6; font-size: 9px; }
 .revision-change-list b { color: #f3f7f8; font-size: 9px; text-align: right; }
 .revision-change-list i { color: var(--accent); font-style: normal; }
+.revision-compare-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.revision-compare-action { padding: 0; border: 0; color: var(--accent); background: transparent; font-size: 10px; font-weight: 900; cursor: pointer; }
+.revision-compare-action:hover { text-decoration: underline; text-underline-offset: 3px; }
 .revision-clear { justify-self: start; padding: 0; border: 0; color: #aab8be; background: transparent; font-size: 9px; cursor: pointer; }
 .results-sticky { position: sticky; top: 16px; padding: 25px; background: var(--ink); color: white; border-radius: 11px; box-shadow: 0 18px 45px rgba(11, 28, 37, .18); }
 .result-top { display: flex; align-items: center; justify-content: space-between; gap: 20px; }

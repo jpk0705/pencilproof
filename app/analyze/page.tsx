@@ -463,6 +463,10 @@ export default function AnalyzePage() {
     setSavedRevision(null);
   };
 
+  const scrollToQuoteUpload = () => {
+    document.getElementById("pdf-import-title")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   const revisionComparison = useMemo(() => {
     if (!savedRevision || !deal.vehicle.trim()) return { sameVehicle: false, changes: [] as { field: keyof Deal; before: string; after: string }[] };
     const sameVehicle = savedRevision.vehicle.trim().toLowerCase() === deal.vehicle.trim().toLowerCase();
@@ -1387,18 +1391,18 @@ export default function AnalyzePage() {
             {analysis.hasMinimumData ? (
               <section className="revision-compare" aria-labelledby="revision-compare-title">
                 <div className="revision-compare-head">
-                  <div><span>REVISED QUOTE CHECK</span><h3 id="revision-compare-title">Keep a private baseline</h3></div>
-                  <button type="button" onClick={saveCurrentQuote}>{savedRevision ? "Replace baseline" : "Save this quote"}</button>
+                  <div><span>REVISED QUOTE CHECK</span><h3 id="revision-compare-title">Compare a revised quote</h3></div>
+                  <button type="button" onClick={saveCurrentQuote}>{savedRevision ? "Replace baseline" : "Save as baseline"}</button>
                 </div>
                 {savedRevision ? (
                   revisionComparison.sameVehicle ? (
                     <>
-                      <p>{revisionComparison.changes.length ? `${revisionComparison.changes.length} number${revisionComparison.changes.length === 1 ? "" : "s"} changed since your saved quote.` : "No numbers changed since your saved quote."}</p>
+                      <p>{revisionComparison.changes.length ? `${revisionComparison.changes.length} number${revisionComparison.changes.length === 1 ? "" : "s"} changed since your saved quote.` : "No numbers differ yet. Import the revised worksheet above or edit the values below to compare it with your saved quote."}</p>
                       {revisionComparison.changes.length ? <div className="revision-change-list">{revisionComparison.changes.slice(0, 5).map((change) => <div key={change.field}><span>{DEAL_FIELD_LABELS[change.field as keyof ImportedDealFields]}</span><b>{change.before} <i>→</i> {change.after}</b></div>)}</div> : null}
                     </>
-                  ) : <p>The saved baseline is for {savedRevision.vehicle}. Save this quote to compare the current vehicle instead.</p>
-                ) : <p>Stored only in this browser. Use it when the dealer sends a revised worksheet so you can see what changed.</p>}
-                {savedRevision ? <button className="revision-clear" type="button" onClick={clearSavedQuote}>Clear saved baseline</button> : null}
+                  ) : <p>The saved baseline is for {savedRevision.vehicle}. Confirm this is the same vehicle, or replace the baseline to compare the current quote.</p>
+                ) : <p>Save this quote as your private baseline. When the dealer sends a revised worksheet, import it above or edit the values below and the changed numbers will appear here.</p>}
+                {savedRevision ? <div className="revision-compare-actions"><button className="revision-compare-action" type="button" onClick={scrollToQuoteUpload}>Import revised quote to compare ↑</button><button className="revision-clear" type="button" onClick={clearSavedQuote}>Clear saved baseline</button></div> : null}
               </section>
             ) : null}
             <p className="score-note">
