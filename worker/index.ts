@@ -1250,27 +1250,31 @@ const handleAccount = async (request: Request, env: Env) => {
 };
 
 const handleSalespersonCheckout = async (request: Request, env: Env) => {
-  if (request.method !== "POST") return new Response("Method not allowed", { status: 405, headers: { Allow: "POST" } });
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: accountCorsHeaders(request, env) });
+  }
+  const respond = (response: Response) => withAccountCors(response, request, env);
+  if (request.method !== "POST") return respond(new Response("Method not allowed", { status: 405, headers: { Allow: "POST" } }));
   const origin = request.headers.get("Origin");
   if (origin && origin !== env.SITE_ORIGIN && origin !== env.PUBLIC_SITE_ORIGIN) return new Response("Forbidden", { status: 403 });
   const userId = await currentUser(request, env);
-  if (!userId) return Response.json({ error: "account_required" }, { status: 401, headers: noStoreHeaders });
+  if (!userId) return respond(Response.json({ error: "account_required" }, { status: 401, headers: noStoreHeaders }));
   try {
     const body = await request.json().catch(() => ({})) as { email?: string; displayName?: string };
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
     const displayName = typeof body.displayName === "string" ? body.displayName.trim() : "";
     const profileResult = await accountCall(env, "/salesperson", { action: "ensure", userId, email, displayName });
     const profile = profileResult?.profile as { subscriptionStatus?: string; email?: string; displayName?: string } | undefined;
-    if (!profile) return Response.json({ error: "salesperson_profile_required" }, { status: 400, headers: noStoreHeaders });
-    if (profile.subscriptionStatus === "active") return Response.json({ error: "salesperson_already_active" }, { status: 409, headers: noStoreHeaders });
+    if (!profile) return respond(Response.json({ error: "salesperson_profile_required" }, { status: 400, headers: noStoreHeaders }));
+    if (profile.subscriptionStatus === "active") return respond(Response.json({ error: "salesperson_already_active" }, { status: 409, headers: noStoreHeaders }));
     const billingEmail = email || profile.email || "";
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(billingEmail)) return Response.json({ error: "salesperson_email_required" }, { status: 400, headers: noStoreHeaders });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(billingEmail)) return respond(Response.json({ error: "salesperson_email_required" }, { status: 400, headers: noStoreHeaders }));
     const session = await createSalespersonCheckoutSession(env, userId, billingEmail);
-    return Response.json({ url: session.url }, { headers: noStoreHeaders });
+    return respond(Response.json({ url: session.url }, { headers: noStoreHeaders }));
   } catch (error) {
     const code = error instanceof CheckoutError ? error.code : "checkout_internal_error";
     console.error("Salesperson checkout creation failed", { code, message: error instanceof Error ? error.message : "Unknown error" });
-    return Response.json({ error: "Salesperson subscription checkout is temporarily unavailable.", code }, { status: 502, headers: noStoreHeaders });
+    return respond(Response.json({ error: "Salesperson subscription checkout is temporarily unavailable.", code }, { status: 502, headers: noStoreHeaders }));
   }
 };
 

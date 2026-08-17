@@ -190,6 +190,39 @@ test("salesperson audit history allows the public dashboard origin to read it", 
   assert.equal(response.headers.get("Access-Control-Allow-Credentials"), "true");
 });
 
+test("salesperson checkout allows the public dashboard CORS preflight", async () => {
+  const env = makeEnv();
+  const response = await handleRequest(
+    new Request("https://audit.pencilproof.com/api/salesperson/checkout", {
+      method: "OPTIONS",
+      headers: { Origin: env.PUBLIC_SITE_ORIGIN },
+    }),
+    env,
+  );
+  assert.equal(response.status, 204);
+  assert.equal(response.headers.get("Access-Control-Allow-Origin"), env.PUBLIC_SITE_ORIGIN);
+  assert.equal(response.headers.get("Access-Control-Allow-Credentials"), "true");
+  assert.match(response.headers.get("Access-Control-Allow-Methods") ?? "", /POST/);
+});
+
+test("salesperson checkout keeps public-origin errors readable by the dashboard", async () => {
+  const env = makeEnv();
+  const response = await handleRequest(
+    new Request("https://audit.pencilproof.com/api/salesperson/checkout", {
+      method: "POST",
+      headers: {
+        Origin: env.PUBLIC_SITE_ORIGIN,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email: "sales@example.com", displayName: "Hannah" }),
+    }),
+    env,
+  );
+  assert.equal(response.status, 401);
+  assert.equal(response.headers.get("Access-Control-Allow-Origin"), env.PUBLIC_SITE_ORIGIN);
+  assert.deepEqual(await response.json(), { error: "account_required" });
+});
+
 test("an existing salesperson profile overrides a stale consumer role cookie", async () => {
   const env = makeEnv();
   env.ACCOUNTS = makeAccountNamespace("active");
