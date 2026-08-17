@@ -1061,6 +1061,22 @@ const canonicalAccountRole = async (
   return result?.profile ? "salesperson" : fallback;
 };
 
+const markSalespersonProfile = async (env: Env, userId: string, email: string) => {
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(normalizedEmail) || normalizedEmail.length > 254) return;
+  try {
+    await accountCall(env, "/account-identity", {
+      action: "upsert",
+      email: normalizedEmail,
+      role: "salesperson",
+      salespersonProfile: true,
+      userId,
+    });
+  } catch {
+    // Identity segmentation must not block a successfully saved salesperson profile.
+  }
+};
+
 const currentAccountRole = async (request: Request, env: Env): Promise<AccountRole> => {
   const sessionRole = await verifyAccountRoleSession(readCookie(request, ROLE_COOKIE), env.SESSION_SECRET) ?? "consumer";
   return canonicalAccountRole(env, await currentUser(request, env), sessionRole);
@@ -1106,14 +1122,20 @@ const handleAccount = async (request: Request, env: Env) => {
     if (/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(email) && email.length <= 254) {
       await accountCall(env, "/email-contact", { email, userId: user.id });
     }
-    // A salesperson profile is the durable source of truth. This prevents a
-    // consumer-path navigation event from downgrading an existing salesperson
-    // account just because the browser's temporary entry context is stale.
-    const resolvedRole = await canonicalAccountRole(env, user.id, role);
+    // The entry context controls the page shown after sign-in, but it is not
+    // itself a salesperson account. Analytics and campaign segmentation only
+    // become salesperson-specific after a real salesperson profile exists.
+    const salespersonResult = await accountCall(env, "/salesperson", { action: "get", userId: user.id });
+    const hasSalespersonProfile = Boolean(salespersonResult?.profile);
+    const identityResult = await accountCall(env, "/account-identity", { action: "get", userId: user.id });
+    const knownConsumer = Boolean(identityResult?.identity?.consumerSeenAt);
+    const hasPriorIdentity = Boolean(identityResult?.identity);
+    const resolvedRole = hasSalespersonProfile ? "salesperson" : role === "salesperson" && !knownConsumer && !hasPriorIdentity ? "salesperson" : "consumer";
     await accountCall(env, "/account-identity", {
       action: "upsert",
       email: /^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(email) && email.length <= 254 ? email : undefined,
-      role: resolvedRole,
+      role: hasSalespersonProfile ? "salesperson" : "consumer",
+      salespersonProfile: hasSalespersonProfile,
       userId: user.id,
     });
     const guestId = await requestGuestId(request);
@@ -1148,7 +1170,16 @@ const handleAccount = async (request: Request, env: Env) => {
       ...(typeof body.email === "string" ? { email: body.email } : {}),
       ...(typeof body.displayName === "string" ? { displayName: body.displayName } : {}),
     });
-    return withAccountCors(Response.json({ profile: result?.profile ?? null }, { headers: noStoreHeaders }), request, env);
+    const profile = result?.profile as { email?: unknown } | undefined;
+    const responseHeaders = new Headers(noStoreHeaders);
+    if (request.method === "POST" && profile) {
+      const profileEmail = typeof profile.email === "string"
+        ? profile.email
+        : typeof body.email === "string" ? body.email : "";
+      await markSalespersonProfile(env, userId, profileEmail);
+      responseHeaders.append("Set-Cookie", await accountRoleCookie("salesperson", env.SESSION_SECRET));
+    }
+    return withAccountCors(Response.json({ profile: profile ?? null }, { headers: responseHeaders }), request, env);
   }
   if (url.pathname === "/api/salesperson/playbook" && request.method === "GET") {
     const result = await accountCall(env, "/salesperson", { action: "get", userId });
@@ -1270,6 +1301,7 @@ const handleSalespersonCheckout = async (request: Request, env: Env) => {
     if (profile.subscriptionStatus === "active") return respond(Response.json({ error: "salesperson_already_active" }, { status: 409, headers: noStoreHeaders }));
     const billingEmail = email || profile.email || "";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(billingEmail)) return respond(Response.json({ error: "salesperson_email_required" }, { status: 400, headers: noStoreHeaders }));
+    await markSalespersonProfile(env, userId, billingEmail);
     const session = await createSalespersonCheckoutSession(env, userId, billingEmail);
     return respond(Response.json({ url: session.url }, { headers: noStoreHeaders }));
   } catch (error) {

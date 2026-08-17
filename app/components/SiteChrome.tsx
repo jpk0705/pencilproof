@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CHECKOUT_URL } from "@/lib/checkout";
 import AccountNav from "@/app/components/AccountNav";
+import FooterSalesLink from "@/app/components/FooterSalesLink";
 
 const PUBLIC_ANALYZE_URL = "https://pencilproof.com/analyze";
 
@@ -36,7 +37,7 @@ export function SiteFooter() {
           <Link href="/who-it-helps">Who it helps</Link>
           <Link href="/how-it-works">How it works</Link>
           <Link href="/what-it-checks">What it checks</Link>
-          <Link href="/sales">For salespeople</Link>
+          <FooterSalesLink />
           <Link href="/questions">Q&amp;A</Link>
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>

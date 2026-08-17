@@ -204,13 +204,15 @@ export class AccountStore {
     this.sql.exec(`INSERT OR IGNORE INTO email_contacts (user_id, email, added_at, updated_at) VALUES (?, ?, ?, ?)`, userId, email, now, now);
     this.sql.exec(`UPDATE email_contacts SET email = ?, updated_at = ? WHERE user_id = ?`, email, now, userId);
   }
-  saveAccountIdentity(userId: string, email: string | null, role: AccountRole) {
+  saveAccountIdentity(userId: string, email: string | null, role: AccountRole, salespersonProfile = false) {
     const now = isoNow();
     const existing = this.sql.exec<{ user_id: string; email: string; consumer_seen_at: number | null; salesperson_seen_at: number | null }>(`SELECT user_id, email, consumer_seen_at, salesperson_seen_at FROM account_identity_contexts WHERE user_id = ?`, userId).toArray()[0];
     const nextEmail = email || existing?.email || "";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(nextEmail) || nextEmail.length > 254) return false;
     const consumerSeenAt = role === "consumer" ? now : (existing?.consumer_seen_at ?? null);
-    const salespersonSeenAt = role === "salesperson" ? now : (existing?.salesperson_seen_at ?? null);
+    const salespersonSeenAt = salespersonProfile
+      ? (role === "salesperson" ? now : (existing?.salesperson_seen_at ?? null))
+      : null;
     if (existing) {
       this.sql.exec(`UPDATE account_identity_contexts SET email = ?, consumer_seen_at = ?, salesperson_seen_at = ?, last_role = ?, last_seen_at = ? WHERE user_id = ?`, nextEmail, consumerSeenAt, salespersonSeenAt, role, now, userId);
     } else {
@@ -239,6 +241,27 @@ export class AccountStore {
       firstSeenAt: row.first_seen_at,
       lastSeenAt: row.last_seen_at,
     } satisfies AccountIdentity));
+  }
+  accountIdentity(userId: string) {
+    const row = this.sql.exec<{
+      user_id: string;
+      email: string;
+      consumer_seen_at: number | null;
+      salesperson_seen_at: number | null;
+      last_role: AccountRole;
+      first_seen_at: number;
+      last_seen_at: number;
+    }>(`SELECT user_id, email, consumer_seen_at, salesperson_seen_at, last_role, first_seen_at, last_seen_at FROM account_identity_contexts WHERE user_id = ?`, userId).toArray()[0];
+    if (!row) return null;
+    return {
+      userId: row.user_id,
+      email: row.email,
+      consumerSeenAt: row.consumer_seen_at,
+      salespersonSeenAt: row.salesperson_seen_at,
+      lastRole: row.last_role,
+      firstSeenAt: row.first_seen_at,
+      lastSeenAt: row.last_seen_at,
+    };
   }
   marketingEnabled(userId: string) {
     return this.sql.exec<{ user_id: string }>(`
@@ -480,12 +503,18 @@ export class AccountStore {
     }
     if (path === "/account-identity") {
       if (body.action === "list") return json({ accounts: this.accountIdentities() });
+      if (body.action === "get") {
+        const userId = typeof body.userId === "string" ? body.userId : "";
+        if (!/^[A-Za-z0-9_:-]{8,200}$/.test(userId)) return json({ error: "invalid_account_identity" }, 400);
+        return json({ identity: this.accountIdentity(userId) });
+      }
       const userId = typeof body.userId === "string" ? body.userId : "";
       if (!/^[A-Za-z0-9_:-]{8,200}$/.test(userId)) return json({ error: "invalid_account_identity" }, 400);
       const role = body.role === "salesperson" ? "salesperson" : body.role === "consumer" ? "consumer" : null;
+      const salespersonProfile = body.salespersonProfile === true;
       const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : null;
       if (!role || (email !== null && (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(email) || email.length > 254))) return json({ error: "invalid_account_identity" }, 400);
-      return json({ stored: this.saveAccountIdentity(userId, email, role) });
+      return json({ stored: this.saveAccountIdentity(userId, email, role, salespersonProfile) });
     }
     if (path === "/migrate") {
       if (typeof body.guestId !== "string" || typeof body.userId !== "string") return json({ error: "invalid_migration" }, 400);

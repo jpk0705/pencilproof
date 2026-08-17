@@ -5,6 +5,7 @@ import QRCode from "qrcode";
 import { Clerk } from "@clerk/clerk-js";
 import { useEffect, useMemo, useState } from "react";
 import { authRedirectOptions, createLoadedClerk, getAuthContext, setAuthContext as persistAuthContext } from "@/lib/clerk-client";
+import { flushAnalyticsQueue, track } from "@/lib/analytics";
 import { SiteNav } from "@/app/components/SiteChrome";
 import SalesCoach from "@/app/components/SalesCoach";
 
@@ -43,6 +44,10 @@ export default function SalespersonPage() {
   const [busy, setBusy] = useState(false);
   const [roleBlocked, setRoleBlocked] = useState(false);
   const [showCoachPreview, setShowCoachPreview] = useState(false);
+  const [showDeletePrompt, setShowDeletePrompt] = useState(false);
+  const [deleteReason, setDeleteReason] = useState("");
+  const [deleteDetails, setDeleteDetails] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [savedAudits, setSavedAudits] = useState<SavedAudit[]>([]);
   const [savedAuditPage, setSavedAuditPage] = useState(1);
 
@@ -291,6 +296,30 @@ export default function SalespersonPage() {
     window.location.assign("/");
   };
 
+  const confirmDeleteAccount = async () => {
+    if (!window.confirm("Delete your PencilProof account and saved audit data?")) return;
+    setDeleteBusy(true);
+    track({
+      event: "feedback_submitted",
+      category: "account_deletion",
+      comment: JSON.stringify({
+        category: "account_deletion",
+        phase: "account-deletion",
+        reason: deleteReason.trim(),
+        comment: deleteDetails.trim(),
+      }),
+    });
+    await flushAnalyticsQueue();
+    const response = await fetch(`${SALES_API_URL}/api/account/delete`, { method: "POST", credentials: "include" });
+    if (!response.ok) {
+      setMessage("We could not delete your account right now. Please try again.");
+      setDeleteBusy(false);
+      return;
+    }
+    await clerk?.signOut();
+    window.location.assign("/");
+  };
+
   const savedAuditPageCount = Math.max(1, Math.ceil(savedAudits.length / SAVED_AUDITS_PER_PAGE));
   const currentSavedAuditPage = Math.min(savedAuditPage, savedAuditPageCount);
   const visibleSavedAudits = savedAudits.slice((currentSavedAuditPage - 1) * SAVED_AUDITS_PER_PAGE, currentSavedAuditPage * SAVED_AUDITS_PER_PAGE);
@@ -359,6 +388,27 @@ export default function SalespersonPage() {
         <section className="sales-card sales-dashboard"><div><p className="kicker">YOUR TRACKED LINK</p><h2>{profile.displayName}</h2><p>Customers who use this link are attributed to you. They are told that a paid audit may generate subscription credit for the person who shared the link.</p><div className="sales-link-row"><input readOnly value={referralLink} aria-label="Your referral link" /><button className="button button-quiet" type="button" onClick={() => void navigator.clipboard.writeText(referralLink)}>Copy link</button></div></div>{qrDataUrl ? <img className="sales-qr" src={qrDataUrl} alt="QR code for your PencilProof referral link" width="280" height="280" /> : null}</section>
         <section className="sales-card sales-credit-card"><div><p className="kicker">REFERRAL CREDITS</p><h2>${profile.availableCredits * 20} available</h2><p>{profile.earnedCredits} credit{profile.earnedCredits === 1 ? "" : "s"} earned. There is no six-referral cap: every verified paid Full Quote Audit adds another $20 credit.</p><p className="sales-field-help">PencilProof credits have no cash value. They can only be applied to your PencilProof salesperson subscription or gifted to another salesperson.</p></div><div className="sales-credit-actions"><button className="button button-primary" type="button" onClick={() => void redeemCredit()} disabled={busy}>Use for my renewal</button><button className="button button-quiet" type="button" onClick={() => void giftCredit()} disabled={busy}>Gift $20 to someone</button><button className="button button-quiet" type="button" onClick={() => void managePlan()} disabled={busy}>Manage subscription</button></div>{giftUrl ? <div className="gift-link"><strong>Gift link</strong><input readOnly value={giftUrl} aria-label="Gift link" /><button className="button button-quiet" type="button" onClick={() => void navigator.clipboard.writeText(giftUrl)}>Copy gift link</button></div> : null}</section>
       </> : null}
+      {clerk.user && profile ? (showDeletePrompt ? <section className="delete-account-prompt" aria-labelledby="sales-delete-account-prompt-title">
+        <p className="kicker">BEFORE YOU GO</p>
+        <h2 id="sales-delete-account-prompt-title">Why are you deleting your account?</h2>
+        <p>Your answer is optional and helps us improve PencilProof. You can leave it blank and continue.</p>
+        <label htmlFor="sales-delete-reason">Reason</label>
+        <select id="sales-delete-reason" value={deleteReason} onChange={(event) => setDeleteReason(event.target.value)}>
+          <option value="">Choose a reason (optional)</option>
+          <option value="did not use service">I did not use the service</option>
+          <option value="price too high">The price was too high</option>
+          <option value="site trouble">I had trouble using the site</option>
+          <option value="not needed anymore">I do not need PencilProof anymore</option>
+          <option value="taking a break">I am taking a break</option>
+          <option value="other">Other</option>
+        </select>
+        <label htmlFor="sales-delete-details">Additional feedback (optional)</label>
+        <textarea id="sales-delete-details" value={deleteDetails} onChange={(event) => setDeleteDetails(event.target.value)} placeholder="Tell us more, if you would like to." rows={3} />
+        <div className="delete-account-actions">
+          <button className="button button-quiet" type="button" onClick={() => setShowDeletePrompt(false)} disabled={deleteBusy}>Keep my account</button>
+          <button className="button button-danger" type="button" onClick={() => void confirmDeleteAccount()} disabled={deleteBusy}>{deleteBusy ? "Deleting…" : "Continue to delete"}</button>
+        </div>
+      </section> : <button className="account-delete" type="button" onClick={() => setShowDeletePrompt(true)}>Delete my account and data</button>) : null}
       {message && profile && isActive(profile.subscriptionStatus) ? <p className="sales-message" role="status">{message}</p> : null}
       {profile || showCoachPreview ? <SalesCoach unlocked={Boolean(profile && isActive(profile.subscriptionStatus))} playbook={playbook} onSubscribe={() => void startSubscription()} startOpen={showCoachPreview && !profile} /> : null}
       <p className="sales-note">PencilProof is an educational quote-audit tool. It does not approve financing, negotiate with a dealership, or guarantee savings. Referral rewards never reveal a customer&apos;s quote or audit information.</p>
