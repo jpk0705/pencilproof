@@ -72,7 +72,7 @@ const makeAccountNamespace = (subscriptionStatus: string | null): Env["ACCOUNTS"
           ? { profile: { subscriptionStatus } }
           : { profile: null });
       }
-      if (path === "/audits") return Response.json({ id: "audit-test-1" });
+      if (path === "/audits") return Response.json({ id: "11111111-1111-4111-8111-111111111111" });
       return Response.json({});
     },
   }),
@@ -170,6 +170,24 @@ test("active salesperson subscriptions unlock unlimited protected audits", async
     assert.equal(blocked.status, 303);
     assert.equal(blocked.headers.get("Location"), "https://pencilproof.com/analyze");
   }
+});
+
+test("salesperson audit history allows the public dashboard origin to read it", async () => {
+  const env = makeEnv();
+  env.ACCOUNTS = makeAccountNamespace("active");
+  const session = await createUserSession("salesperson-user", env.SESSION_SECRET);
+  const response = await handleRequest(
+    new Request("https://audit.pencilproof.com/api/account/me", {
+      headers: {
+        Cookie: `pp_user=${session}`,
+        Origin: env.PUBLIC_SITE_ORIGIN,
+      },
+    }),
+    env,
+  );
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("Access-Control-Allow-Origin"), env.PUBLIC_SITE_ORIGIN);
+  assert.equal(response.headers.get("Access-Control-Allow-Credentials"), "true");
 });
 
 const paidSession = (

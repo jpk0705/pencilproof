@@ -997,8 +997,9 @@ export default function AnalyzePage() {
         verdict: analysis.verdict,
         flags: analysis.flags.map((flag) => ({ name: flag.title, tone: flag.tone, detail: flag.detail })),
       } }),
-    }).then((response) => {
-      if (response.ok) {
+    }).then(async (response) => {
+      const payload = await response.json().catch(() => ({})) as { id?: unknown };
+      if (response.ok && typeof payload.id === "string") {
         savedAuditKey.current = key;
         if (accountRole === "salesperson") setAuditSaveMessage("Saved to your salesperson dashboard.");
       } else if (accountRole === "salesperson") {

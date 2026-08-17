@@ -1215,7 +1215,7 @@ const handleAccount = async (request: Request, env: Env) => {
     const access = await accountAccess(request, env);
     const result = await accountCall(env, "/audits", { ownerId, action: "list" });
     const marketing = await accountCall(env, "/marketing", { action: "status", userId });
-    return Response.json({ userId, role: await currentAccountRole(request, env), expiresAt: access, audits: result?.audits ?? [], marketingOptedIn: marketing?.optedIn === true }, { headers: noStoreHeaders });
+    return withAccountCors(Response.json({ userId, role: await currentAccountRole(request, env), expiresAt: access, audits: result?.audits ?? [], marketingOptedIn: marketing?.optedIn === true }, { headers: noStoreHeaders }), request, env);
   }
   if (url.pathname === "/api/account/audits" && request.method === "DELETE") {
     const body = await request.json().catch(() => ({})) as { id?: string };
@@ -1295,7 +1295,10 @@ const handleAuditStorage = async (request: Request, env: Env) => {
   }
   if (request.method === "POST" && body.data && JSON.stringify(body.data).length <= 100_000) {
     const result = await accountCall(env, "/audits", { ownerId, action: "save", data: body.data });
-    return Response.json({ id: result?.id ?? null }, { headers: noStoreHeaders });
+    if (typeof result?.id !== "string" || !/^[0-9a-f-]{36}$/i.test(result.id)) {
+      return Response.json({ error: "audit_save_unavailable" }, { status: 503, headers: noStoreHeaders });
+    }
+    return Response.json({ id: result.id }, { headers: noStoreHeaders });
   }
   if (request.method === "DELETE" && typeof body.id === "string" && /^[0-9a-f-]{36}$/.test(body.id)) {
     await accountCall(env, "/audits", { ownerId, action: "delete", id: body.id });
