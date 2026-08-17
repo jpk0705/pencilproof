@@ -244,7 +244,6 @@ const counterProposalLabels: Partial<Record<keyof Deal, string>> = {
   tradePayoff: "Trade loan payoff",
   cashDown: "Cash down",
   apr: "Dealer APR",
-  outsideApr: "Desired APR",
   term: "Loan term",
   quotedPayment: "Dealer quoted payment",
 };
@@ -253,7 +252,7 @@ const counterProposalLabel = (field: keyof Deal) => counterProposalLabels[field]
 
 const counterProposalDelta = (field: keyof Deal, value: number) => {
   const amount = Math.abs(value);
-  if (field === "apr" || field === "outsideApr") return `${amount.toFixed(2)} percentage points`;
+  if (field === "apr") return `${amount.toFixed(2)} percentage points`;
   if (field === "term") return `${amount} months`;
   return dollarsAndCents(amount);
 };
@@ -544,10 +543,10 @@ export default function AnalyzePage() {
     const comparableFields: (keyof Deal)[] = [
       "sellingPrice", "rebate", "tax", "govFees", "docFee", "serviceContract", "gap",
       "prepaidMaintenance", "tireWheel", "accessories", "tradeValue", "tradePayoff",
-      "cashDown", "apr", "outsideApr", "term", "quotedPayment",
+      "cashDown", "apr", "term", "quotedPayment",
     ];
     const format = (field: keyof Deal, value: Deal[keyof Deal]) => {
-      if (field === "apr" || field === "outsideApr") return `${Number(value).toFixed(2)}%`;
+      if (field === "apr") return `${Number(value).toFixed(2)}%`;
       if (field === "term") return `${Number(value)} months`;
       return dollarsAndCents(Number(value));
     };
@@ -909,12 +908,9 @@ export default function AnalyzePage() {
     const productPaymentImpact = Math.max(0, calculatedPayment - paymentWithoutProducts);
     const productCostOverTerm = productPaymentImpact * deal.term;
     const productFinancingCost = Math.max(0, productCostOverTerm - addons);
-    const desiredPayment = deal.outsideApr > 0 ? paymentFor(amountFinanced, deal.outsideApr, deal.term) : 0;
     const paymentGap = deal.quotedPayment > 0 ? deal.quotedPayment - calculatedPayment : 0;
     const financeCharge = Math.max(0, calculatedPayment * deal.term - amountFinanced);
     const totalPayments = calculatedPayment * deal.term;
-    const aprCost = desiredPayment > 0 ? Math.max(0, (calculatedPayment - desiredPayment) * deal.term) : 0;
-    const aprGap = deal.outsideApr > 0 ? deal.apr - deal.outsideApr : 0;
     const isCashDeal = deal.term === 1 && deal.apr === 0;
 
     const missingInformation = [
@@ -966,21 +962,6 @@ export default function AnalyzePage() {
         tone: "good",
         title: "No optional products entered",
         detail: "Check the worksheet carefully for service contracts, GAP, maintenance, tire-and-wheel coverage, and other dealer add-ons.",
-      });
-    }
-    if (aprGap >= 0.25) {
-      flags.push({
-        tone: "warn",
-        title: `Dealer APR is ${aprGap.toFixed(2)} points above your desired APR`,
-        detail: aprCost > 0
-          ? `At your desired rate, the estimated payment is ${dollars(desiredPayment)}/month—about ${dollars(aprCost)} less over the full term.`
-          : "Compare the dealer offer with your target rate before signing.",
-      });
-    } else if (deal.outsideApr > 0) {
-      flags.push({
-        tone: "good",
-        title: "Dealer APR meets your desired rate",
-        detail: "The entered dealer rate is close to or below your desired APR.",
       });
     }
     if (deal.quotedPayment > 0 && Math.abs(paymentGap) > PAYMENT_MATCH_TOLERANCE) {
@@ -1073,9 +1054,6 @@ export default function AnalyzePage() {
       productFinancingCost,
       financeCharge,
       totalPayments,
-      desiredPayment,
-      aprCost,
-      aprGap,
       hasMinimumData,
       missingInformation,
       checks: [
@@ -1167,10 +1145,9 @@ export default function AnalyzePage() {
     ? `Show the trade allowance of ${dollarsAndCents(deal.tradeValue)}, trade payoff of ${dollarsAndCents(deal.tradePayoff)}, resulting trade equity of ${dollarsAndCents(analysis.tradeEquity)}, and cash down of ${dollarsAndCents(deal.cashDown)} as separate lines.`
     : "Show any trade allowance, trade payoff, trade equity, and cash down as separate lines if they apply.";
   const dealerApr = deal.apr > 0 ? `${deal.apr.toFixed(2)}%` : "not entered";
-  const desiredApr = deal.outsideApr > 0 ? `${deal.outsideApr.toFixed(2)}%` : "not entered";
-  const rateRequest = analysis.aprGap >= 0.25
-    ? `Show whether the APR can be reduced from ${dealerApr} toward my desired APR of ${desiredApr}.`
-    : `Confirm the final APR of ${dealerApr} and ${deal.term}-month term, subject to lender approval.`;
+  const rateRequest = isCashDeal
+    ? "Confirm this is a cash purchase with one payment and no APR or financing charge."
+    : `Confirm the final APR of ${dealerApr} and ${deal.term}-month term, subject to lender approval. If other lender-approved rate options are available, show them separately with their payment impact.`;
   const counterProposalLines = revisionComparison.sameVehicle
     ? revisionComparison.changes.map((change) => {
       const label = counterProposalLabel(change.field);
@@ -1183,6 +1160,12 @@ export default function AnalyzePage() {
     })
     : [];
   const hasCounterProposal = revisionComparison.sameVehicle && counterProposalLines.length > 0;
+  const counterProposalPaymentDelta = hasCounterProposal
+    ? analysis.calculatedPayment - (revisionComparison.originalMath?.calculatedPayment ?? 0)
+    : 0;
+  const counterProposalPaymentLabel = hasCounterProposal
+    ? `${counterProposalPaymentDelta > 0 ? "+" : counterProposalPaymentDelta < 0 ? "−" : ""}${dollarsAndCents(Math.abs(counterProposalPaymentDelta))}`
+    : "—";
   const message = hasCounterProposal
     ? `Thanks for working through the ${deal.vehicle || "vehicle"} quote with me. Based on the dealer-given original and the revised figures I entered, please review the following counter proposal:\n\n1. Requested changes\n${counterProposalLines.join("\n")}\n\n2. Revised live calculation to confirm\n   - Amount financed: ${dollarsAndCents(revisionComparison.originalMath?.amountFinanced ?? 0)} → ${dollarsAndCents(analysis.amountFinanced)}\n   - Live calculated payment: ${dollarsAndCents(revisionComparison.originalMath?.calculatedPayment ?? 0)} → ${dollarsAndCents(analysis.calculatedPayment)} per month\n   - APR: ${dealerApr}\n   - Term: ${deal.term} months\n   - Dealer-quoted payment on the revised worksheet: ${dollarsAndCents(deal.quotedPayment)}\n\nPlease send a revised buyer's order showing each requested change, all mandatory charges, the complete out-the-door total, amount financed, APR, term, and payment. Please confirm whether any difference between the printed payment and the live calculation comes from an omitted amount, deferred first payment, or another documented term.`
     : `Thanks for working through the ${deal.vehicle || "vehicle"} quote with me. I would like a revised buyer's order that reflects these numbers so I can make a clear decision:\n\n1. Vehicle and price\n   - Selling price: ${dollarsAndCents(deal.sellingPrice)}\n   - Rebate: ${dollarsAndCents(deal.rebate)}\n   - Sales tax: ${dollarsAndCents(deal.tax)}\n   - Government / registration: ${dollarsAndCents(deal.govFees)}\n   - Documentation fee: ${dollarsAndCents(deal.docFee)}\n\n2. Trade and cash\n   - ${tradeRequest}\n\n3. Optional products\n   - ${productRequest}\n\n4. Financing\n   - ${rateRequest}\n   - Show the current estimated amount financed of ${dollarsAndCents(analysis.amountFinanced)}, estimated payment of ${dollarsAndCents(analysis.calculatedPayment)}, quoted payment of ${dollarsAndCents(deal.quotedPayment)}, and total payment over ${deal.term} months.\n\nPlease confirm that there are no other mandatory charges and send the complete out-the-door total, amount financed, APR, term, and payment—not only the monthly payment.`;
@@ -1223,7 +1206,7 @@ export default function AnalyzePage() {
           <p className="kicker">{isPaidAuditHost ? "PRIVACY-FIRST FULL QUOTE AUDIT FOR CAR BUYERS" : "FREE QUOTE SCAN FOR CAR BUYERS"}</p>
           <h1>Review the quote before you sign.</h1>
           <p>{isPaidAuditHost
-            ? "Upload the dealer's quote or enter the figures yourself. Then test the down payment, term, desired APR, trade, and optional products while the dealership works on its official revision."
+            ? "Upload the dealer's quote or enter the figures yourself. Then test the down payment, term, trade, and optional products while the dealership works on its official revision."
             : "Upload the dealer's quote or enter the figures yourself. Confirm what PencilProof found, choose an optional account or continue as a guest, then continue to secure checkout. The complete audit opens only after payment."}</p>
           <p className="analyzer-founder">Built by an automotive professional with experience as a salesperson, sales manager, and finance manager.</p>
           {hasReferralAttribution ? <p className="referral-disclosure">You arrived through a PencilProof salesperson link. If you purchase the Full Quote Audit, the person who shared this link may receive subscription credit.</p> : null}
@@ -1496,7 +1479,7 @@ export default function AnalyzePage() {
             </div>
             <div className="field-grid field-grid-four">
               <label className="input-field"><span>Dealer APR</span><div className="input-money input-percent"><input aria-label="Dealer APR" inputMode="decimal" type="number" min="0" step="0.01" value={deal.apr || ""} onChange={(event) => setNumber("apr", event.target.value)} /><i>%</i></div><small>{isCashDeal ? "Cash purchase: one payment at 0%" : "Use the rate printed on the quote"}</small></label>
-              <label className="input-field"><span>Your desired APR</span><div className="input-money input-percent"><input aria-label="Your desired APR" inputMode="decimal" type="number" min="0" step="0.01" value={deal.outsideApr || ""} onChange={(event) => setNumber("outsideApr", event.target.value)} /><i>%</i></div><small>See the estimated payment at your target rate</small></label>
+              <div className="input-field counter-proposal-field" aria-live="polite"><span>Counter proposal</span><div className="counter-proposal-status"><strong>{!savedRevision ? "Save the dealer original first" : !revisionComparison.sameVehicle ? "Different vehicle" : revisionComparison.changes.length ? `${revisionComparison.changes.length} change${revisionComparison.changes.length === 1 ? "" : "s"} detected` : "No changes yet"}</strong><small>{!savedRevision ? "Then edit or import a revised quote to compare." : !revisionComparison.sameVehicle ? "Use the same vehicle to compare revisions." : revisionComparison.changes.length ? "Message to Dealer updates from these figures." : "Edit or import revised figures to build a proposal."}</small></div></div>
               <label className="input-field"><span>Loan term</span><select aria-label="Loan term" value={deal.term} onChange={(event) => setNumber("term", event.target.value)}>{[1, 24, 30, 36, 39, 42, 48, 54, 60, 63, 66, 72, 75, 78, 83, 84, 96].map((term) => <option key={term} value={term}>{term === 1 ? "1 payment (cash)" : `${term} months`}</option>)}</select></label>
               <MoneyField label={isCashDeal ? "Cash due / finance amount" : "Dealer's quoted monthly payment"} field="quotedPayment" value={deal.quotedPayment} onChange={setNumber} hint={isCashDeal ? "The one payment shown on the quote" : "Keeps the amount printed on the quote for comparison"} />
             </div>
@@ -1588,7 +1571,7 @@ export default function AnalyzePage() {
               <div className="payment-compare">
                 <div><span>WITH PRODUCTS</span><strong>{dollars(analysis.calculatedPayment)}<small>/mo</small></strong><small>dealer APR and entered term</small></div>
                 <div><span>WITHOUT PRODUCTS</span><strong>{dollars(analysis.paymentWithoutProducts)}<small>/mo</small></strong><small>same dealer APR and term</small></div>
-                <div><span>AT YOUR DESIRED APR</span><strong>{deal.outsideApr > 0 ? dollars(analysis.desiredPayment) : "—"}{deal.outsideApr > 0 ? <small>/mo</small> : null}</strong><small>{deal.outsideApr > 0 ? `${deal.outsideApr.toFixed(2)}% · with products` : "Enter a desired APR"}</small></div>
+                <div><span>COUNTER-PROPOSAL IMPACT</span><strong>{counterProposalPaymentLabel}{hasCounterProposal && !isCashDeal ? <small>/mo</small> : null}</strong><small>{hasCounterProposal ? `${counterProposalPaymentDelta === 0 ? "No payment change" : counterProposalPaymentDelta > 0 ? "Higher" : "Lower"} vs dealer original` : savedRevision ? "No changed figures yet" : "Save dealer original to compare"}</small></div>
               </div>
 
               <div className={`payment-truth ${deal.quotedPayment > 0 && Math.abs(analysis.paymentGap) > PAYMENT_MATCH_TOLERANCE ? "payment-truth-warning" : ""}`}>

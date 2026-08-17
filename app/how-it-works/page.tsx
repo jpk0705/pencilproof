@@ -39,7 +39,7 @@ export default function HowItWorksPage() {
         <div className="shell signal-grid">
           <div><span>01</span><b>Payment rebuild</b><small>Check the dealer math</small></div>
           <div><span>02</span><b>Product impact</b><small>See with-and-without payments</small></div>
-          <div><span>03</span><b>Desired APR</b><small>See the payment at your target rate</small></div>
+          <div><span>03</span><b>Counter proposal</b><small>Turn changed figures into a clear next step</small></div>
           <div><span>04</span><b>Trade equity</b><small>Expose rolled-in debt</small></div>
         </div>
       </section>

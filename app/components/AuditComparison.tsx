@@ -35,7 +35,6 @@ const compareFields: CompareField[] = [
   { key: "tradePayoff", label: "Trade payoff", kind: "money" },
   { key: "cashDown", label: "Cash down", kind: "money" },
   { key: "apr", label: "Dealer APR", kind: "percent" },
-  { key: "outsideApr", label: "Desired APR", kind: "percent" },
   { key: "term", label: "Loan term", kind: "months" },
   { key: "quotedPayment", label: "Printed monthly payment", kind: "money" },
   { key: "calculatedPayment", label: "Estimated payment", kind: "money" },
