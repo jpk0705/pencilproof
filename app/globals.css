@@ -1362,6 +1362,9 @@ footer { color: var(--brand-text); background: var(--brand-navy); border-top-col
 .credit-score-estimator select { color: var(--brand-navy); background: white; border-color: #aebbd0; }
 .credit-score-rate span,
 .credit-score-note { color: #40566d; }
+.analyzer-page .input-field .credit-score-estimator .credit-score-kicker { color: #8b6500; font-size: 9px; font-weight: 900; letter-spacing: .08em; }
+.analyzer-page .input-field .credit-score-estimator .credit-score-note { color: #2f4960; font-size: 10px; font-weight: 600; line-height: 1.4; opacity: 1; }
+.analyzer-page .input-field .credit-score-estimator .credit-score-vehicle-type { color: #40566d; }
 .vehicle-photo:not(.vehicle-photo-dark) {
   color: var(--brand-navy);
   background: #fff;
