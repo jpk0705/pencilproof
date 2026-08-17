@@ -638,6 +638,11 @@ footer { border-top: 1px solid var(--line); padding: 34px 0; }
    phone or by a salesperson, where low-contrast helper copy is especially
    easy to miss. */
 .results-sticky .result-section-title span { color: #ffe19a; }
+.results-sticky .result-top p,
+.results-sticky .payment-truth span,
+.results-sticky .result-numbers span,
+.results-sticky .deal-equation > div span,
+.results-sticky .result-disclaimer { color: #d6e1ee; }
 .results-sticky .result-flag b,
 .results-sticky .product-insight h3 { color: #f5f7fb; }
 .results-sticky .result-flag small,
@@ -647,6 +652,7 @@ footer { border-top: 1px solid var(--line); padding: 34px 0; }
 .results-sticky .empty-products { color: #d6e1ee; }
 .results-sticky .product-insight,
 .results-sticky .empty-products { border-color: rgba(255,255,255,.2); background: #10264a; }
+.results-sticky .payment-truth > div { background: #10264a; }
 .results-sticky .dealer-message { border-top-color: rgba(255,255,255,.26); }
 .results-sticky .dealer-message p { color: #ffe19a; }
 .results-sticky .dealer-message pre { color: #f0f5fb; background: #0b1b38; border: 1px solid rgba(255,255,255,.16); }
