@@ -1036,12 +1036,12 @@ export default function AnalyzePage() {
       const payload = await response.json().catch(() => ({})) as { id?: unknown };
       if (response.ok && typeof payload.id === "string") {
         savedAuditKey.current = key;
-        if (accountRole === "salesperson") setAuditSaveMessage("Saved to your salesperson dashboard.");
-      } else if (accountRole === "salesperson") {
+        setAuditSaveMessage(accountRole === "salesperson" ? "Saved to your salesperson dashboard." : "Saved to My Audits.");
+      } else {
         setAuditSaveMessage("This audit could not be saved yet. Try Save this audit again.");
       }
     }).catch(() => {
-      if (accountRole === "salesperson") setAuditSaveMessage("This audit could not be saved yet. Try Save this audit again.");
+      setAuditSaveMessage("This audit could not be saved yet. Try Save this audit again.");
     });
   }, [analysis, auditSaveRequest, accountRole, accountRoleKnown, deal, isPaidAuditHost, sampleLoaded]);
 
@@ -1097,6 +1097,10 @@ export default function AnalyzePage() {
   };
 
   const requestAuditSave = () => {
+    if (sampleLoaded) {
+      setAuditSaveMessage("The built-in sample is for demonstration and cannot be saved.");
+      return;
+    }
     savedAuditKey.current = "";
     setAuditSaveMessage("Saving this audit…");
     setAuditSaveRequest((current) => current + 1);
@@ -1459,8 +1463,8 @@ export default function AnalyzePage() {
                 ? `${analysis.missingInformation.length} important item${analysis.missingInformation.length === 1 ? "" : "s"} still missing: ${analysis.missingInformation.join(", ") || "none"}.`
                 : "Not enough information to evaluate this deal. Enter the selling price, dealer APR, and term or confirm an imported quote."}
             </p>
-            {!showConsumerOnlyAuditSections && analysis.hasMinimumData ? <div className="sales-audit-save-action sales-audit-save-action-top">
-              <div><strong>Keep this audit</strong><span>Save the reviewed numbers to your salesperson dashboard.</span></div>
+            {isPaidAuditHost && analysis.hasMinimumData ? <div className="sales-audit-save-action sales-audit-save-action-top">
+              <div><strong>Save this audit</strong><span>Keep the reviewed numbers in {accountRole === "salesperson" ? "your salesperson dashboard" : "My Audits"}.</span></div>
               <button type="button" onClick={requestAuditSave}>Save audit</button>
               {auditSaveMessage ? <span role="status">{auditSaveMessage}</span> : null}
             </div> : null}
@@ -1567,7 +1571,8 @@ export default function AnalyzePage() {
                   <button className="button button-quiet" type="button" onClick={() => setAccountPromptDismissed(true)}>Continue Without Account</button>
                 </div>
               </section> : null}
-              {isPaidAuditHost && preCheckoutFeedbackCompleted === false ? <section className="paid-feedback-card" aria-labelledby="paid-feedback-title">
+              {/* Paid users should move directly from their audit to their saved history; no survey interrupts this flow. */}
+              {false ? <section className="paid-feedback-card" aria-labelledby="paid-feedback-title">
                 <p className="paid-feedback-kicker">ONE-MINUTE BETA CHECK-IN</p>
                 <h3 id="paid-feedback-title">How did you like your Full Quote Audit?</h3>
                 <p className="paid-feedback-intro">Your answers help us improve the experience. This is anonymous—please do not include your name, VIN, or quote details.</p>
