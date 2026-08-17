@@ -261,6 +261,7 @@ export default function AnalyzePage() {
   // This keeps it visible for a new quote while the handoff flag preserves the
   // completed-before-payment decision across the checkout redirect.
   const [preCheckoutFeedbackCompleted, setPreCheckoutFeedbackCompleted] = useState(false);
+  const [sampleLoaded, setSampleLoaded] = useState(false);
   const savedAuditKey = useRef("");
   const [accountPromptDismissed, setAccountPromptDismissed] = useState(false);
   const [pendingCheckout, setPendingCheckout] = useState<CheckoutPayload | null>(null);
@@ -320,6 +321,7 @@ export default function AnalyzePage() {
           if (typeof data[field] === "number" && Number.isFinite(data[field])) loaded[field] = data[field] as never;
         }
         savedAuditKey.current = JSON.stringify(loaded);
+        setSampleLoaded(false);
         setDeal(loaded);
         setDealImport({ status: "success", message: "Loaded this saved audit. You can update the figures and run the review again.", fields: [] });
       })
@@ -456,8 +458,10 @@ export default function AnalyzePage() {
     sessionStorage.removeItem(QUOTE_HANDOFF_KEY);
   }, []);
 
-  const setNumber = (field: keyof Deal, value: string) =>
+  const setNumber = (field: keyof Deal, value: string) => {
+    setSampleLoaded(false);
     setDeal((current) => ({ ...current, [field]: value === "" ? 0 : Number(value) }));
+  };
 
   const saveCurrentQuote = () => {
     if (!deal.vehicle.trim() && !deal.sellingPrice) return;
@@ -563,6 +567,7 @@ export default function AnalyzePage() {
   };
 
   const importDealFile = async (file: File) => {
+    setSampleLoaded(false);
     const isPdf = isDealImportPdf(file);
     if (!isDealImportFile(file)) {
       setDealImport({ status: "error", message: "Choose a PDF or image file from the dealership.", fields: [] });
@@ -791,6 +796,7 @@ export default function AnalyzePage() {
       });
       return;
     }
+    setSampleLoaded(false);
     setDeal((current) => ({ ...current, ...pendingImport.fields }));
     setPendingImport(null);
     setDealImport((current) => ({
@@ -1011,7 +1017,7 @@ export default function AnalyzePage() {
   }, [deal]);
 
   useEffect(() => {
-    if (!isPaidAuditHost || !accountRoleKnown || !analysis.hasMinimumData) return;
+    if (sampleLoaded || !isPaidAuditHost || !accountRoleKnown || !analysis.hasMinimumData) return;
     const key = JSON.stringify(deal);
     if (key === savedAuditKey.current) return;
     void fetch("/api/audits", {
@@ -1035,7 +1041,7 @@ export default function AnalyzePage() {
     }).catch(() => {
       if (accountRole === "salesperson") setAuditSaveMessage("This audit could not be saved yet. Try Save this audit again.");
     });
-  }, [analysis, auditSaveRequest, accountRole, accountRoleKnown, deal, isPaidAuditHost]);
+  }, [analysis, auditSaveRequest, accountRole, accountRoleKnown, deal, isPaidAuditHost, sampleLoaded]);
 
   const showConsumerOnlyAuditSections = !isPaidAuditHost || (accountRoleKnown && accountRole !== "salesperson");
 
@@ -1121,8 +1127,8 @@ export default function AnalyzePage() {
         </div>
         {isPaidAuditHost ? (
           <div className="analyzer-actions">
-            <button type="button" onClick={() => { setDeal(sample); setPendingImport(null); setOfferMatrix(null); setSelectedOfferId(""); setSelectedOfferType(null); setDealImport({ status: "idle", message: "", fields: [] }); }}>Load sample</button>
-            <button type="button" onClick={() => { setDeal(blank); setPendingImport(null); setOfferMatrix(null); setSelectedOfferId(""); setSelectedOfferType(null); setDealImport({ status: "idle", message: "", fields: [] }); }}>Clear all</button>
+            <button type="button" onClick={() => { setSampleLoaded(true); setDeal(sample); setPendingImport(null); setOfferMatrix(null); setSelectedOfferId(""); setSelectedOfferType(null); setDealImport({ status: "idle", message: "", fields: [] }); }}>Load sample</button>
+            <button type="button" onClick={() => { setSampleLoaded(false); setDeal(blank); setPendingImport(null); setOfferMatrix(null); setSelectedOfferId(""); setSelectedOfferType(null); setDealImport({ status: "idle", message: "", fields: [] }); }}>Clear all</button>
           </div>
         ) : null}
       </header>
@@ -1357,7 +1363,7 @@ export default function AnalyzePage() {
         <form className="deal-form" onSubmit={(event) => event.preventDefault()}>
           <section className="form-section">
             <div className="form-section-title"><span>01</span><div><h2>Vehicle & price</h2><p>Start with the top of the buyer&apos;s order or dealer worksheet.</p></div></div>
-            <label className="input-field full-field"><span>Vehicle description</span><input aria-label="Vehicle description" type="text" placeholder="e.g. 2026 Honda CR-V EX-L" value={deal.vehicle} onChange={(event) => setDeal((current) => ({ ...current, vehicle: event.target.value }))} /></label>
+            <label className="input-field full-field"><span>Vehicle description</span><input aria-label="Vehicle description" type="text" placeholder="e.g. 2026 Honda CR-V EX-L" value={deal.vehicle} onChange={(event) => { setSampleLoaded(false); setDeal((current) => ({ ...current, vehicle: event.target.value })); }} /></label>
             <div className="field-grid">
               <MoneyField label="Selling price" field="sellingPrice" value={deal.sellingPrice} onChange={setNumber} />
               <MoneyField label="Rebate" field="rebate" value={deal.rebate} onChange={setNumber} hint="Only a true manufacturer or cash rebate" />

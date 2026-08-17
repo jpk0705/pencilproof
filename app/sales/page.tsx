@@ -9,6 +9,7 @@ import { flushAnalyticsQueue, track } from "@/lib/analytics";
 import { SiteNav } from "@/app/components/SiteChrome";
 import SalesCoach from "@/app/components/SalesCoach";
 import AuditComparison, { type AuditComparisonRecord } from "@/app/components/AuditComparison";
+import { isExampleAudit } from "@/lib/audit-history";
 
 type Profile = {
   displayName: string;
@@ -60,7 +61,7 @@ export default function SalespersonPage() {
     // This page is already inside the salesperson experience. Do not discard
     // the user's audit history if a separate auth-context refresh briefly
     // reports the default consumer role while cookies settle.
-    setSavedAudits(data.audits ?? []);
+    setSavedAudits((data.audits ?? []).filter((audit) => !isExampleAudit(audit)));
   };
 
   const refresh = async () => {

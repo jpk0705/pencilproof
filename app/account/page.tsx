@@ -7,6 +7,7 @@ import { authRedirectOptions, createLoadedClerk, getAuthContext } from "@/lib/cl
 import { flushAnalyticsQueue, track } from "@/lib/analytics";
 import { SiteNav } from "@/app/components/SiteChrome";
 import AuditComparison, { type AuditComparisonRecord } from "@/app/components/AuditComparison";
+import { isExampleAudit } from "@/lib/audit-history";
 
 type Audit = AuditComparisonRecord;
 
@@ -83,7 +84,7 @@ export default function AccountPage() {
         setAccountRole("salesperson");
         return;
       }
-      setAudits(data.audits ?? []);
+      setAudits((data.audits ?? []).filter((audit) => !isExampleAudit(audit)));
       const nextExpiresAt = data.expiresAt ?? null;
       setExpiresAt(nextExpiresAt);
       if (nextExpiresAt && nextExpiresAt > Math.floor(Date.now() / 1000)) {
