@@ -929,14 +929,24 @@ export default function AnalyzePage() {
       : Math.abs(paymentGap) <= PAYMENT_MATCH_TOLERANCE
         ? { label: "Matches", tone: "good" as const, detail: `Within ${dollars(PAYMENT_MATCH_TOLERANCE)} per month.` }
         : { label: "Needs review", tone: "warn" as const, detail: `${dollars(Math.abs(paymentGap))} monthly difference.` };
+    const productBreakdown = [
+      { label: "VSC", amount: deal.serviceContract },
+      { label: "GAP", amount: deal.gap },
+      { label: "PPM", amount: deal.prepaidMaintenance },
+      { label: "T&W", amount: deal.tireWheel },
+      { label: "Accessories", amount: deal.accessories },
+    ].filter((product) => product.amount > 0);
+    const productSummary = productBreakdown.map((product) => `${product.label} ${dollarsAndCents(product.amount)}`).join(" · ");
     const productStatus = addons > 0
-      ? { label: "Itemized here", tone: "note" as const, detail: `${dollars(addons)} entered.` }
-      : { label: "None entered", tone: "note" as const, detail: "Verify the quote does not bundle products." };
-    const aprStatus = !deal.outsideApr
-      ? { label: "Not compared", tone: "note" as const, detail: "Enter a desired APR scenario." }
-      : aprGap >= 0.25
-        ? { label: "Higher", tone: "warn" as const, detail: `${aprGap.toFixed(2)} points above desired.` }
-        : { label: "Similar or lower", tone: "good" as const, detail: "At or near the desired APR." };
+      ? { label: `${productBreakdown.length} product${productBreakdown.length === 1 ? "" : "s"} entered`, tone: "note" as const, detail: `${productSummary} · ${dollarsAndCents(addons)} total.` }
+      : { label: "None entered", tone: "note" as const, detail: "No named products entered. Verify the quote does not bundle add-ons." };
+    const counterProposalStatus = !savedRevision
+      ? { label: "Ready to build", tone: "note" as const, detail: "Save the dealer original to compare revisions." }
+      : !revisionComparison.sameVehicle
+        ? { label: "Different vehicle", tone: "warn" as const, detail: "Use the same vehicle to compare revisions." }
+        : revisionComparison.changes.length
+          ? { label: `${revisionComparison.changes.length} change${revisionComparison.changes.length === 1 ? "" : "s"} detected`, tone: "good" as const, detail: "Counter proposal updates below." }
+          : { label: "No changes yet", tone: "note" as const, detail: "Edit or import revised figures to build a proposal." };
     const tradeStatus = !deal.tradeValue && !deal.tradePayoff
       ? { label: "Unknown", tone: "note" as const, detail: "No trade figures entered." }
       : tradeEquity < 0
@@ -1070,7 +1080,7 @@ export default function AnalyzePage() {
       checks: [
         { name: "Payment math", ...paymentStatus },
         { name: "Products", ...productStatus },
-        { name: "APR comparison", ...aprStatus },
+        { name: "Counter proposal", ...counterProposalStatus },
         { name: "Trade equity", ...tradeStatus },
       ],
       paymentGap,
@@ -1079,7 +1089,7 @@ export default function AnalyzePage() {
       reviewCount,
       verdict,
     };
-  }, [deal]);
+  }, [deal, revisionComparison, savedRevision]);
 
   useEffect(() => {
     if (auditSaveRequest === 0 || sampleLoaded || !isPaidAuditHost || !accountRoleKnown || !analysis.hasMinimumData) return;
