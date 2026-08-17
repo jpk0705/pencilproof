@@ -22,6 +22,7 @@ export default function AccountPage() {
   const configured = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
   const [clerk, setClerk] = useState<Clerk | null>(null);
   const [clerkError, setClerkError] = useState(false);
+  const [accountToken, setAccountToken] = useState<string | null>(null);
   const [audits, setAudits] = useState<Audit[]>([]);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const [message, setMessage] = useState("");
@@ -62,6 +63,7 @@ export default function AccountPage() {
       if (role === "salesperson") return;
       const token = await clerk.session?.getToken();
       const email = clerk.user?.primaryEmailAddress?.emailAddress.trim().toLowerCase() ?? "";
+      setAccountToken(token ?? null);
       if (token) {
         await fetch(`${ACCOUNT_API_URL}/api/account/session`, {
           method: "POST",
@@ -70,7 +72,11 @@ export default function AccountPage() {
           body: JSON.stringify({ email, token, role: "consumer" }),
         });
       }
-      const response = await fetch(`${ACCOUNT_API_URL}/api/account/me`, { cache: "no-store", credentials: "include" });
+      const response = await fetch(`${ACCOUNT_API_URL}/api/account/me`, {
+        cache: "no-store",
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
       if (!response.ok) return;
       const data = await response.json() as {
         audits?: Audit[];
@@ -120,7 +126,10 @@ export default function AccountPage() {
   const deleteAudit = async (id: string) => {
     await fetch(`${ACCOUNT_API_URL}/api/account/audits`, {
       method: "DELETE",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(accountToken ? { Authorization: `Bearer ${accountToken}` } : {}),
+      },
       credentials: "include",
       body: JSON.stringify({ id }),
     });
@@ -146,7 +155,12 @@ export default function AccountPage() {
     const timeoutId = window.setTimeout(() => controller.abort(), 10000);
     let response: Response;
     try {
-      response = await fetch(`${ACCOUNT_API_URL}/api/account/delete`, { method: "POST", credentials: "include", signal: controller.signal });
+      response = await fetch(`${ACCOUNT_API_URL}/api/account/delete`, {
+        method: "POST",
+        credentials: "include",
+        headers: accountToken ? { Authorization: `Bearer ${accountToken}` } : undefined,
+        signal: controller.signal,
+      });
     } catch {
       setMessage("We could not delete your account right now. Please try again.");
       setDeleteBusy(false);

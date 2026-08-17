@@ -2139,7 +2139,7 @@ const accountCorsHeaders = (request: Request, env: Env) => {
   if (!origin || ![env.PUBLIC_SITE_ORIGIN, env.SITE_ORIGIN].includes(origin)) return {};
   return {
     "Access-Control-Allow-Credentials": "true",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
     "Access-Control-Allow-Origin": origin,
     "Vary": "Origin",
