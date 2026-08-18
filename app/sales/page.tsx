@@ -4,7 +4,7 @@ import Link from "next/link";
 import QRCode from "qrcode";
 import { Clerk } from "@clerk/clerk-js";
 import { useEffect, useMemo, useState } from "react";
-import { authRedirectOptions, createLoadedClerk, getAuthContext, setAuthContext as persistAuthContext } from "@/lib/clerk-client";
+import { authRedirectOptions, clearServerAccountSession, createLoadedClerk, getAuthContext, setAuthContext as persistAuthContext } from "@/lib/clerk-client";
 import { flushAnalyticsQueue, track } from "@/lib/analytics";
 import { SiteNav } from "@/app/components/SiteChrome";
 import SalesCoach from "@/app/components/SalesCoach";
@@ -290,6 +290,7 @@ export default function SalespersonPage() {
 
   const signOut = async () => {
     await clerk?.signOut();
+    await clearServerAccountSession();
     window.location.assign("/");
   };
 

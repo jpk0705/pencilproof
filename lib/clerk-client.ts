@@ -4,6 +4,8 @@ import { Clerk } from "@clerk/clerk-js";
 
 export type PencilProofAuthContext = "consumer" | "salesperson";
 
+const ACCOUNT_API_URL = "https://audit.pencilproof.com";
+
 const AUTH_CONTEXT_STORAGE_KEY = "pencilproof-auth-context";
 
 const isAuthContext = (value: string | null | undefined): value is PencilProofAuthContext =>
@@ -83,6 +85,14 @@ export const getAuthContext = (): PencilProofAuthContext => {
   }
   const storedContext = window.sessionStorage.getItem(AUTH_CONTEXT_STORAGE_KEY);
   return isAuthContext(storedContext) ? storedContext : "consumer";
+};
+
+export const clearServerAccountSession = async () => {
+  await fetch(`${ACCOUNT_API_URL}/api/account/logout`, {
+    method: "POST",
+    credentials: "include",
+    keepalive: true,
+  }).catch(() => undefined);
 };
 
 export const authRedirectOptions = (context: PencilProofAuthContext = "consumer") => {

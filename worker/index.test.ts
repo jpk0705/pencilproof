@@ -172,6 +172,24 @@ test("active salesperson subscriptions unlock unlimited protected audits", async
   }
 });
 
+test("account sign-out clears the PencilProof identity and paid-access cookies", async () => {
+  const env = makeEnv();
+  const response = await handleRequest(
+    new Request("https://audit.pencilproof.com/api/account/logout", {
+      method: "POST",
+      headers: { Origin: env.PUBLIC_SITE_ORIGIN },
+    }),
+    env,
+  );
+  assert.equal(response.status, 204);
+  const setCookie = response.headers.get("Set-Cookie") ?? "";
+  assert.match(setCookie, /pp_user=; Max-Age=0/);
+  assert.match(setCookie, /pp_role=; Max-Age=0/);
+  assert.match(setCookie, /pp_access=; Max-Age=0/);
+  assert.equal(response.headers.get("Cache-Control"), "no-store, max-age=0");
+  assert.equal(response.headers.get("Access-Control-Allow-Credentials"), "true");
+});
+
 test("salesperson audit history allows the public dashboard origin to read it", async () => {
   const env = makeEnv();
   env.ACCOUNTS = makeAccountNamespace("active");
@@ -461,8 +479,8 @@ test("the audit host redirects public information pages and marks service pages 
     new Request("https://audit.pencilproof.com/account/"),
     makeEnv(),
   );
-  assert.equal(accountResponse.status, 200);
-  assert.equal(await accountResponse.text(), "asset");
+  assert.equal(accountResponse.status, 303);
+  assert.equal(accountResponse.headers.get("Location"), "https://pencilproof.com/account");
   assert.equal(
     accountResponse.headers.get("X-Robots-Tag"),
     "noindex, nofollow, noarchive",

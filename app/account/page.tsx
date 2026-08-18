@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Clerk } from "@clerk/clerk-js";
 import { useEffect, useState, type ReactNode } from "react";
-import { authRedirectOptions, createLoadedClerk, getAuthContext } from "@/lib/clerk-client";
+import { authRedirectOptions, clearServerAccountSession, createLoadedClerk, getAuthContext } from "@/lib/clerk-client";
 import { flushAnalyticsQueue, track } from "@/lib/analytics";
 import { SiteNav } from "@/app/components/SiteChrome";
 import AuditComparison, { type AuditComparisonRecord } from "@/app/components/AuditComparison";
@@ -135,6 +135,12 @@ export default function AccountPage() {
     setAudits((current) => current.filter((audit) => audit.id !== id));
   };
 
+  const signOut = async () => {
+    await clerk.signOut();
+    await clearServerAccountSession();
+    window.location.assign("/");
+  };
+
   const confirmDeleteAccount = async () => {
     if (!window.confirm("Delete your PencilProof account and saved audit data?")) return;
     setDeleteBusy(true);
@@ -210,7 +216,7 @@ export default function AccountPage() {
     <main className="account-page shell">
       <header className="account-header">
         <div><p className="kicker">YOUR PENCILPROOF</p><h1>My Audits</h1><p className="account-identity"><span>Signed in as</span><strong>{signedInEmail}</strong></p></div>
-        <button className="nav-account-button" type="button" onClick={() => clerk.signOut()}>Sign out</button>
+        <button className="nav-account-button" type="button" onClick={() => void signOut()}>Sign out</button>
       </header>
 
       <section className="pass-card">

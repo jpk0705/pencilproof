@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Clerk } from "@clerk/clerk-js";
 import { useEffect, useState } from "react";
-import { authRedirectOptions, createLoadedClerk, getAuthContext, setAuthContext as persistAuthContext, type PencilProofAuthContext } from "@/lib/clerk-client";
+import { authRedirectOptions, clearServerAccountSession, createLoadedClerk, getAuthContext, setAuthContext as persistAuthContext, type PencilProofAuthContext } from "@/lib/clerk-client";
 
 const ACCOUNT_URL = "https://pencilproof.com/account";
 const ACCOUNT_API_URL = "https://audit.pencilproof.com";
@@ -39,11 +39,14 @@ export default function AccountNav() {
     let cancelled = false;
     let unsubscribe: (() => void) | undefined;
     let profileListener: (() => void) | undefined;
+    let previousSignedIn: boolean | null = null;
     void createLoadedClerk(publishableKey)
       .then((instance) => {
         if (cancelled) return;
         setClerk(instance);
-        setSignedIn(Boolean(instance.user));
+        const initialSignedIn = Boolean(instance.user);
+        previousSignedIn = initialSignedIn;
+        setSignedIn(initialSignedIn);
         setSignedInEmail(instance.user?.primaryEmailAddress?.emailAddress.trim() ?? "");
         const context = getAuthContext();
         setAuthContext(context);
@@ -56,7 +59,10 @@ export default function AccountNav() {
         window.addEventListener("pencilproof:salesperson-profile-updated", profileListener);
         unsubscribe = instance.addListener(() => {
           if (!cancelled) {
-            setSignedIn(Boolean(instance.user));
+            const nextSignedIn = Boolean(instance.user);
+            if (previousSignedIn === true && !nextSignedIn) void clearServerAccountSession();
+            previousSignedIn = nextSignedIn;
+            setSignedIn(nextSignedIn);
             setSignedInEmail(instance.user?.primaryEmailAddress?.emailAddress.trim() ?? "");
             const nextContext = getAuthContext();
             setAuthContext(nextContext);

@@ -1196,6 +1196,13 @@ const handleAccount = async (request: Request, env: Env) => {
     headers.append("Set-Cookie", await accountRoleCookie(resolvedRole, env.SESSION_SECRET));
     return withAccountCors(Response.json({ ok: true, role: resolvedRole, expiresAt: await accountAccess(request, env) }, { headers }), request, env);
   }
+  if (url.pathname === "/api/account/logout" && request.method === "POST") {
+    const headers = new Headers(noStoreHeaders);
+    headers.append("Set-Cookie", clearAccountCookie);
+    headers.append("Set-Cookie", clearAccountRoleCookie);
+    headers.append("Set-Cookie", `${ACCESS_COOKIE}=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax`);
+    return withAccountCors(new Response(null, { status: 204, headers }), request, env);
+  }
   const userId = await currentUser(request, env);
   if (!userId) return withAccountCors(Response.json({ error: "account_required" }, { status: 401, headers: noStoreHeaders }), request, env);
   if (url.pathname === "/api/salesperson/me" && (request.method === "GET" || request.method === "POST")) {
@@ -3222,6 +3229,7 @@ export const handleRequest = async (request: Request, env: Env) => {
   }
   if (
     url.pathname === "/api/account/session"
+    || url.pathname === "/api/account/logout"
     || url.pathname === "/api/account/me"
     || url.pathname === "/api/account/audits"
     || url.pathname === "/api/account/marketing"
@@ -3269,10 +3277,12 @@ export const handleRequest = async (request: Request, env: Env) => {
     return handleSuccess(request, env);
   }
   if (url.pathname === "/logout" || url.pathname === "/logout/") {
-    return redirect(env.PUBLIC_SITE_ORIGIN, {
-      "Set-Cookie":
-        `${ACCESS_COOKIE}=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax`,
-    });
+    const headers = new Headers(noStoreHeaders);
+    headers.append("Set-Cookie", clearAccountCookie);
+    headers.append("Set-Cookie", clearAccountRoleCookie);
+    headers.append("Set-Cookie", `${ACCESS_COOKIE}=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax`);
+    headers.set("Location", env.PUBLIC_SITE_ORIGIN);
+    return new Response(null, { status: 303, headers });
   }
 
   if (url.pathname.startsWith("/api/")) {
