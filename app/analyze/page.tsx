@@ -1551,7 +1551,7 @@ export default function AnalyzePage() {
             </div>
             <div className="live-payment" aria-live="polite">
               <div><span>{isCashDeal ? "LIVE CALCULATED CASH DUE" : "LIVE CALCULATED PAYMENT"}</span><strong>{dollarsAndCents(analysis.calculatedPayment)}{isCashDeal ? null : <small>/month</small>}</strong></div>
-              <p>{isCashDeal ? "This one-payment cash total updates immediately when you change the price, tax, fees, products, trade, cash down, or rebate." : "This amount updates immediately when you change the price, tax, fees, products, trade, cash down, APR, or term. The dealer&apos;s quoted payment above stays unchanged so PencilProof can compare the two."}</p>
+              <p>{isCashDeal ? "This one-payment cash total updates immediately when you change the price, tax, fees, products, trade, cash down, or rebate." : "This amount updates immediately when you change the price, tax, fees, products, trade, cash down, APR, or term. The dealer's quoted payment above stays unchanged so PencilProof can compare the two."}</p>
             </div>
           </section>
           {!isPaidAuditHost ? (
@@ -1631,7 +1631,7 @@ export default function AnalyzePage() {
               </div>
 
               <div className={`payment-truth ${deal.quotedPayment > 0 && Math.abs(analysis.paymentGap) > PAYMENT_MATCH_TOLERANCE ? "payment-truth-warning" : ""}`}>
-                <div><span>DEALER&apos;S PRINTED PAYMENT</span><strong>{deal.quotedPayment > 0 ? dollarsAndCents(deal.quotedPayment) : "Not entered"}</strong></div>
+                <div><span>DEALER'S PRINTED PAYMENT</span><strong>{deal.quotedPayment > 0 ? dollarsAndCents(deal.quotedPayment) : "Not entered"}</strong></div>
                 <div><span>PENCILPROOF CALCULATION</span><strong>{dollarsAndCents(analysis.calculatedPayment)}</strong></div>
                 <div><span>DIFFERENCE</span><strong>{deal.quotedPayment > 0 ? dollarsAndCents(Math.abs(analysis.paymentGap)) : "—"}</strong></div>
               </div>
