@@ -105,6 +105,10 @@ export const authRedirectOptions = (context: PencilProofAuthContext = "consumer"
     redirectUrl.pathname = "/account";
     redirectUrl.search = "";
   }
+  if (context === "salesperson") {
+    redirectUrl.pathname = "/sales";
+    redirectUrl.search = "";
+  }
   redirectUrl.searchParams.set("auth_context", context);
   const url = redirectUrl.toString();
   return {

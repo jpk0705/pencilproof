@@ -95,6 +95,10 @@ export default function AccountPage() {
   }, [clerk]);
 
   useEffect(() => {
+    if (clerk?.user && accountRole === "salesperson") window.location.replace("/sales");
+  }, [accountRole, clerk]);
+
+  useEffect(() => {
     setAuditPage((current) => Math.min(current, Math.max(1, Math.ceil(groupAuditsByHistoryKey(audits).length / AUDITS_PER_PAGE))));
   }, [audits.length]);
 
@@ -109,9 +113,7 @@ export default function AccountPage() {
   if (!clerk) {
     return shell(<main className="account-page shell"><p>Loading your PencilProof account…</p></main>);
   }
-  if (clerk.user && accountRole === "salesperson") {
-    return shell(<main className="account-page shell"><p className="kicker">SALESPERSON ACCOUNT</p><h1>Open your salesperson dashboard.</h1><p>This account is signed in through the salesperson experience, so My Audits is kept separate.</p><Link className="button button-primary" href="/sales">Go to Salesperson Dashboard</Link></main>);
-  }
+  if (clerk.user && accountRole === "salesperson") return null;
   if (!clerk.user) {
     return shell(<main className="account-page shell"><h1>Save your PencilProof access.</h1><p>Create a free account to use your Pass on other devices and keep eligible audits for 30 days.</p><div className="account-actions"><button className="button button-primary" type="button" onClick={() => clerk.openSignUp(authRedirectOptions("consumer"))}>Create account</button><button className="button button-quiet" type="button" onClick={() => clerk.openSignIn(authRedirectOptions("consumer"))}>Sign in</button></div><p className="account-guest-note">No account is required. You can continue using PencilProof as a guest.</p><section className="account-support" aria-labelledby="account-support-title"><p className="kicker">NEED A HAND?</p><h2 id="account-support-title">Questions and support</h2><p>Find quick answers or contact us if you need help with an audit.</p><div className="account-support-actions"><Link className="button button-quiet" href="/questions/">Q&amp;A</Link><a className="button button-quiet" href="mailto:support@pencilproof.com">Contact support</a></div></section></main>);
   }
