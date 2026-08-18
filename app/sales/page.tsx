@@ -17,6 +17,10 @@ type Profile = {
   subscriptionStatus: string;
   earnedCredits: number;
   availableCredits: number;
+  lastCreditStatus: string | null;
+  lastCreditAmountCents: number | null;
+  lastCreditCreatedAt: number | null;
+  lastCreditRedeemedAt: number | null;
 };
 
 type SavedAudit = AuditComparisonRecord;
@@ -26,6 +30,26 @@ const SALES_API_URL = "https://audit.pencilproof.com";
 const PUBLIC_SALES_URL = "https://pencilproof.com/sales";
 const PAID_AUDIT_URL = "https://audit.pencilproof.com/analyze/secure/";
 const SAVED_AUDITS_PER_PAGE = 5;
+
+const creditStatusText = (profile: Profile) => {
+  if (profile.availableCredits > 0) {
+    return `$${profile.availableCredits * 20} is available to use for renewal or gift.`;
+  }
+  const amount = Math.max(1, Math.round((profile.lastCreditAmountCents ?? 2000) / 100));
+  if (profile.lastCreditStatus === "pending_redeem") {
+    return `Last $${amount} credit: still being processed for your next PencilProof subscription invoice.`;
+  }
+  if (profile.lastCreditStatus === "redeemed") {
+    return `Last $${amount} credit: scheduled on your next PencilProof subscription invoice.`;
+  }
+  if (profile.lastCreditStatus === "gifted") {
+    return `Last $${amount} credit: reserved in a gift link.`;
+  }
+  if (profile.earnedCredits > 0) {
+    return "Your earned referral credits are not currently available to use or gift.";
+  }
+  return "No referral credit has been earned yet.";
+};
 
 export default function SalespersonPage() {
   const configured = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
@@ -446,7 +470,7 @@ export default function SalespersonPage() {
           <AuditComparison audits={savedAudits} />
         </section>
         <section className="sales-card sales-dashboard"><div><p className="kicker">YOUR TRACKED LINK</p><h2>{profile.displayName}</h2><p>Customers who use this link are attributed to you. They are told that a paid audit may generate subscription credit for the person who shared the link.</p><div className="sales-link-row"><input readOnly value={referralLink} aria-label="Your referral link" /><button className="button button-quiet" type="button" onClick={() => void navigator.clipboard.writeText(referralLink)}>Copy link</button></div></div>{qrDataUrl ? <img className="sales-qr" src={qrDataUrl} alt="QR code for your PencilProof referral link" width="280" height="280" /> : null}</section>
-        <section className="sales-card sales-credit-card"><div><p className="kicker">REFERRAL CREDITS</p><h2>${profile.availableCredits * 20} available</h2><p>{profile.earnedCredits} referral credit{profile.earnedCredits === 1 ? "" : "s"} earned · $20 each.</p><p className="sales-field-help">Earn $20 in PencilProof credit when a customer uses your tracked link and completes a verified paid Full Quote Audit. Credits have no cash value and can only be applied to your PencilProof salesperson subscription or gifted to another salesperson.</p></div><div className="sales-credit-actions"><button className="button button-primary" type="button" onClick={() => void redeemCredit()} disabled={busy}>Use for my renewal</button><button className="button button-quiet" type="button" onClick={() => void giftCredit()} disabled={busy}>Gift $20 to someone</button><button className="button button-quiet" type="button" onClick={() => void managePlan()} disabled={busy}>Manage subscription</button></div>{giftUrl ? <div className="gift-link"><strong>Gift link</strong><input readOnly value={giftUrl} aria-label="Gift link" /><button className="button button-quiet" type="button" onClick={() => void navigator.clipboard.writeText(giftUrl)}>Copy gift link</button></div> : null}</section>
+        <section className="sales-card sales-credit-card"><div><p className="kicker">REFERRAL CREDITS</p><h2>${profile.availableCredits * 20} available</h2><p>{profile.earnedCredits} referral credit{profile.earnedCredits === 1 ? "" : "s"} earned · $20 each.</p><p className="sales-field-help">Earn $20 in PencilProof credit when a customer uses your tracked link and completes a verified paid Full Quote Audit. Credits have no cash value and can only be applied to your PencilProof salesperson subscription or gifted to another salesperson.</p></div><div className="sales-credit-actions"><p className="sales-credit-status" role="status">{creditStatusText(profile)}</p><div className="sales-credit-buttons"><button className="button button-primary" type="button" onClick={() => void redeemCredit()} disabled={busy}>Use for my renewal</button><button className="button button-quiet" type="button" onClick={() => void giftCredit()} disabled={busy}>Gift $20 to someone</button><button className="button button-quiet" type="button" onClick={() => void managePlan()} disabled={busy}>Manage subscription</button></div></div>{giftUrl ? <div className="gift-link"><strong>Gift link</strong><input readOnly value={giftUrl} aria-label="Gift link" /><button className="button button-quiet" type="button" onClick={() => void navigator.clipboard.writeText(giftUrl)}>Copy gift link</button></div> : null}</section>
       </> : null}
       {clerk.user && profile ? (showDeletePrompt ? <section className="delete-account-prompt" aria-labelledby="sales-delete-account-prompt-title">
         <p className="kicker">BEFORE YOU GO</p>

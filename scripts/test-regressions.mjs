@@ -54,6 +54,8 @@ assert.match(salesPageSource, /No PencilProof credit is available yet/);
 assert.doesNotMatch(salesPageSource, /disabled=\{busy \|\| profile\.availableCredits < 1\}/);
 assert.match(salesPageSource, /Earn \$20 in PencilProof credit when a customer uses your tracked link/);
 assert.doesNotMatch(salesPageSource, /six[- ]referral cap|six referrals/);
+assert.match(salesPageSource, /lastCreditStatus/);
+assert.match(salesPageSource, /scheduled on your next PencilProof subscription invoice/);
 assert.match(salesPageSource, /message && profile && isActive\(profile\.subscriptionStatus\)/);
 assert.match(accountNavSource, /const ACCOUNT_URL = "https:\/\/pencilproof\.com\/account"/);
 assert.match(accountNavSource, /const SALES_URL = "https:\/\/pencilproof\.com\/sales"/);

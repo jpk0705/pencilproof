@@ -36,6 +36,10 @@ type SalespersonProfile = {
   subscriptionStatus: string;
   earnedCredits: number;
   availableCredits: number;
+  lastCreditStatus: string | null;
+  lastCreditAmountCents: number | null;
+  lastCreditCreatedAt: number | null;
+  lastCreditRedeemedAt: number | null;
   createdAt: number;
   updatedAt: number;
 };
@@ -381,6 +385,12 @@ export class AccountStore {
     }>(`SELECT * FROM salesperson_profiles WHERE user_id = ?`, userId).toArray()[0];
   }
   private salespersonView(row: NonNullable<ReturnType<AccountStore["salespersonRow"]>>): SalespersonProfile {
+    const latestCredit = this.sql.exec<{
+      status: string;
+      amount_cents: number;
+      created_at: number;
+      redeemed_at: number | null;
+    }>(`SELECT status, amount_cents, created_at, redeemed_at FROM salesperson_credits WHERE owner_user_id = ? ORDER BY created_at DESC LIMIT 1`, row.user_id).toArray()[0] ?? null;
     return {
       userId: row.user_id,
       email: row.email,
@@ -391,6 +401,10 @@ export class AccountStore {
       subscriptionStatus: row.subscription_status,
       earnedCredits: row.earned_credits,
       availableCredits: this.sql.exec<{ count: number }>(`SELECT COUNT(*) AS count FROM salesperson_credits WHERE owner_user_id = ? AND status = 'available'`, row.user_id).toArray()[0]?.count ?? 0,
+      lastCreditStatus: latestCredit?.status ?? null,
+      lastCreditAmountCents: latestCredit?.amount_cents ?? null,
+      lastCreditCreatedAt: latestCredit?.created_at ?? null,
+      lastCreditRedeemedAt: latestCredit?.redeemed_at ?? null,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
