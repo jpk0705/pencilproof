@@ -1588,23 +1588,6 @@ export default function AnalyzePage() {
                 {analysis.hasMinimumData ? "Ready to review" : "Incomplete"}
               </div>
             </div>
-            {analysis.hasMinimumData ? (
-              <section className="revision-compare" aria-labelledby="revision-compare-title">
-                <div className="revision-compare-head">
-                  <div><span>REVISED QUOTE CHECK</span><h3 id="revision-compare-title">Compare a revised quote</h3></div>
-                  <button type="button" onClick={saveCurrentQuote}>{savedRevision ? "Replace dealer original" : "Save dealer-given original"}</button>
-                </div>
-                {savedRevision ? (
-                  revisionComparison.sameVehicle ? (
-                    <>
-                      <p>{revisionComparison.changes.length ? `${revisionComparison.changes.length} number${revisionComparison.changes.length === 1 ? "" : "s"} changed since the dealer-given original. The Message to the Dealer below will turn those changes into a counter proposal.` : "No numbers differ yet. Import the revised worksheet above or edit the values below to build a counter proposal."}</p>
-                      {revisionComparison.changes.length ? <div className="revision-change-list">{revisionComparison.changes.slice(0, 5).map((change) => <div key={change.field}><span>{DEAL_FIELD_LABELS[change.field as keyof ImportedDealFields]}</span><b>{change.before} <i>→</i> {change.after}</b></div>)}</div> : null}
-                    </>
-                  ) : <p>The saved baseline is for {savedRevision.vehicle}. Confirm this is the same vehicle, or replace the baseline to compare the current quote.</p>
-                ) : <p>Save the dealer-given original as your private baseline. When the dealer sends a revised worksheet, import it above or edit the values below and PencilProof will detect every number added, removed, increased, or decreased.</p>}
-                {savedRevision ? <div className="revision-compare-actions"><button className="revision-compare-action" type="button" onClick={scrollToQuoteUpload}>Import revised quote to compare ↑</button><button className="revision-clear" type="button" onClick={clearSavedQuote}>Clear dealer original</button></div> : null}
-              </section>
-            ) : null}
             <p className="score-note">
               {analysis.hasMinimumData
                 ? `${analysis.missingInformation.length} important item${analysis.missingInformation.length === 1 ? "" : "s"} still missing: ${analysis.missingInformation.join(", ") || "none"}.`
