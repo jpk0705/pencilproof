@@ -45,6 +45,7 @@ export default function SalespersonPage() {
   const [deleteReason, setDeleteReason] = useState("");
   const [deleteDetails, setDeleteDetails] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [savedAuditDeleteId, setSavedAuditDeleteId] = useState<string | null>(null);
   const [savedAudits, setSavedAudits] = useState<SavedAudit[]>([]);
   const [savedAuditPage, setSavedAuditPage] = useState(1);
 
@@ -336,6 +337,31 @@ export default function SalespersonPage() {
     }
   };
 
+  const deleteSavedAudit = async (id: string) => {
+    if (!window.confirm("Delete this saved audit? This cannot be undone.")) return;
+    setSavedAuditDeleteId(id);
+    setMessage("");
+    try {
+      const token = await clerk?.session?.getToken();
+      const response = await fetch(`${SALES_API_URL}/api/account/audits`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        credentials: "include",
+        body: JSON.stringify({ id }),
+      });
+      if (!response.ok) throw new Error("delete_failed");
+      setSavedAudits((current) => current.filter((audit) => audit.id !== id));
+      setMessage("Saved audit deleted.");
+    } catch {
+      setMessage("We could not delete that saved audit. Please try again.");
+    } finally {
+      setSavedAuditDeleteId(null);
+    }
+  };
+
   const savedAuditGroups = groupAuditsByHistoryKey(savedAudits);
   const savedAuditPageCount = Math.max(1, Math.ceil(savedAuditGroups.length / SAVED_AUDITS_PER_PAGE));
   const currentSavedAuditPage = Math.min(savedAuditPage, savedAuditPageCount);
@@ -343,6 +369,7 @@ export default function SalespersonPage() {
 
   const renderSavedAudit = (audit: SavedAudit) => {
     const vehicle = String(audit.data.vehicle ?? "PencilProof Full Quote Audit");
+    const vin = String(audit.data.vin ?? "").trim() || "Not detected";
     const verdict = audit.data.verdict && typeof audit.data.verdict === "object"
       ? String((audit.data.verdict as { label?: unknown }).label ?? "Audit completed")
       : "Audit completed";
@@ -351,8 +378,8 @@ export default function SalespersonPage() {
     const payment = auditPayment(audit.data, !isOriginal);
     const amountFinanced = auditAmountFinanced(audit.data);
     return <article className="sales-saved-audit" key={audit.id}>
-      <div><span className="saved-audit-badge">{historyLabel}</span><strong>{vehicle}</strong><p>{verdict}</p><div className="saved-audit-metrics" aria-label="Saved audit brief history"><span><small>PRICE</small><b>{auditMoney(audit.data.sellingPrice)}</b></span><span><small>{isOriginal ? "PAYMENT" : "LIVE PAYMENT"}</small><b>{payment === null ? "Not entered" : auditMoney(payment)}</b></span><span><small>APR</small><b>{auditRate(audit.data.apr)}</b></span><span><small>AMOUNT FINANCED</small><b>{amountFinanced === null ? "Not entered" : auditMoney(amountFinanced)}</b></span></div><small className="saved-audit-vin">VIN {String(audit.data.vin ?? "not detected")}</small><small>Saved {new Date(audit.createdAt * 1000).toLocaleDateString()} · available until {new Date(audit.expiresAt * 1000).toLocaleDateString()}</small></div>
-      <Link className="button button-quiet" href={`${PAID_AUDIT_URL}?audit=${encodeURIComponent(audit.id)}`}>View audit <span aria-hidden="true">→</span></Link>
+      <div><span className="saved-audit-badge">{historyLabel}</span><strong>{vehicle}</strong><p>{verdict}</p><div className="saved-audit-metrics" aria-label="Saved audit brief history"><span><small>PRICE</small><b>{auditMoney(audit.data.sellingPrice)}</b></span><span><small>{isOriginal ? "PAYMENT" : "LIVE PAYMENT"}</small><b>{payment === null ? "Not entered" : auditMoney(payment)}</b></span><span><small>APR</small><b>{auditRate(audit.data.apr)}</b></span><span><small>AMOUNT FINANCED</small><b>{amountFinanced === null ? "Not entered" : auditMoney(amountFinanced)}</b></span></div><div className="saved-audit-vin-row"><span>VIN</span><strong>{vin}</strong></div><small>Saved {new Date(audit.createdAt * 1000).toLocaleDateString()} · available until {new Date(audit.expiresAt * 1000).toLocaleDateString()}</small></div>
+      <div className="saved-audit-actions"><Link className="button button-quiet" href={`${PAID_AUDIT_URL}?audit=${encodeURIComponent(audit.id)}`}>View audit <span aria-hidden="true">→</span></Link><button className="button button-danger saved-audit-delete" type="button" onClick={() => void deleteSavedAudit(audit.id)} disabled={savedAuditDeleteId === audit.id}>{savedAuditDeleteId === audit.id ? "Deleting…" : "Delete"}</button></div>
     </article>;
   };
 
@@ -360,7 +387,7 @@ export default function SalespersonPage() {
     if (group.audits.length === 1) return renderSavedAudit(group.audits[0]);
     const first = group.audits[0];
     const vehicle = String(first.data.vehicle ?? "Saved vehicle");
-    const vin = String(first.data.vin ?? "").trim();
+    const vin = String(first.data.vin ?? "").trim() || "Not detected";
     return <details className="saved-audit-group" key={group.key}>
       <summary className="saved-audit-group-summary"><span><small className="saved-audit-badge">SAME VIN · {group.audits.length} SAVED AUDITS</small><strong>{vehicle}</strong><em>VIN {vin}</em></span><b>Show history <span aria-hidden="true">⌄</span></b></summary>
       <div className="saved-audit-group-list">{group.audits.map(renderSavedAudit)}</div>
