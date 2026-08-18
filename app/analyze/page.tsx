@@ -28,6 +28,7 @@ import PhoneCameraBridge from "@/app/components/PhoneCameraBridge";
 import PreCheckoutAccountGate from "@/app/components/PreCheckoutAccountGate";
 import PreCheckoutFeedback from "@/app/components/PreCheckoutFeedback";
 import AccountNav from "@/app/components/AccountNav";
+import { createLoadedClerk } from "@/lib/clerk-client";
 
 type Deal = {
   vehicle: string;
@@ -378,7 +379,17 @@ export default function AnalyzePage() {
     if (isPaidAuditHost) return;
     let current = true;
     const redirectIfPaid = async () => {
-      const response = await fetch(`${ACCOUNT_API_URL}/api/account/me`, { cache: "no-store", credentials: "include" }).catch(() => null);
+      const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+      if (!publishableKey) return;
+      const clerk = await createLoadedClerk(publishableKey).catch(() => null);
+      if (!current || !clerk?.user || !clerk.session) return;
+      const token = await clerk.session.getToken().catch(() => null);
+      if (!token) return;
+      const response = await fetch(`${ACCOUNT_API_URL}/api/account/me`, {
+        cache: "no-store",
+        credentials: "include",
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => null);
       if (!current || !response?.ok) return;
       const data = await response.json().catch(() => ({})) as { expiresAt?: unknown };
       if (typeof data.expiresAt === "number" && data.expiresAt > Math.floor(Date.now() / 1000)) {
