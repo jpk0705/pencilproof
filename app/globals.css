@@ -1053,6 +1053,7 @@ h3,
 .nav-links > a:not(.nav-cta):hover { color: var(--brand-text); opacity: 1; }
 .nav-cta { color: var(--brand-navy); background: var(--brand-gold); }
 .nav-cta:hover { color: var(--brand-navy); background: #ffd86e; }
+.nav-auth-loading { display: inline-block; width: 176px; height: 34px; }
 
 .hero {
   position: relative;
@@ -1976,6 +1977,7 @@ h1 { font-weight: 700; letter-spacing: -.055em; }
   .scan-benefits-grid { grid-template-columns: 1fr; gap: 8px; }
   .scan-benefits-grid > div { min-height: 0; }
   .nav-links { gap: 8px; }
+  .nav-auth-loading { width: 78px; height: 34px; }
   .nav-account-session { gap: 4px; min-width: 0; }
   .nav-links > a:not(.nav-cta):not(.nav-account-link) { display: none; }
   .nav-account-link,

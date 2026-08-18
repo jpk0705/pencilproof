@@ -1870,9 +1870,8 @@ export const extractDealFromFile = async (
           : undefined;
         return await extractDealWithServerVision(file, onProgress, upload);
       } catch (visionError) {
-        // When local extraction failed and the escalation provider also fails,
-        // preserve the provider category so the user sees the actionable cause
-        // instead of a generic OCR failure.
+        // Preserve the provider category when local extraction failed too, so
+        // the user sees the actionable cause instead of a generic OCR error.
         throw visionError instanceof Error ? visionError : localError;
       }
     }
@@ -1883,8 +1882,24 @@ export const extractDealFromFile = async (
     if (isLocallyReadableImport(localResult)) return localResult;
 
     const upload = isImage ? await prepareVisionImage(file) : undefined;
-    const visionResult = await extractDealWithServerVision(file, onProgress, upload);
-    return reconcileLocalAndVision(localResult, visionResult);
+    try {
+      const visionResult = await extractDealWithServerVision(file, onProgress, upload);
+      return reconcileLocalAndVision(localResult, visionResult);
+    } catch (visionError) {
+      // Local extraction is still valuable when Gemini is rate-limited or
+      // temporarily unavailable. Keep it visible with a prominent review
+      // warning instead of turning a partial import into a dead end.
+      if (Object.keys(localResult.fields).length > 0) {
+        return {
+          ...localResult,
+          warnings: [
+            ...(localResult.warnings ?? []),
+            "The optional vision fallback was unavailable. Review every imported field and enter missing numbers manually.",
+          ],
+        };
+      }
+      throw visionError;
+    }
   }
   throw new Error("UNSUPPORTED_FILE");
 };

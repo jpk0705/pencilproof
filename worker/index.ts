@@ -32,6 +32,9 @@ const ANALYTICS_EVENT_NAMES = [
   "payment_completed",
   "feedback_submitted",
 ] as const;
+const GEMINI_MAX_ATTEMPTS = 3;
+const GEMINI_RETRY_BASE_DELAY_MS = 350;
+const GEMINI_RETRY_MAX_DELAY_MS = 2500;
 const STRIPE_WEBHOOK_EVENTS = [
   "checkout.session.completed",
   "checkout.session.async_payment_succeeded",
@@ -206,6 +209,28 @@ const aiImportCorsHeaders = (env: Env) => ({
   "Vary": "Origin",
 });
 
+const geminiRetryDelay = (response: Response, attempt: number) => {
+  const retryAfter = Number(response.headers.get("Retry-After") ?? "");
+  if (Number.isFinite(retryAfter) && retryAfter >= 0) {
+    return Math.min(GEMINI_RETRY_MAX_DELAY_MS, Math.max(0, retryAfter * 1000));
+  }
+  return Math.min(GEMINI_RETRY_MAX_DELAY_MS, GEMINI_RETRY_BASE_DELAY_MS * (attempt + 1));
+};
+
+const waitForGeminiRetry = (milliseconds: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+
+const fetchGeminiWithRetry = async (url: string, init: RequestInit) => {
+  let response: Response | undefined;
+  for (let attempt = 0; attempt < GEMINI_MAX_ATTEMPTS; attempt += 1) {
+    response = await fetch(url, init);
+    const retryable = [429, 500, 502, 503].includes(response.status);
+    if (!retryable || attempt === GEMINI_MAX_ATTEMPTS - 1) return response;
+    await waitForGeminiRetry(geminiRetryDelay(response, attempt));
+  }
+  return response as Response;
+};
+
 const randomUrlToken = (byteLength: number) => {
   const bytes = new Uint8Array(byteLength);
   crypto.getRandomValues(bytes);
@@ -306,7 +331,7 @@ const handleAiImport = async (request: Request, env: Env) => {
     ...AI_IMPORT_MODELS.filter((model) => !availableModels.length || !discoveredFlashModels.length),
   ];
   for (const model of models) {
-    response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+    response = await fetchGeminiWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
       body: JSON.stringify({
@@ -331,7 +356,13 @@ const handleAiImport = async (request: Request, env: Env) => {
       }
     }
     lastProviderBody = await response.text();
-    // A 400 can mean that a discovered model does not accept this multimodal\n    // request/configuration. Continue to the next compatible model rather\n    // than turning one model-specific rejection into a total import failure.\n    if (![400, 404, 429, 500, 502, 503].includes(response.status)) break;
+    // A quota response is account-wide, not model-specific. Do not fan out to
+    // every remaining model and make the limit worse after the bounded retry.
+    if (response.status === 429) break;
+    // A 400 can mean that a discovered model does not accept this multimodal
+    // request/configuration. Continue to the next compatible model rather
+    // than turning one model-specific rejection into a total import failure.
+    if (![400, 404, 500, 502, 503].includes(response.status)) break;
   }
   if (!response || !response.ok || !parsedProviderResponse) {
     // Return only a stable, non-secret diagnostic. The full provider body is
@@ -1201,11 +1232,11 @@ const handleAccount = async (request: Request, env: Env) => {
     return withAccountCors(Response.json({ ok: true, role: resolvedRole, expiresAt: await accountAccess(request, env) }, { headers }), request, env);
   }
   if (url.pathname === "/api/account/logout" && request.method === "POST") {
-    const headers = new Headers(noStoreHeaders);
-    headers.append("Set-Cookie", clearAccountCookie);
-    headers.append("Set-Cookie", clearAccountRoleCookie);
-    headers.append("Set-Cookie", `${ACCESS_COOKIE}=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax`);
-    return withAccountCors(new Response(null, { status: 204, headers }), request, env);
+   const headers = new Headers(noStoreHeaders);
+   headers.append("Set-Cookie", clearAccountCookie);
+   headers.append("Set-Cookie", clearAccountRoleCookie);
+    appendExpiredAccessCookies(headers, env);
+   return withAccountCors(new Response(null, { status: 204, headers }), request, env);
   }
   const userId = await currentUser(request, env);
   if (!userId) return withAccountCors(Response.json({ error: "account_required" }, { status: 401, headers: noStoreHeaders }), request, env);
@@ -1474,6 +1505,19 @@ const accessCookie = (token: string, maxAge: number) => [
   "Secure",
   "SameSite=Lax",
 ].join("; ");
+
+const expiredAccessCookie = (domain?: string) =>
+  ACCESS_COOKIE + "=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/"
+  + (domain ? "; Domain=" + domain : "")
+  + "; HttpOnly; Secure; SameSite=Lax";
+
+const appendExpiredAccessCookies = (headers: Headers, env: Env) => {
+  headers.append("Set-Cookie", expiredAccessCookie());
+  const auditHost = new URL(env.SITE_ORIGIN).hostname;
+  const publicHost = new URL(env.PUBLIC_SITE_ORIGIN).hostname;
+  headers.append("Set-Cookie", expiredAccessCookie(auditHost));
+  if (publicHost !== auditHost) headers.append("Set-Cookie", expiredAccessCookie("." + publicHost));
+};
 
 const orderStub = (sessionId: string, env: Env) =>
   env.ORDERS.get(env.ORDERS.idFromName(sessionId));
@@ -3207,6 +3251,18 @@ const recoverPage = (reason = "") => {
 export const handleRequest = async (request: Request, env: Env) => {
   const url = new URL(request.url);
 
+  const auditHost = new URL(env.SITE_ORIGIN).hostname;
+  if (url.hostname === auditHost && url.pathname === "/robots.txt") {
+    return new Response("User-agent: *\nDisallow: /\n", {
+      headers: {
+        ...noStoreHeaders,
+        "Content-Type": "text/plain; charset=utf-8",
+      },
+    });
+  }
+  if (url.hostname === auditHost && url.pathname === "/sitemap.xml") {
+    return redirect(env.PUBLIC_SITE_ORIGIN + "/sitemap.xml");
+  }
   if (url.pathname === "/") {
     return redirect(env.PUBLIC_SITE_ORIGIN);
   }
@@ -3281,11 +3337,11 @@ export const handleRequest = async (request: Request, env: Env) => {
     return handleSuccess(request, env);
   }
   if (url.pathname === "/logout" || url.pathname === "/logout/") {
-    const headers = new Headers(noStoreHeaders);
-    headers.append("Set-Cookie", clearAccountCookie);
-    headers.append("Set-Cookie", clearAccountRoleCookie);
-    headers.append("Set-Cookie", `${ACCESS_COOKIE}=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax`);
-    headers.set("Location", env.PUBLIC_SITE_ORIGIN);
+   const headers = new Headers(noStoreHeaders);
+   headers.append("Set-Cookie", clearAccountCookie);
+   headers.append("Set-Cookie", clearAccountRoleCookie);
+    appendExpiredAccessCookies(headers, env);
+   headers.set("Location", env.PUBLIC_SITE_ORIGIN);
     return new Response(null, { status: 303, headers });
   }
 

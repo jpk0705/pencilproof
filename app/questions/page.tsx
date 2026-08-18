@@ -50,7 +50,7 @@ const questions = [
   },
   {
     question: "Do you store my deal?",
-    answer: "No. Deal inputs stay in your browser. Stripe and Link process checkout information, but PencilProof does not receive your full card number.",
+    answer: "Guest scan inputs are kept in your browser for the free review. If you purchase an audit or use an active account, the audit details you save may be stored in your PencilProof account for the stated access period. Stripe and Link process checkout information, but PencilProof does not receive your full card number.",
   },
   {
     question: "What should I have ready?",

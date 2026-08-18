@@ -145,8 +145,8 @@ export default function AccountPage() {
   };
 
   const signOut = async () => {
-    await clerk.signOut();
     await clearServerAccountSession();
+    await clerk.signOut();
     window.location.assign("/");
   };
 

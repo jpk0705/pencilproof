@@ -28,13 +28,17 @@ const syncAccountContact = async (instance: Clerk, authContext: PencilProofAuthC
 
 export default function AccountNav() {
   const [clerk, setClerk] = useState<Clerk | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
   const [signedInEmail, setSignedInEmail] = useState("");
   const [authContext, setAuthContext] = useState<PencilProofAuthContext>("consumer");
 
   useEffect(() => {
     const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
-    if (!publishableKey) return;
+    if (!publishableKey) {
+      setAuthReady(true);
+      return;
+    }
 
     let cancelled = false;
     let unsubscribe: (() => void) | undefined;
@@ -44,6 +48,7 @@ export default function AccountNav() {
       .then((instance) => {
         if (cancelled) return;
         setClerk(instance);
+        setAuthReady(true);
         const initialSignedIn = Boolean(instance.user);
         previousSignedIn = initialSignedIn;
         setSignedIn(initialSignedIn);
@@ -76,7 +81,9 @@ export default function AccountNav() {
           }
         });
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!cancelled) setAuthReady(true);
+      });
 
     return () => {
       cancelled = true;
@@ -85,6 +92,9 @@ export default function AccountNav() {
     };
   }, []);
 
+  if (!authReady) {
+    return <span className="nav-auth-loading" aria-hidden="true" />;
+  }
   if (!clerk) {
     return <><Link className="nav-sales-link" href={SALES_URL}>For salespeople</Link><Link className="nav-account-link" href={ACCOUNT_URL} aria-label="Sign in">Sign in</Link><Link className="nav-cta" href={PUBLIC_ANALYZE_URL}>Upload your quote</Link></>;
   }

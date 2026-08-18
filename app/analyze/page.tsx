@@ -1262,7 +1262,7 @@ export default function AnalyzePage() {
           <Link href="/pricing">Pricing</Link>
           <AccountNav />
         </div>
-        <span className="privacy-chip">Your deal inputs stay in this browser · <a href="mailto:support@pencilproof.com">Contact support</a></span>
+        <span className="privacy-chip">{isPaidAuditHost ? "Saved audits stay in your PencilProof account for the stated access period" : "Guest deal inputs stay in this browser unless you use the optional vision importer"} · <a href="mailto:support@pencilproof.com">Contact support</a></span>
       </nav>
 
       <header className="analyzer-header shell">

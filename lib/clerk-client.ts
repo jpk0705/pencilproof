@@ -90,6 +90,7 @@ export const getAuthContext = (): PencilProofAuthContext => {
 export const clearServerAccountSession = async () => {
   await fetch(`${ACCOUNT_API_URL}/api/account/logout`, {
     method: "POST",
+    cache: "no-store",
     credentials: "include",
     keepalive: true,
   }).catch(() => undefined);
