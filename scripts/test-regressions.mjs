@@ -38,11 +38,16 @@ const projectRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const salesPageSource = await readFile(join(projectRoot, "app/sales/page.tsx"), "utf8");
 const accountNavSource = await readFile(join(projectRoot, "app/components/AccountNav.tsx"), "utf8");
 const salesCoachSource = await readFile(join(projectRoot, "app/components/SalesCoach.tsx"), "utf8");
+const accountPageSource = await readFile(join(projectRoot, "app/account/page.tsx"), "utf8");
 
 assert.match(salesPageSource, /const PUBLIC_SALES_URL = "https:\/\/pencilproof\.com\/sales"/);
 assert.match(salesPageSource, /const PAID_AUDIT_URL = "https:\/\/audit\.pencilproof\.com\/analyze\/secure\/"/);
 assert.match(salesPageSource, /UNLIMITED AUDIT ACCESS/);
 assert.match(salesPageSource, /Upload quote for audit/);
+assert.match(salesPageSource, /className="saved-audit"/);
+assert.match(salesPageSource, /className="saved-audit-copy"/);
+assert.doesNotMatch(salesPageSource, /window\.confirm\(/);
+assert.doesNotMatch(accountPageSource, /window\.confirm\(/);
 assert.match(salesPageSource, /Your credit is still available/);
 assert.match(salesPageSource, /finally \{\s*setBusy\(false\);\s*\}/);
 assert.match(salesPageSource, /No PencilProof credit is available yet/);

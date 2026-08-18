@@ -1320,16 +1320,16 @@ const handleAccount = async (request: Request, env: Env) => {
   }
   if (url.pathname === "/api/account/audits" && request.method === "DELETE") {
     const body = await request.json().catch(() => ({})) as { id?: string };
-    if (!body.id || !/^[0-9a-f-]{36}$/.test(body.id)) return Response.json({ error: "invalid_audit" }, { status: 400, headers: noStoreHeaders });
+    if (!body.id || !/^[0-9a-f-]{36}$/.test(body.id)) return withAccountCors(Response.json({ error: "invalid_audit" }, { status: 400, headers: noStoreHeaders }), request, env);
     await accountCall(env, "/audits", { ownerId, action: "delete", id: body.id });
-    return Response.json({ deleted: true }, { headers: noStoreHeaders });
+    return withAccountCors(Response.json({ deleted: true }, { headers: noStoreHeaders }), request, env);
   }
   if (url.pathname === "/api/account/delete" && request.method === "POST") {
     await accountCall(env, "/delete-user", { userId });
     const headers = new Headers(noStoreHeaders);
     headers.append("Set-Cookie", clearAccountCookie);
     headers.append("Set-Cookie", clearAccountRoleCookie);
-    return new Response(null, { status: 204, headers });
+    return withAccountCors(new Response(null, { status: 204, headers }), request, env);
   }
   return new Response("Not found", { status: 404, headers: noStoreHeaders });
 };

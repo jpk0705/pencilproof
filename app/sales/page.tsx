@@ -296,7 +296,6 @@ export default function SalespersonPage() {
   };
 
   const confirmDeleteAccount = async () => {
-    if (!window.confirm("Delete your PencilProof account and saved audit data?")) return;
     setDeleteBusy(true);
     track({
       event: "feedback_submitted",
@@ -338,7 +337,6 @@ export default function SalespersonPage() {
   };
 
   const deleteSavedAudit = async (id: string) => {
-    if (!window.confirm("Delete this saved audit? This cannot be undone.")) return;
     setSavedAuditDeleteId(id);
     setMessage("");
     try {
@@ -377,9 +375,9 @@ export default function SalespersonPage() {
     const isOriginal = historyLabel === "DEALER-GIVEN ORIGINAL";
     const payment = auditPayment(audit.data, !isOriginal);
     const amountFinanced = auditAmountFinanced(audit.data);
-    return <article className="sales-saved-audit" key={audit.id}>
-      <div><span className="saved-audit-badge">{historyLabel}</span><strong>{vehicle}</strong><p>{verdict}</p><div className="saved-audit-metrics" aria-label="Saved audit brief history"><span><small>PRICE</small><b>{auditMoney(audit.data.sellingPrice)}</b></span><span><small>{isOriginal ? "PAYMENT" : "LIVE PAYMENT"}</small><b>{payment === null ? "Not entered" : auditMoney(payment)}</b></span><span><small>APR</small><b>{auditRate(audit.data.apr)}</b></span><span><small>AMOUNT FINANCED</small><b>{amountFinanced === null ? "Not entered" : auditMoney(amountFinanced)}</b></span></div><div className="saved-audit-vin-row"><span>VIN</span><strong>{vin}</strong></div><small>Saved {new Date(audit.createdAt * 1000).toLocaleDateString()} · available until {new Date(audit.expiresAt * 1000).toLocaleDateString()}</small></div>
-      <div className="saved-audit-actions"><Link className="button button-quiet" href={`${PAID_AUDIT_URL}?audit=${encodeURIComponent(audit.id)}`}>View audit <span aria-hidden="true">→</span></Link><button className="button button-danger saved-audit-delete" type="button" onClick={() => void deleteSavedAudit(audit.id)} disabled={savedAuditDeleteId === audit.id}>{savedAuditDeleteId === audit.id ? "Deleting…" : "Delete"}</button></div>
+    return <article className="saved-audit" key={audit.id}>
+      <div className="saved-audit-copy"><span className="saved-audit-badge">{historyLabel}</span><strong>{vehicle}</strong><p>{verdict}</p><div className="saved-audit-metrics" aria-label="Saved audit brief history"><span><small>PRICE</small><b>{auditMoney(audit.data.sellingPrice)}</b></span><span><small>{isOriginal ? "PAYMENT" : "LIVE PAYMENT"}</small><b>{payment === null ? "Not entered" : auditMoney(payment)}</b></span><span><small>APR</small><b>{auditRate(audit.data.apr)}</b></span><span><small>AMOUNT FINANCED</small><b>{amountFinanced === null ? "Not entered" : auditMoney(amountFinanced)}</b></span></div><small className="saved-audit-vin">VIN {vin}</small><small>Completed {new Date(audit.createdAt * 1000).toLocaleDateString()} · available until {new Date(audit.expiresAt * 1000).toLocaleDateString()}</small></div>
+      <div className="saved-audit-actions"><Link className="button button-quiet" href={`${PAID_AUDIT_URL}?audit=${encodeURIComponent(audit.id)}`}>Open audit <span aria-hidden="true">→</span></Link><button type="button" onClick={() => void deleteSavedAudit(audit.id)} disabled={savedAuditDeleteId === audit.id}>{savedAuditDeleteId === audit.id ? "Deleting…" : "Delete"}</button></div>
     </article>;
   };
 

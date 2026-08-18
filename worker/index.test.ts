@@ -208,6 +208,27 @@ test("salesperson audit history allows the public dashboard origin to read it", 
   assert.equal(response.headers.get("Access-Control-Allow-Credentials"), "true");
 });
 
+test("saved audit deletion returns the public dashboard CORS headers", async () => {
+  const env = makeEnv();
+  const session = await createUserSession("salesperson-user", env.SESSION_SECRET);
+  const response = await handleRequest(
+    new Request("https://audit.pencilproof.com/api/account/audits", {
+      method: "DELETE",
+      headers: {
+        Cookie: `pp_user=${session}`,
+        Origin: env.PUBLIC_SITE_ORIGIN,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }),
+    }),
+    env,
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { deleted: true });
+  assert.equal(response.headers.get("Access-Control-Allow-Origin"), env.PUBLIC_SITE_ORIGIN);
+  assert.equal(response.headers.get("Access-Control-Allow-Credentials"), "true");
+});
+
 test("salesperson checkout allows the public dashboard CORS preflight", async () => {
   const env = makeEnv();
   const response = await handleRequest(

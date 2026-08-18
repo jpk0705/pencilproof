@@ -125,16 +125,23 @@ export default function AccountPage() {
   const currentAuditPage = Math.min(auditPage, auditPageCount);
   const visibleAuditGroups = auditGroups.slice((currentAuditPage - 1) * AUDITS_PER_PAGE, currentAuditPage * AUDITS_PER_PAGE);
   const deleteAudit = async (id: string) => {
-    await fetch(`${ACCOUNT_API_URL}/api/account/audits`, {
-      method: "DELETE",
-      headers: {
-        "Content-Type": "application/json",
-        ...(accountToken ? { Authorization: `Bearer ${accountToken}` } : {}),
-      },
-      credentials: "include",
-      body: JSON.stringify({ id }),
-    });
-    setAudits((current) => current.filter((audit) => audit.id !== id));
+    setMessage("");
+    try {
+      const response = await fetch(`${ACCOUNT_API_URL}/api/account/audits`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          ...(accountToken ? { Authorization: `Bearer ${accountToken}` } : {}),
+        },
+        credentials: "include",
+        body: JSON.stringify({ id }),
+      });
+      if (!response.ok) throw new Error("delete_failed");
+      setAudits((current) => current.filter((audit) => audit.id !== id));
+      setMessage("Saved audit deleted.");
+    } catch {
+      setMessage("We could not delete that saved audit. Please try again.");
+    }
   };
 
   const signOut = async () => {
@@ -144,7 +151,6 @@ export default function AccountPage() {
   };
 
   const confirmDeleteAccount = async () => {
-    if (!window.confirm("Delete your PencilProof account and saved audit data?")) return;
     setDeleteBusy(true);
     track({
       event: "feedback_submitted",
