@@ -165,7 +165,11 @@ const numberOrNull = (value: unknown) => {
 
 const normalizeImportedVin = (value: unknown) => {
   if (typeof value !== "string") return null;
-  const normalized = value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const compact = value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  // Gemini may preserve an OCR look-alike even when the printed VIN is clear.
+  // I/O/Q are impossible in a VIN, so normalize only those characters before
+  // applying the strict 17-character check.
+  const normalized = compact.replace(/I/g, "1").replace(/[OQ]/g, "0");
   return /^[A-HJ-NPR-Z0-9]{17}$/.test(normalized) ? normalized : null;
 };
 

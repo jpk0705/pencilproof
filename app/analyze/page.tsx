@@ -115,6 +115,7 @@ const creditTierEstimates: Record<CreditTier, { label: string; newRate: number; 
 
 const verificationFields: (keyof ImportedDealFields)[] = [
   "vehicle",
+  "vin",
   "sellingPrice",
   "rebate",
   "tax",
@@ -1400,19 +1401,6 @@ export default function AnalyzePage() {
               vin={pendingImport.fields.vin}
               compact
             />
-            <label className="vin-verification-field verification-field confidence-review">
-              <span>VIN for exact trim matching <small>OPTIONAL</small></span>
-              <input
-                aria-label="VIN for exact trim matching"
-                type="text"
-                autoCapitalize="characters"
-                maxLength={17}
-                value={pendingImport.fields.vin ?? ""}
-                placeholder="17-character VIN"
-                onChange={(event) => updatePendingField("vin", event.target.value.toUpperCase())}
-              />
-              <small>When available, PencilProof uses the VIN to identify the trim, engine, drivetrain, and EPA configuration.</small>
-            </label>
             <div className="evidence-layout">
               <div className="document-evidence">
                 <div className="evidence-title"><span>ORIGINAL DOCUMENT</span><small>{pendingImport.fileName}</small></div>
@@ -1442,8 +1430,10 @@ export default function AnalyzePage() {
                       <span>{DEAL_FIELD_LABELS[field]}</span>
                       <input
                         aria-label={`Verify ${DEAL_FIELD_LABELS[field]}`}
-                        type={field === "vehicle" ? "text" : "number"}
-                        inputMode={field === "vehicle" ? undefined : "decimal"}
+                        type={field === "vehicle" || field === "vin" ? "text" : "number"}
+                        inputMode={field === "vehicle" || field === "vin" ? "text" : "decimal"}
+                        autoCapitalize={field === "vin" ? "characters" : undefined}
+                        maxLength={field === "vin" ? 17 : undefined}
                         step={field === "term" ? "1" : "0.01"}
                         value={value ?? ""}
                         placeholder="Not found"

@@ -21,14 +21,33 @@ export type ImportedDealFields = Partial<{
 }>;
 
 const normalizeVehicleVin = (value?: string) => {
-  const normalized = String(value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const compact = String(value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  // VINs never contain I, O, or Q. When OCR produces one of those characters
+  // in a 17-character candidate, it is almost always the visually similar
+  // digit 1 or 0. Repair only those impossible VIN characters, then keep the
+  // strict VIN validation so unrelated text is not accepted as a VIN.
+  const normalized = compact.replace(/I/g, "1").replace(/[OQ]/g, "0");
   return /^[A-HJ-NPR-Z0-9]{17}$/.test(normalized) ? normalized : undefined;
 };
 
 const extractVinFromText = (text: string) => {
-  const sections = text.split(/\bVIN\s*(?:number|no\.?|#)?\s*[:#-]?/i).slice(1);
+  // OCR often separates the label as “V I N”, reads the I as a 1, or prints
+  // the full “Vehicle Identification Number” label. Normalize only the label
+  // so a spaced VIN value can still be validated without guessing characters.
+  const normalizedText = text
+    .replace(/\bV\s*[I1]\s*N\b/gi, "VIN")
+    .replace(/\bVehicle\s+(?:Identification|ID)\s+(?:Number|No\.?)\b/gi, "VIN");
+  const sections = normalizedText.split(/\bVIN\s*(?:number|no\.?|#)?\s*[:#-]?/i).slice(1);
   for (const section of sections.slice(0, 4)) {
-    const candidate = section.match(/(?:[A-HJ-NPR-Z0-9][\s-]*){17}/i)?.[0];
+    // Support contiguous VINs and VINs printed as spaced characters while
+    // stopping after exactly 17 characters instead of consuming nearby text.
+    const candidate = section.match(/(?:[A-Z0-9](?:[\s-]*[A-Z0-9]){16})/i)?.[0];
+    const normalized = normalizeVehicleVin(candidate);
+    if (normalized && /\d/.test(normalized)) return normalized;
+  }
+
+  const directMatches = normalizedText.match(/\b[A-Z0-9]{17}\b/gi) ?? [];
+  for (const candidate of directMatches) {
     const normalized = normalizeVehicleVin(candidate);
     if (normalized && /\d/.test(normalized)) return normalized;
   }

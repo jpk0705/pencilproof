@@ -32,6 +32,7 @@ import {
   parseVehicleIdentity,
   selectBestVehicleImage,
 } from "../lib/vehicle-image.ts";
+import { extractVinFromText, normalizeVehicleVin } from "../lib/vehicle-vin.ts";
 
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const salesPageSource = await readFile(join(projectRoot, "app/sales/page.tsx"), "utf8");
@@ -114,6 +115,16 @@ closeTo(acroFormImport.apr, 7.34);
 assert.equal(acroFormImport.term, 84);
 closeTo(acroFormImport.quotedPayment, 959.32);
 
+const spacedVinImport = parseDealerText([
+  "Vehicle Identification Number: 1 G 6 D N 5 R W 3 P 0 1 0 0 0 0 0",
+  "Vehicle: 2024 Cadillac CT5-V Blackwing",
+]);
+assert.equal(spacedVinImport.vin, "1G6DN5RW3P0100000");
+assert.equal(parseDealerText(["V I N: 1G6DN5RW3P0100000"]).vin, "1G6DN5RW3P0100000");
+assert.equal(parseDealerText(["VIN: 1G6DN5RW3P0I00000"]).vin, "1G6DN5RW3P0100000");
+assert.equal(extractVinFromText("VIN: 1G6DN5RW3P0O00000"), "1G6DN5RW3P0000000");
+assert.equal(normalizeVehicleVin("1 G 6 D N 5 R W 3 P 0 1 0 0 0 0 0"), "1G6DN5RW3P0100000");
+
 const phoneBridgeSource = await readFile(join(projectRoot, "app/components/PhoneCameraBridge.tsx"), "utf8");
 const phonePageSource = await readFile(join(projectRoot, "app/phone/page.tsx"), "utf8");
 const analyzeSource = await readFile(join(projectRoot, "app/analyze/page.tsx"), "utf8");
@@ -146,6 +157,8 @@ assert.match(analyzeSource, /COUNTER-PROPOSAL \/ LIVE/);
 assert.match(analyzeSource, /reviewItems/);
 assert.match(analyzeSource, /credit-score-field/);
 assert.match(analyzeSource, /Credit score estimate/);
+assert.match(analyzeSource, /"vehicle",\s*"vin",/);
+assert.match(analyzeSource, /field === "vehicle" \|\| field === "vin"/);
 assert.match(analyzeSource, /label: "Excellent"/);
 assert.match(analyzeSource, /Market estimate/);
 assert.match(analyzeSource, /ACCOUNT_API_URL = "https:\/\/audit\.pencilproof\.com"/);

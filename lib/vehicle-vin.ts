@@ -21,21 +21,31 @@ const clean = (value?: string) => value?.trim() || undefined;
 const VIN_PATTERN = /^[A-HJ-NPR-Z0-9]{17}$/;
 
 export const normalizeVehicleVin = (value?: string) => {
-  const normalized = String(value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const compact = String(value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  // VINs exclude I, O, and Q. Treat those impossible letters as the OCR
+  // look-alike digits 1 or 0 before strict validation.
+  const normalized = compact.replace(/I/g, "1").replace(/[OQ]/g, "0");
   return VIN_PATTERN.test(normalized) ? normalized : undefined;
 };
 
 /** Finds a VIN in OCR text, including a VIN printed with spaces between characters. */
 export const extractVinFromText = (text: string) => {
-  const direct = text.match(/\b[A-HJ-NPR-Z0-9]{17}\b/i)?.[0];
-  const normalizedDirect = normalizeVehicleVin(direct);
-  if (normalizedDirect) return normalizedDirect;
-
-  const labeledSections = text.split(/\bVIN\s*(?:number|no\.?|#)?\s*[:#-]?/i).slice(1);
+  // Preserve strict VIN validation while handling common OCR spacing in the
+  // label, such as “V I N” or “Vehicle Identification Number”.
+  const normalizedText = text
+    .replace(/\bV\s*[I1]\s*N\b/gi, "VIN")
+    .replace(/\bVehicle\s+(?:Identification|ID)\s+(?:Number|No\.?)\b/gi, "VIN");
+  const labeledSections = normalizedText.split(/\bVIN\s*(?:number|no\.?|#)?\s*[:#-]?/i).slice(1);
   for (const section of labeledSections.slice(0, 4)) {
-    const candidate = section.match(/(?:[A-HJ-NPR-Z0-9][\s-]*){17}/i)?.[0];
+    const candidate = section.match(/(?:[A-Z0-9](?:[\s-]*[A-Z0-9]){16})/i)?.[0];
     const normalizedCandidate = normalizeVehicleVin(candidate);
     if (normalizedCandidate) return normalizedCandidate;
+  }
+
+  const directMatches = normalizedText.match(/\b[A-Z0-9]{17}\b/gi) ?? [];
+  for (const candidate of directMatches) {
+    const normalizedDirect = normalizeVehicleVin(candidate);
+    if (normalizedDirect) return normalizedDirect;
   }
 
   return undefined;
