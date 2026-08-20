@@ -933,10 +933,10 @@ const sendMarketingEmail = async (
   const businessAddress = env.MARKETING_BUSINESS_ADDRESS?.trim();
   if (!apiKey || !from || !businessAddress) return false;
   const text = Array.isArray(content.text) ? content.text.join("\n\n") : content.text;
-  const accountUrl = `${env.SITE_ORIGIN}/account/`;
   const unsubscribeToken = await createEmailUnsubscribeToken(candidate.email, env.SESSION_SECRET);
   const unsubscribeUrl = `${env.SITE_ORIGIN}/api/email/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`;
-  const html = `${content.html}<p><a href="${env.PUBLIC_SITE_ORIGIN}/analyze">Open PencilProof</a></p><hr><p style="color:#667085;font-size:12px">You are receiving this because you created a PencilProof account or provided your email to PencilProof. <a href="${unsubscribeUrl}">Unsubscribe</a> or <a href="${accountUrl}">manage email preferences</a>.</p><p style="color:#667085;font-size:12px">${htmlEscape(businessAddress)}</p>`;
+  const preferencesUrl = `${env.SITE_ORIGIN}/api/email/preferences?token=${encodeURIComponent(unsubscribeToken)}`;
+  const html = `${content.html}<p><a href="${env.PUBLIC_SITE_ORIGIN}/analyze">Open PencilProof</a></p><hr><p style="color:#667085;font-size:12px">You are receiving this because you created a PencilProof account or provided your email to PencilProof. <a href="${unsubscribeUrl}">Unsubscribe</a> or <a href="${preferencesUrl}">manage email preferences</a>.</p><p style="color:#667085;font-size:12px">${htmlEscape(businessAddress)}</p>`;
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -952,7 +952,7 @@ const sendMarketingEmail = async (
       },
       reply_to: env.MARKETING_REPLY_TO?.trim() || undefined,
       subject: content.subject,
-      text: `${text}\n\nOpen PencilProof: ${env.PUBLIC_SITE_ORIGIN}/analyze\n\nYou are receiving this because you created a PencilProof account or provided your email to PencilProof.\nUnsubscribe: ${unsubscribeUrl}\nManage email preferences: ${accountUrl}\n\n${businessAddress}`,
+      text: `${text}\n\nOpen PencilProof: ${env.PUBLIC_SITE_ORIGIN}/analyze\n\nYou are receiving this because you created a PencilProof account or provided your email to PencilProof.\nUnsubscribe: ${unsubscribeUrl}\nManage email preferences: ${preferencesUrl}\n\n${businessAddress}`,
       to: [candidate.email],
     }),
   });
@@ -1398,6 +1398,16 @@ const handleSalespersonCheckout = async (request: Request, env: Env) => {
 const marketingUnsubscribePage = (message: string, ok: boolean) => new Response(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Email preferences | PencilProof</title><style>:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#061126;color:#f5f7fb;font:16px/1.5 Arial,sans-serif}.card{width:min(560px,calc(100% - 32px));padding:40px;border:1px solid rgba(246,195,67,.42);border-radius:16px;background:#0b1b38;box-shadow:0 24px 80px rgba(0,0,0,.35)}.brand{color:#f6c343;font-weight:800;letter-spacing:.02em}h1{margin:24px 0 10px;font:500 34px/1.1 Georgia,serif}p{color:#d9e1ee}a{color:#f6c343}</style></head><body><main class="card"><div class="brand">PencilProof</div><h1>${ok ? "You are unsubscribed" : "We could not update your preferences"}</h1><p>${htmlEscape(message)}</p><p><a href="https://pencilproof.com/">Return to PencilProof</a></p></main></body></html>`, { headers: { ...noStoreHeaders, "Content-Type": "text/html; charset=utf-8" } });
 
+const marketingPreferencesPage = (message: string, state: "ready" | "updated" | "error", token: string) => {
+  const ready = state === "ready";
+  const updated = state === "updated";
+  const action = ready
+    ? `<form action="/api/email/preferences" method="post"><input type="hidden" name="token" value="${htmlEscape(token)}"><button type="submit">Stop promotional emails</button></form>`
+    : "";
+  return new Response(`<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Email preferences | PencilProof</title><style>:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#061126;color:#f5f7fb;font:16px/1.5 Arial,sans-serif}.card{width:min(560px,calc(100% - 32px));padding:40px;border:1px solid rgba(246,195,67,.42);border-radius:16px;background:#0b1b38;box-shadow:0 24px 80px rgba(0,0,0,.35)}.brand{color:#f6c343;font-weight:800;letter-spacing:.02em}h1{margin:24px 0 10px;font:500 34px/1.1 Georgia,serif}p{color:#d9e1ee}a{color:#f6c343}button{margin-top:10px;padding:13px 18px;border:0;border-radius:8px;background:#f6c343;color:#07152d;font:700 15px Arial,sans-serif;cursor:pointer}button:hover{background:#ffd56b}.note{font-size:13px;color:#aebbd0}</style></head><body><main class="card"><div class="brand">PencilProof</div><h1>${ready ? "Manage email preferences" : updated ? "Promotional emails are turned off" : "We could not update your preferences"}</h1><p>${htmlEscape(message)}</p>${action}<p class="note">Account, security, billing, and service messages may still be sent when needed.</p><p><a href="https://pencilproof.com/">Return to PencilProof</a></p></main></body></html>`, { headers: { ...noStoreHeaders, "Content-Type": "text/html; charset=utf-8" } });
+};
+
 const handleMarketingUnsubscribe = async (request: Request, env: Env) => {
   const token = new URL(request.url).searchParams.get("token") ?? "";
   const email = await verifyEmailUnsubscribeToken(token, env.SESSION_SECRET);
@@ -1411,6 +1421,22 @@ const handleMarketingUnsubscribe = async (request: Request, env: Env) => {
   return result?.unsubscribed === true
     ? marketingUnsubscribePage("You will no longer receive PencilProof promotional emails at this address.", true)
     : marketingUnsubscribePage("We could not update your preferences. Please contact support.", false);
+};
+
+const handleMarketingPreferences = async (request: Request, env: Env) => {
+  let token = new URL(request.url).searchParams.get("token") ?? "";
+  if (request.method === "POST") {
+    const form = await request.formData().catch(() => null);
+    const submittedToken = form?.get("token");
+    if (typeof submittedToken === "string") token = submittedToken;
+  }
+  const email = await verifyEmailUnsubscribeToken(token, env.SESSION_SECRET);
+  if (!email) return marketingPreferencesPage("This preferences link is invalid or expired. Request a new email or contact support.", "error", "");
+  if (request.method === "GET") return marketingPreferencesPage("Choose whether you want to continue receiving PencilProof promotional emails. You do not need to sign in.", "ready", token);
+  const result = await accountCall(env, "/marketing-unsubscribe", { email });
+  return result?.unsubscribed === true
+    ? marketingPreferencesPage("You will no longer receive PencilProof promotional emails at this address.", "updated", "")
+    : marketingPreferencesPage("We could not update your preferences. Please try again or contact support.", "error", token);
 };
 
 const handleAuditStorage = async (request: Request, env: Env) => {
@@ -3274,6 +3300,9 @@ export const handleRequest = async (request: Request, env: Env) => {
   }
   if (url.pathname === "/api/email/unsubscribe" && (request.method === "GET" || request.method === "POST")) {
     return handleMarketingUnsubscribe(request, env);
+  }
+  if (url.pathname === "/api/email/preferences" && (request.method === "GET" || request.method === "POST")) {
+    return handleMarketingPreferences(request, env);
   }
   if (url.pathname === "/api/checkout") {
     return handleCheckout(request, env);
