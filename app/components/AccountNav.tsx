@@ -11,36 +11,69 @@ const SALES_URL = "https://pencilproof.com/sales";
 const PAID_AUDIT_URL = "https://audit.pencilproof.com/analyze/secure/";
 const PUBLIC_ANALYZE_URL = "https://pencilproof.com/analyze";
 
-const syncAccountContact = async (instance: Clerk, authContext: PencilProofAuthContext): Promise<PencilProofAuthContext> => {
+type AccountSessionState = {
+  role: PencilProofAuthContext;
+  expiresAt: number | null;
+  email: string;
+};
+
+const sessionState = (data: { role?: string; expiresAt?: unknown; email?: unknown }, fallbackRole: PencilProofAuthContext, fallbackEmail: string): AccountSessionState => ({
+  role: data.role === "salesperson" ? "salesperson" : fallbackRole,
+  expiresAt: typeof data.expiresAt === "number" ? data.expiresAt : null,
+  email: typeof data.email === "string" && data.email.trim() ? data.email.trim() : fallbackEmail,
+});
+
+const syncAccountContact = async (instance: Clerk, authContext: PencilProofAuthContext): Promise<AccountSessionState> => {
   const token = await instance.session?.getToken();
-  const email = instance.user?.primaryEmailAddress?.emailAddress.trim().toLowerCase() ?? "";
-  if (!token) return authContext;
+  const email = instance.user?.primaryEmailAddress?.emailAddress.trim() ?? "";
+  if (!token) return { role: authContext, expiresAt: null, email };
   const response = await fetch(`${ACCOUNT_API_URL}/api/account/session`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
     body: JSON.stringify({ email, token, role: authContext }),
   }).catch(() => null);
-  if (!response?.ok) return authContext;
-  const data = await response.json().catch(() => ({})) as { role?: string };
-  return data.role === "salesperson" ? "salesperson" : "consumer";
+  if (!response?.ok) return { role: authContext, expiresAt: null, email };
+  const data = await response.json().catch(() => ({})) as { role?: string; expiresAt?: unknown };
+  return sessionState({ ...data, email }, authContext, email);
+};
+
+const readAuditHostAccount = async (): Promise<AccountSessionState | null> => {
+  const response = await fetch("/api/account/me", { cache: "no-store", credentials: "include" }).catch(() => null);
+  if (!response?.ok) return null;
+  const data = await response.json().catch(() => ({})) as { role?: string; expiresAt?: unknown; email?: unknown };
+  if (typeof data.email !== "string" || !data.email.trim()) return null;
+  return sessionState(data, "consumer", data.email.trim());
 };
 
 export default function AccountNav() {
   const [clerk, setClerk] = useState<Clerk | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [serverAccountReady, setServerAccountReady] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
   const [signedInEmail, setSignedInEmail] = useState("");
   const [authContext, setAuthContext] = useState<PencilProofAuthContext>("consumer");
+  const [accountSession, setAccountSession] = useState<AccountSessionState | null>(null);
 
   useEffect(() => {
+    const isAuditHost = window.location.hostname.toLowerCase() === "audit.pencilproof.com";
+    let cancelled = false;
+    if (!isAuditHost) {
+      setServerAccountReady(true);
+    } else {
+      void readAuditHostAccount().then((account) => {
+        if (cancelled) return;
+        setAccountSession(account);
+        setServerAccountReady(true);
+      });
+    }
+
     const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
     if (!publishableKey) {
       setAuthReady(true);
-      return;
+      return () => { cancelled = true; };
     }
 
-    let cancelled = false;
     let unsubscribe: (() => void) | undefined;
     let profileListener: (() => void) | undefined;
     let previousSignedIn: boolean | null = null;
@@ -55,27 +88,45 @@ export default function AccountNav() {
         setSignedInEmail(instance.user?.primaryEmailAddress?.emailAddress.trim() ?? "");
         const context = getAuthContext();
         setAuthContext(context);
-        void syncAccountContact(instance, context).then((resolvedContext) => {
-          if (cancelled) return;
-          persistAuthContext(resolvedContext);
-          setAuthContext(resolvedContext);
-        });
-        profileListener = () => { setAuthContext(getAuthContext()); };
+        if (instance.user) {
+          void syncAccountContact(instance, context).then((resolvedSession) => {
+            if (cancelled) return;
+            persistAuthContext(resolvedSession.role);
+            setAuthContext(resolvedSession.role);
+            setAccountSession(resolvedSession);
+          });
+        }
+        profileListener = () => {
+          const nextContext = getAuthContext();
+          setAuthContext(nextContext);
+          if (instance.user) {
+            void syncAccountContact(instance, nextContext).then((resolvedSession) => {
+              if (cancelled) return;
+              persistAuthContext(resolvedSession.role);
+              setAuthContext(resolvedSession.role);
+              setAccountSession(resolvedSession);
+            });
+          }
+        };
         window.addEventListener("pencilproof:salesperson-profile-updated", profileListener);
         unsubscribe = instance.addListener(() => {
           if (!cancelled) {
             const nextSignedIn = Boolean(instance.user);
-            if (previousSignedIn === true && !nextSignedIn) void clearServerAccountSession();
+            if (previousSignedIn === true && !nextSignedIn) {
+              void clearServerAccountSession();
+              setAccountSession(null);
+            }
             previousSignedIn = nextSignedIn;
             setSignedIn(nextSignedIn);
             setSignedInEmail(instance.user?.primaryEmailAddress?.emailAddress.trim() ?? "");
             const nextContext = getAuthContext();
             setAuthContext(nextContext);
             if (instance.user) {
-              void syncAccountContact(instance, nextContext).then((resolvedContext) => {
+              void syncAccountContact(instance, nextContext).then((resolvedSession) => {
                 if (cancelled) return;
-                persistAuthContext(resolvedContext);
-                setAuthContext(resolvedContext);
+                persistAuthContext(resolvedSession.role);
+                setAuthContext(resolvedSession.role);
+                setAccountSession(resolvedSession);
               });
             }
           }
@@ -92,13 +143,21 @@ export default function AccountNav() {
     };
   }, []);
 
-  if (!authReady) {
+  if (!authReady || !serverAccountReady) {
     return <span className="nav-auth-loading" aria-hidden="true" />;
   }
-  if (!clerk) {
+
+  const effectiveSignedIn = signedIn || Boolean(accountSession?.email);
+  const effectiveRole = accountSession?.role ?? authContext;
+  const effectiveEmail = accountSession?.email || signedInEmail;
+  const hasPaidAccess = typeof accountSession?.expiresAt === "number" && accountSession.expiresAt > Math.floor(Date.now() / 1000);
+  const uploadHref = hasPaidAccess ? PAID_AUDIT_URL : PUBLIC_ANALYZE_URL;
+
+  if (!clerk && !effectiveSignedIn) {
     return <><Link className="nav-sales-link" href={SALES_URL}>For salespeople</Link><Link className="nav-account-link" href={ACCOUNT_URL} aria-label="Sign in">Sign in</Link><Link className="nav-cta" href={PUBLIC_ANALYZE_URL}>Upload your quote</Link></>;
   }
-  return signedIn
-    ? <><span className="nav-account-session"><Link className="nav-account-link" href={authContext === "salesperson" ? SALES_URL : ACCOUNT_URL}>{authContext === "salesperson" ? "Salesperson Dashboard" : "My Audits"}</Link><span className="nav-account-email" title={`Signed in as ${signedInEmail}`}>{signedInEmail || "Signed-in account"}</span></span><Link className="nav-cta" href={PAID_AUDIT_URL}>Upload your quote</Link></>
-    : <><Link className="nav-sales-link" href="/sales">For salespeople</Link><button className="nav-account-button" type="button" onClick={() => clerk.openSignIn(authRedirectOptions("consumer"))}>Sign in</button><Link className="nav-cta" href={PUBLIC_ANALYZE_URL}>Upload your quote</Link></>;
+  if (effectiveSignedIn) {
+    return <><span className="nav-account-session"><Link className="nav-account-link" href={effectiveRole === "salesperson" ? SALES_URL : ACCOUNT_URL}>{effectiveRole === "salesperson" ? "Salesperson Dashboard" : "My Audits"}</Link><span className="nav-account-email" title={`Signed in as ${effectiveEmail}`}>{effectiveEmail || "Signed-in account"}</span></span><Link className="nav-cta" href={uploadHref}>Upload your quote</Link></>;
+  }
+  return <><Link className="nav-sales-link" href="/sales">For salespeople</Link><button className="nav-account-button" type="button" onClick={() => clerk?.openSignIn(authRedirectOptions("consumer"))}>Sign in</button><Link className="nav-cta" href={PUBLIC_ANALYZE_URL}>Upload your quote</Link></>;
 }

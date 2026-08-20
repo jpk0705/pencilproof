@@ -20,6 +20,8 @@ export type StoredAudit = { id: string; ownerId: string; createdAt: number; expi
 export type AccountIdentity = {
   userId: string;
   email: string;
+  paid: boolean;
+  paidSource: "audit pass" | "salesperson subscription" | "audit pass + salesperson subscription" | null;
   role: "consumer" | "salesperson" | "both";
   lastRole: AccountRole;
   firstSeenAt: number;
@@ -237,14 +239,64 @@ export class AccountStore {
     return this.sql.exec<{
       user_id: string;
       email: string;
+      paid: number;
+      has_audit_pass: number;
+      has_salesperson_subscription: number;
       consumer_seen_at: number | null;
       salesperson_seen_at: number | null;
       last_role: AccountRole;
       first_seen_at: number;
       last_seen_at: number;
-    }>(`SELECT user_id, email, consumer_seen_at, salesperson_seen_at, last_role, first_seen_at, last_seen_at FROM account_identity_contexts ORDER BY last_seen_at DESC LIMIT 1000`).toArray().map((row) => ({
+    }>(`
+      SELECT
+        contexts.user_id,
+        contexts.email,
+        CASE WHEN EXISTS (
+          SELECT 1
+          FROM entitlements
+          WHERE entitlements.user_id = contexts.user_id
+            AND entitlements.status = 'active'
+            AND entitlements.expires_at > ?
+        ) OR EXISTS (
+          SELECT 1
+          FROM salesperson_profiles
+          WHERE salesperson_profiles.user_id = contexts.user_id
+            AND salesperson_profiles.stripe_subscription_id IS NOT NULL
+            AND salesperson_profiles.subscription_status = 'active'
+        ) THEN 1 ELSE 0 END AS paid,
+        CASE WHEN EXISTS (
+          SELECT 1
+          FROM entitlements
+          WHERE entitlements.user_id = contexts.user_id
+            AND entitlements.status = 'active'
+            AND entitlements.expires_at > ?
+        ) THEN 1 ELSE 0 END AS has_audit_pass,
+        CASE WHEN EXISTS (
+          SELECT 1
+          FROM salesperson_profiles
+          WHERE salesperson_profiles.user_id = contexts.user_id
+            AND salesperson_profiles.stripe_subscription_id IS NOT NULL
+            AND salesperson_profiles.subscription_status = 'active'
+        ) THEN 1 ELSE 0 END AS has_salesperson_subscription,
+        contexts.consumer_seen_at,
+        contexts.salesperson_seen_at,
+        contexts.last_role,
+        contexts.first_seen_at,
+        contexts.last_seen_at
+      FROM account_identity_contexts AS contexts
+      ORDER BY contexts.last_seen_at DESC
+      LIMIT 1000
+    `, isoNow(), isoNow()).toArray().map((row) => ({
       userId: row.user_id,
       email: row.email,
+      paid: row.paid === 1,
+      paidSource: row.has_audit_pass === 1 && row.has_salesperson_subscription === 1
+        ? "audit pass + salesperson subscription"
+        : row.has_audit_pass === 1
+          ? "audit pass"
+          : row.has_salesperson_subscription === 1
+            ? "salesperson subscription"
+            : null,
       role: row.consumer_seen_at && row.salesperson_seen_at
         ? "both"
         : row.salesperson_seen_at
@@ -338,6 +390,19 @@ export class AccountStore {
       LEFT JOIN entitlements ON entitlements.user_id = preferences.user_id AND entitlements.status = 'active'
       LEFT JOIN marketing_suppressions AS suppressions ON lower(suppressions.email) = lower(preferences.email)
       WHERE suppressions.email IS NULL
+        AND (
+          NOT EXISTS (
+            SELECT 1
+            FROM salesperson_profiles AS salesperson
+            WHERE salesperson.user_id = preferences.user_id
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM account_identity_contexts AS identity
+            WHERE identity.user_id = preferences.user_id
+              AND identity.consumer_seen_at IS NOT NULL
+          )
+        )
       GROUP BY preferences.user_id, preferences.email, activity.last_scan_at, activity.last_checkout_at, activity.last_purchase_at
       HAVING MAX(deliveries.sent_at) IS NULL OR MAX(deliveries.sent_at) <= ?
       ORDER BY COALESCE(MAX(deliveries.sent_at), 0) ASC
@@ -349,6 +414,35 @@ export class AccountStore {
       lastScanAt: row.last_scan_at,
       lastSentAt: row.last_sent_at,
       passExpiresAt: row.pass_expires_at,
+      userId: row.user_id,
+    }));
+  }
+  salespersonMarketingCandidates(now: number) {
+    this.sql.exec(`DELETE FROM marketing_deliveries WHERE sent_at IS NOT NULL AND sent_at <= ?`, now - 60 * 60 * 24 * 400);
+    return this.sql.exec<{
+      user_id: string;
+      email: string;
+      last_sent_at: number | null;
+    }>(`
+      SELECT
+        salesperson.user_id,
+        salesperson.email,
+        MAX(deliveries.sent_at) AS last_sent_at
+      FROM salesperson_profiles AS salesperson
+      LEFT JOIN marketing_deliveries AS deliveries
+        ON deliveries.user_id = salesperson.user_id
+        AND deliveries.sent_at IS NOT NULL
+        AND deliveries.campaign_key LIKE 'salesperson:%'
+      LEFT JOIN marketing_suppressions AS suppressions ON lower(suppressions.email) = lower(salesperson.email)
+      WHERE suppressions.email IS NULL
+        AND salesperson.subscription_status <> 'canceled'
+      GROUP BY salesperson.user_id, salesperson.email
+      HAVING MAX(deliveries.sent_at) IS NULL OR MAX(deliveries.sent_at) <= ?
+      ORDER BY COALESCE(MAX(deliveries.sent_at), 0) ASC
+      LIMIT 500
+    `, now - 60 * 60 * 36).toArray().map((row) => ({
+      email: row.email,
+      lastSentAt: row.last_sent_at,
       userId: row.user_id,
     }));
   }
@@ -578,6 +672,10 @@ export class AccountStore {
     if (path === "/marketing-candidates") {
       const now = typeof body.now === "number" && Number.isFinite(body.now) ? Math.floor(body.now) : isoNow();
       return json({ candidates: this.marketingCandidates(now) });
+    }
+    if (path === "/salesperson-marketing-candidates") {
+      const now = typeof body.now === "number" && Number.isFinite(body.now) ? Math.floor(body.now) : isoNow();
+      return json({ candidates: this.salespersonMarketingCandidates(now) });
     }
     if (path === "/marketing-delivery") {
       const userId = typeof body.userId === "string" ? body.userId : "";

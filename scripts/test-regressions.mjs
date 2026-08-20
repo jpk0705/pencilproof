@@ -59,7 +59,7 @@ assert.match(salesPageSource, /scheduled on your next PencilProof subscription i
 assert.match(salesPageSource, /message && profile && isActive\(profile\.subscriptionStatus\)/);
 assert.match(accountNavSource, /const ACCOUNT_URL = "https:\/\/pencilproof\.com\/account"/);
 assert.match(accountNavSource, /const SALES_URL = "https:\/\/pencilproof\.com\/sales"/);
-assert.match(accountNavSource, /href=\{authContext === "salesperson" \? SALES_URL : ACCOUNT_URL\}/);
+assert.match(accountNavSource, /effectiveRole === "salesperson" \? SALES_URL : ACCOUNT_URL/);
 assert.match(salesCoachSource, /Type a customer scenario/);
 assert.doesNotMatch(salesCoachSource, /FULL PLAYBOOK ·/);
 const salesWorkerSource = await readFile(join(projectRoot, "worker/index.ts"), "utf8");
@@ -180,7 +180,7 @@ assert.match(phoneWorkerSource, /CASH DUE \/ FINANCE AMOUNT/);
 assert.match(phoneWorkerSource, /class PhoneSessionStore/);
 assert.match(phoneWorkerSource, /PHONE_SESSIONS/);
 assert.match(wranglerSource, /"PhoneSessionStore"/);
-assert.match(wranglerSource, /"0 17 \* \* 2,5"/);
+assert.match(wranglerSource, /"0 17 \* \* 1,3,5"/);
 assert.match(phoneWorkerSource, /List-Unsubscribe/);
 assert.match(phoneWorkerSource, /api\/email\/preferences/);
 assert.match(phoneWorkerSource, /Choose whether you want to continue receiving PencilProof promotional emails/);
@@ -722,6 +722,7 @@ const quoteBaseWithoutTax = 44635 + 1033.75 + 3453 + 699 + 299 - 10000;
 const paymentWithMistakenTaxRate = paymentFor(quoteBaseWithoutTax + 9.375, 12.99, 75);
 const paymentWithTaxAmount = paymentFor(quoteBaseWithoutTax + 4137.47, 12.99, 75);
 closeTo(paymentWithTaxAmount - paymentWithMistakenTaxRate, 80.66, 0.01);
+closeTo(paymentFor(30462.63, 8.49, 1), 30462.63);
 
 const rav4AmountFinanced =
   36100 + 3474.63 + 725 + 85 + 2495 + 995 + 699 - 5000;

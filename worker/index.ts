@@ -747,6 +747,22 @@ const marketingCandidates = (value: unknown): MarketingCandidate[] =>
       }))
     : [];
 
+type SalespersonMarketingCandidate = {
+  email: string;
+  lastSentAt: number | null;
+  userId: string;
+};
+
+const salespersonMarketingCandidates = (value: unknown): SalespersonMarketingCandidate[] =>
+  Array.isArray(value)
+    ? value.filter((candidate): candidate is Record<string, unknown> => Boolean(candidate && typeof candidate === "object"))
+      .map((candidate) => ({
+        email: typeof candidate.email === "string" ? candidate.email : "",
+        lastSentAt: typeof candidate.lastSentAt === "number" ? candidate.lastSentAt : null,
+        userId: typeof candidate.userId === "string" ? candidate.userId : "",
+      }))
+    : [];
+
 const htmlEscape = (value: string) => value.replace(/[&<>"']/g, (character) => ({
   "&": "&amp;",
   "<": "&lt;",
@@ -923,6 +939,98 @@ const marketingEmailContent = (
   return generalMessages[marketingRotationIndex(now, generalMessages.length)];
 };
 
+type MarketingCampaignKind = "educational" | "promotional";
+
+type SalespersonTopic = {
+  subject: string;
+  paragraphs: [string, string, string];
+  checklist: string[];
+};
+
+const salespersonTopics: SalespersonTopic[] = [
+  {
+    subject: "Earn trust before you present the vehicle",
+    paragraphs: [
+      "The strongest sales conversations start with the buyer's situation, not a list of features. Ask what they drive now, what they want to improve, and what would make the next vehicle feel like a good decision.",
+      "Listen for priorities such as reliability, fuel cost, room, technology, payment comfort, or time pressure. Repeat the important point back in plain language so the buyer knows you heard it accurately.",
+      "Only then connect a vehicle feature to that stated need. The explanation feels more useful when the buyer can see why it matters to their life instead of hearing specifications without context.",
+    ],
+    checklist: ["Ask open questions", "Reflect the buyer's priorities", "Connect features to needs", "Confirm the next step"],
+  },
+  {
+    subject: "Find the real issue behind an objection",
+    paragraphs: [
+      "An objection is often a signal that something remains uncertain. Instead of answering immediately, ask what part of the offer feels least comfortable so you can separate price, payment, trust, vehicle fit, timing, and decision-maker concerns.",
+      "Once the concern is clear, acknowledge it without arguing. Respond with one relevant fact, one comparison, or one option; a long speech can make a simple concern feel larger than it is.",
+      "Finish by checking whether the answer solved the concern. If it did not, keep diagnosing instead of forcing a close before the buyer understands the choice.",
+    ],
+    checklist: ["Clarify the concern", "Acknowledge without arguing", "Answer the actual issue", "Check for resolution"],
+  },
+  {
+    subject: "Separate a price objection from a payment objection",
+    paragraphs: [
+      "When a buyer says the price is too high, find out whether the discomfort is about the vehicle price, the monthly payment, the down payment, or the total cost. Each concern needs a different conversation.",
+      "If the payment is the issue, review the term, APR, amount financed, trade equity, and optional products separately. Extending the term may lower the payment while increasing total interest, so it should never be presented as a free solution.",
+      "If the vehicle price is the issue, return to the buyer's priorities and relevant alternatives. Do not hide the difference inside a longer loan term just to make one payment number look smaller.",
+    ],
+    checklist: ["Identify the exact discomfort", "Show amount financed", "Explain term and total cost", "Offer a relevant alternative"],
+  },
+  {
+    subject: "Explain finance basics without burying the buyer in jargon",
+    paragraphs: [
+      "The amount financed is the balance being borrowed after the vehicle price, fees, trade equity, and down payment are combined. APR reflects the cost of credit, while the term controls how long the buyer makes payments.",
+      "A lower payment can result from a longer term, a larger down payment, a lower amount financed, or a different rate. Show which variable changed instead of describing the payment as the whole deal.",
+      "The buyer should be able to see the payment, APR, term, finance charge, and total of payments together. Clear explanations build trust even when the buyer decides not to proceed.",
+    ],
+    checklist: ["Amount financed", "APR", "Term", "Finance charge and total of payments"],
+  },
+  {
+    subject: "Make the next step small enough to say yes to",
+    paragraphs: [
+      "A close does not always need to be a demand for a signature. When a buyer is interested but hesitant, ask for the smallest reasonable next step: compare two worksheets, appraise the trade, confirm the payment range, or schedule a return visit.",
+      "Use a summary that reflects the buyer's own priorities and ask whether anything important remains uncovered. This invites a real answer and gives you a chance to solve the missing item.",
+      "If the buyer is ready, confirm the decision clearly. If not, agree on what would need to change and when it would be helpful to follow up.",
+    ],
+    checklist: ["Summarize the buyer's priorities", "Ask what is missing", "Offer one concrete next step", "Confirm readiness"],
+  },
+  {
+    subject: "Follow up with information, not pressure",
+    paragraphs: [
+      "Good follow-up adds something useful. Send the exact vehicle details, the numbers the buyer asked about, and one clear next step instead of a generic message that only asks whether they are still shopping.",
+      "Use the buyer's language and priorities from the conversation. If they were comparing payment and fuel cost, address those points rather than restarting with unrelated features.",
+      "Give the buyer an easy way to respond, such as choosing between two appointment times or asking one remaining question. Helpful follow-up keeps momentum while respecting the buyer's control.",
+    ],
+    checklist: ["Reference the buyer's priorities", "Add one useful fact", "Offer one clear next step", "Make replying easy"],
+  },
+];
+
+export const salespersonEmailContent = (now: number, kind: MarketingCampaignKind): MarketingEmailContent => {
+  if (kind === "promotional") {
+    return {
+      subject: "Salesperson Plan: use ALPHA1 for your first month at $1",
+      text: [
+        "PROMOTIONAL EMAIL",
+        "If you are building a referral business around car buyers, the PencilProof Salesperson Plan gives you practical sales guidance and referral tracking in one place.",
+        "Use code ALPHA1 at checkout to reduce the first month to $1. The discount applies once; later months renew at the regular plan price unless you cancel through the billing portal.",
+        "A useful workflow is simple: learn the buyer's priorities, explain the worksheet clearly, separate price from payment, and follow up with one useful next step.",
+        "Your feedback would be greatly appreciated. Tell us which salesperson tools, objection guides, or referral features would help you serve buyers better.",
+        "Promotion code: ALPHA1 — first month $1",
+      ],
+      html: "<h2>Build a clearer process for every buyer conversation</h2><p>The Salesperson Plan helps you organize the questions, explanations, and follow-up that make a confusing worksheet easier for a customer to understand.</p><h3>Use ALPHA1</h3><p>Enter <strong>ALPHA1</strong> at checkout to reduce the first month to $1. The discount applies once; later months renew at the regular plan price unless you cancel through the billing portal.</p><h3>Put the offer to work</h3><p>Start with the buyer's priorities, explain the selling price and financing as separate pieces, answer the actual objection, and confirm one clear next step. Your feedback would be greatly appreciated; tell us which tools or guides would help you serve buyers better.</p><ul><li>Ask open questions before presenting</li><li>Separate price, payment, and financing</li><li>Answer the actual objection</li><li>Confirm one clear next step</li></ul>",
+    };
+  }
+
+  const topic = salespersonTopics[marketingRotationIndex(now, salespersonTopics.length)];
+  const text = [
+    topic.subject,
+    ...topic.paragraphs,
+    "Use this checklist in your next conversation:",
+    ...topic.checklist.map((item) => `- ${item}`),
+  ];
+  const html = `<h2>${htmlEscape(topic.subject)}</h2>${topic.paragraphs.map((paragraph, index) => `<h3>${["Set the context", "Make the explanation useful", "Earn the next step"][index]}</h3><p>${htmlEscape(paragraph)}</p>`).join("")}<h3>Use this in your next conversation</h3><ul>${topic.checklist.map((item) => `<li>${htmlEscape(item)}</li>`).join("")}</ul>`;
+  return { subject: `PencilProof salesperson guide: ${topic.subject}`, text, html };
+};
+
 const sendMarketingEmail = async (
   candidate: MarketingCandidate,
   content: { subject: string; text: string | string[]; html: string },
@@ -991,7 +1099,17 @@ const sendMarketingAlert = async (env: Env, subject: string, message: string) =>
   return false;
 };
 
+export const marketingCampaignSlot = (scheduledTime: number): { kind: MarketingCampaignKind; campaignKey: string } | null => {
+  const date = new Date(scheduledTime);
+  const weekday = date.getUTCDay();
+  if (![1, 3, 5].includes(weekday)) return null;
+  const kind: MarketingCampaignKind = weekday === 5 ? "promotional" : "educational";
+  return { kind, campaignKey: `${date.toISOString().slice(0, 10)}:${kind}` };
+};
+
 const runMarketingCampaign = async (env: Env, scheduledTime: number) => {
+  const slot = marketingCampaignSlot(scheduledTime);
+  if (!slot) return;
   if (!env.RESEND_API_KEY || !env.MARKETING_FROM_EMAIL || !env.MARKETING_BUSINESS_ADDRESS) {
     console.warn("Marketing campaign skipped: email configuration is incomplete");
     await sendMarketingAlert(
@@ -1002,19 +1120,20 @@ const runMarketingCampaign = async (env: Env, scheduledTime: number) => {
     return;
   }
   const now = Math.floor(scheduledTime / 1000);
-  const campaignKey = `${new Date(scheduledTime).toISOString().slice(0, 10)}:${new Date(scheduledTime).getUTCDay()}`;
-  const result = await accountCall(env, "/marketing-candidates", { now });
-  const candidates = marketingCandidates(result?.candidates);
   let failedDeliveries = 0;
-  for (const candidate of candidates) {
-    if (!candidate.userId || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(candidate.email)) continue;
+
+  const deliver = async (
+    candidate: { email: string; userId: string },
+    campaignKey: string,
+    content: MarketingEmailContent,
+  ) => {
+    if (!candidate.userId || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(candidate.email)) return;
     const claim = await accountCall(env, "/marketing-delivery", {
       action: "claim",
       campaignKey,
       userId: candidate.userId,
     });
-    if (claim?.claimed !== true) continue;
-    const content = marketingEmailContent(candidate, now);
+    if (claim?.claimed !== true) return;
     const sent = await sendMarketingEmail(candidate, content, env);
     await accountCall(env, "/marketing-delivery", {
       action: sent ? "complete" : "release",
@@ -1022,12 +1141,24 @@ const runMarketingCampaign = async (env: Env, scheduledTime: number) => {
       userId: candidate.userId,
     });
     if (!sent) failedDeliveries += 1;
+  };
+
+  const customerResult = await accountCall(env, "/marketing-candidates", { now });
+  for (const candidate of marketingCandidates(customerResult?.candidates)) {
+    if (slot.kind === "promotional" && candidate.lastPurchaseAt) continue;
+    await deliver(candidate, `customer:${slot.campaignKey}`, marketingEmailContent(candidate, now));
   }
+
+  const salespersonResult = await accountCall(env, "/salesperson-marketing-candidates", { now });
+  for (const candidate of salespersonMarketingCandidates(salespersonResult?.candidates)) {
+    await deliver(candidate, `salesperson:${slot.campaignKey}`, salespersonEmailContent(now, slot.kind));
+  }
+
   if (failedDeliveries > 0) {
     await sendMarketingAlert(
       env,
       "Delivery failures",
-      `${failedDeliveries} campaign email${failedDeliveries === 1 ? "" : "s"} failed during the ${campaignKey} run. Failed deliveries were released for a later retry.`,
+      `${failedDeliveries} campaign email${failedDeliveries === 1 ? "" : "s"} failed during the ${slot.campaignKey} run. Failed deliveries were released for a later retry.`,
     );
   }
 };
@@ -1347,7 +1478,9 @@ const handleAccount = async (request: Request, env: Env) => {
     const access = await accountAccess(request, env);
     const result = await accountCall(env, "/audits", { ownerId, action: "list" });
     const marketing = await accountCall(env, "/marketing", { action: "status", userId });
-    return withAccountCors(Response.json({ userId, role: await currentAccountRole(request, env), expiresAt: access, audits: result?.audits ?? [], marketingOptedIn: marketing?.optedIn === true }, { headers: noStoreHeaders }), request, env);
+    const identity = await accountCall(env, "/account-identity", { action: "get", userId });
+    const email = typeof identity?.identity?.email === "string" ? identity.identity.email : null;
+    return withAccountCors(Response.json({ userId, email, role: await currentAccountRole(request, env), expiresAt: access, audits: result?.audits ?? [], marketingOptedIn: marketing?.optedIn === true }, { headers: noStoreHeaders }), request, env);
   }
   if (url.pathname === "/api/account/audits" && request.method === "DELETE") {
     const body = await request.json().catch(() => ({})) as { id?: string };

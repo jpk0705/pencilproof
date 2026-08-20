@@ -3,8 +3,10 @@ import test from "node:test";
 import {
   createAccessToken,
   handleRequest,
+  marketingCampaignSlot,
   normalizeImportedVehicle,
   OrderStore,
+  salespersonEmailContent,
   type Env,
   verifyAccessToken,
   verifyStripeSignature,
@@ -14,6 +16,20 @@ import { createAccountRoleSession, createUserSession, verifyAccountRoleSession }
 const originalFetch = globalThis.fetch;
 const TEST_DEVICE_ID = "A".repeat(43);
 const TEST_WEBHOOK_SECRET = "whsec_TestWebhookSecret123";
+
+test("marketing campaigns use separate salesperson slots and promotion copy", () => {
+  const monday = marketingCampaignSlot(Date.UTC(2026, 7, 17, 17, 0, 0));
+  const friday = marketingCampaignSlot(Date.UTC(2026, 7, 21, 17, 0, 0));
+  const thursday = marketingCampaignSlot(Date.UTC(2026, 7, 20, 17, 0, 0));
+  assert.deepEqual(monday, { kind: "educational", campaignKey: "2026-08-17:educational" });
+  assert.deepEqual(friday, { kind: "promotional", campaignKey: "2026-08-21:promotional" });
+  assert.equal(thursday, null);
+
+  const content = salespersonEmailContent(Math.floor(Date.UTC(2026, 7, 21, 17, 0, 0) / 1000), "promotional");
+  assert.match(content.subject, /ALPHA1/);
+  assert.match(Array.isArray(content.text) ? content.text.join("\n") : content.text, /first month to \$1/);
+  assert.match(content.html, /ALPHA1/);
+});
 
 class MemoryStorage {
   private readonly values = new Map<string, unknown>();
@@ -186,6 +202,8 @@ test("account sign-out clears the PencilProof identity and paid-access cookies",
   assert.match(setCookie, /pp_user=; Max-Age=0/);
   assert.match(setCookie, /pp_role=; Max-Age=0/);
   assert.match(setCookie, /pp_access=; Max-Age=0/);
+  assert.match(setCookie, /Domain=audit\.pencilproof\.com/);
+  assert.match(setCookie, /Domain=\.pencilproof\.com/);
   assert.equal(response.headers.get("Cache-Control"), "no-store, max-age=0");
   assert.equal(response.headers.get("Access-Control-Allow-Credentials"), "true");
 });
@@ -407,11 +425,13 @@ test.afterEach(() => {
 test("AI import reports a stable Gemini quota diagnostic", async () => {
   const env = makeEnv();
   env.GEMINI_API_KEY = "test-gemini-key";
+  let generateCalls = 0;
   globalThis.fetch = async (input) => {
     const url = new URL(String(input));
     if (url.pathname.endsWith("/v1beta/models")) {
       return Response.json({ models: [] });
     }
+    generateCalls += 1;
     return Response.json(
       { error: { status: "RESOURCE_EXHAUSTED", message: "quota exceeded" } },
       { status: 429 },
@@ -439,6 +459,7 @@ test("AI import reports a stable Gemini quota diagnostic", async () => {
   assert.equal(result.error, "AI_IMPORT_PROVIDER_ERROR");
   assert.equal(result.providerCode, "QUOTA");
   assert.equal(result.providerHttpStatus, 429);
+  assert.equal(generateCalls, 3);
 });
 
 test("AI import preserves vehicle identity when Gemini returns a structured identity", () => {
@@ -506,6 +527,21 @@ test("the audit host redirects public information pages and marks service pages 
     accountResponse.headers.get("X-Robots-Tag"),
     "noindex, nofollow, noarchive",
   );
+
+  const robotsResponse = await handleRequest(
+    new Request("https://audit.pencilproof.com/robots.txt"),
+    makeEnv(),
+  );
+  assert.equal(robotsResponse.status, 200);
+  assert.match(await robotsResponse.text(), /Disallow: \//);
+  assert.equal(robotsResponse.headers.get("X-Robots-Tag"), "noindex, nofollow, noarchive");
+
+  const sitemapResponse = await handleRequest(
+    new Request("https://audit.pencilproof.com/sitemap.xml"),
+    makeEnv(),
+  );
+  assert.equal(sitemapResponse.status, 303);
+  assert.equal(sitemapResponse.headers.get("Location"), "https://pencilproof.com/sitemap.xml");
 });
 
 test("the handoff page keeps quote data in browser storage", async () => {

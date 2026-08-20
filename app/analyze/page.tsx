@@ -960,7 +960,7 @@ export default function AnalyzePage() {
     const paymentGap = deal.quotedPayment > 0 ? deal.quotedPayment - calculatedPayment : 0;
     const financeCharge = Math.max(0, calculatedPayment * deal.term - amountFinanced);
     const totalPayments = calculatedPayment * deal.term;
-    const isCashDeal = deal.term === 1 && deal.apr === 0;
+    const isCashDeal = deal.term === 1;
 
     const missingInformation = [
       !deal.sellingPrice ? "selling price" : "",
@@ -973,8 +973,8 @@ export default function AnalyzePage() {
     const paymentStatus = !deal.quotedPayment
       ? { label: "Not checked", tone: "note" as const, detail: "Enter the payment printed on the quote." }
       : Math.abs(paymentGap) <= PAYMENT_MATCH_TOLERANCE
-        ? { label: "Matches", tone: "good" as const, detail: `Within ${dollars(PAYMENT_MATCH_TOLERANCE)} per month.` }
-        : { label: "Needs review", tone: "warn" as const, detail: `${dollars(Math.abs(paymentGap))} monthly difference.` };
+        ? { label: "Matches", tone: "good" as const, detail: isCashDeal ? `Within ${dollars(PAYMENT_MATCH_TOLERANCE)} of the cash total.` : `Within ${dollars(PAYMENT_MATCH_TOLERANCE)} per month.` }
+        : { label: "Needs review", tone: "warn" as const, detail: isCashDeal ? `${dollars(Math.abs(paymentGap))} cash-total difference.` : `${dollars(Math.abs(paymentGap))} monthly difference.` };
     const productBreakdown = [
       { label: "VSC", amount: deal.serviceContract },
       { label: "GAP", amount: deal.gap },
@@ -1004,7 +1004,9 @@ export default function AnalyzePage() {
       flags.push({
         tone: "warn",
         title: `${dollars(addons)} in entered optional products`,
-        detail: `${dollars(productPaymentImpact)}/month and about ${dollars(productCostOverTerm)} over the entered term when financed at the entered APR.`,
+        detail: isCashDeal
+          ? `${dollars(productPaymentImpact)} added to the one-payment cash total.`
+          : `${dollars(productPaymentImpact)}/month and about ${dollars(productCostOverTerm)} over the entered term when financed at the entered APR.`,
       });
     } else {
       flags.push({
@@ -1016,14 +1018,20 @@ export default function AnalyzePage() {
     if (deal.quotedPayment > 0 && Math.abs(paymentGap) > PAYMENT_MATCH_TOLERANCE) {
       flags.push({
         tone: "warn",
-        title: `Quoted payment is ${dollars(Math.abs(paymentGap))}/month ${paymentGap > 0 ? "higher" : "lower"} than the live calculation`,
-        detail: `The entered figures calculate to about ${dollars(calculatedPayment)}/month. Review the amount financed, APR, term, and first-payment due date. An unshown amount, deferred first payment, or packed payment may explain the gap.`,
+        title: isCashDeal
+          ? `Quoted cash total is ${dollars(Math.abs(paymentGap))} ${paymentGap > 0 ? "higher" : "lower"} than the live calculation`
+          : `Quoted payment is ${dollars(Math.abs(paymentGap))}/month ${paymentGap > 0 ? "higher" : "lower"} than the live calculation`,
+        detail: isCashDeal
+          ? `The entered figures calculate to about ${dollars(calculatedPayment)} as a one-payment cash total. Review the price, tax, fees, products, trade, cash down, and rebate for the difference.`
+          : `The entered figures calculate to about ${dollars(calculatedPayment)}/month. Review the amount financed, APR, term, and first-payment due date. An unshown amount, deferred first payment, or packed payment may explain the gap.`,
       });
     } else if (deal.quotedPayment > 0) {
       flags.push({
         tone: "good",
         title: "Payment math is close",
-        detail: `The entered figures calculate to about ${dollars(calculatedPayment)}/month.`,
+        detail: isCashDeal
+          ? `The entered figures calculate to about ${dollars(calculatedPayment)} as a one-payment cash total.`
+          : `The entered figures calculate to about ${dollars(calculatedPayment)}/month.`,
       });
     }
     if (tradeEquity < 0) {
@@ -1129,7 +1137,7 @@ export default function AnalyzePage() {
     };
   }, [deal, revisionComparison, savedRevision]);
 
-  const isCashDeal = deal.term === 1 && deal.apr === 0 && deal.quotedPayment > 0;
+  const isCashDeal = deal.term === 1;
   const selectedCreditTier = creditTierEstimates[creditTier];
   const creditScoreEstimatedApr = creditVehicleType === "new" ? selectedCreditTier.newRate : selectedCreditTier.usedRate;
 
@@ -1230,9 +1238,15 @@ export default function AnalyzePage() {
   const counterProposalPaymentDetail = hasCounterProposal
     ? `${counterProposalPaymentDelta === 0 ? "No payment change" : `${counterProposalPaymentDelta > 0 ? "+" : "−"}${dollarsAndCents(Math.abs(counterProposalPaymentDelta))}`} vs dealer original`
     : analysis.hasMinimumData ? "Matches current live calculation" : savedRevision ? "No changed figures yet" : "Edit figures to model a counter proposal";
+  const counterProposalMath = isCashDeal
+    ? `   - Live calculated cash total: ${dollarsAndCents(revisionComparison.originalMath?.calculatedPayment ?? 0)} → ${dollarsAndCents(analysis.calculatedPayment)}\n   - Dealer-quoted cash total on the revised worksheet: ${dollarsAndCents(deal.quotedPayment)}`
+    : `   - Live calculated payment: ${dollarsAndCents(revisionComparison.originalMath?.calculatedPayment ?? 0)} → ${dollarsAndCents(analysis.calculatedPayment)} per month\n   - Dealer-quoted payment on the revised worksheet: ${dollarsAndCents(deal.quotedPayment)}`;
+  const currentDealMath = isCashDeal
+    ? `Show the current estimated cash due of ${dollarsAndCents(analysis.amountFinanced)}, calculated cash total of ${dollarsAndCents(analysis.calculatedPayment)}, and quoted cash total of ${dollarsAndCents(deal.quotedPayment)}.`
+    : `Show the current estimated amount financed of ${dollarsAndCents(analysis.amountFinanced)}, estimated payment of ${dollarsAndCents(analysis.calculatedPayment)}, quoted payment of ${dollarsAndCents(deal.quotedPayment)}, and total payment over ${deal.term} months.`;
   const message = hasCounterProposal
-    ? `Thanks for working through the ${deal.vehicle || "vehicle"} quote with me. Based on the dealer-given original and the revised figures I entered, please review the following counter proposal:\n\n1. Requested changes\n${counterProposalLines.join("\n")}\n\n2. Revised live calculation to confirm\n   - Amount financed: ${dollarsAndCents(revisionComparison.originalMath?.amountFinanced ?? 0)} → ${dollarsAndCents(analysis.amountFinanced)}\n   - Live calculated payment: ${dollarsAndCents(revisionComparison.originalMath?.calculatedPayment ?? 0)} → ${dollarsAndCents(analysis.calculatedPayment)} per month\n   - APR: ${dealerApr}\n   - Term: ${deal.term} months\n   - Dealer-quoted payment on the revised worksheet: ${dollarsAndCents(deal.quotedPayment)}\n\nPlease send a revised buyer's order showing each requested change, all mandatory charges, the complete out-the-door total, amount financed, APR, term, and payment. Please confirm whether any difference between the printed payment and the live calculation comes from an omitted amount, deferred first payment, or another documented term.`
-    : `Thanks for working through the ${deal.vehicle || "vehicle"} quote with me. I would like a revised buyer's order that reflects these numbers so I can make a clear decision:\n\n1. Vehicle and price\n   - Selling price: ${dollarsAndCents(deal.sellingPrice)}\n   - Rebate: ${dollarsAndCents(deal.rebate)}\n   - Sales tax: ${dollarsAndCents(deal.tax)}\n   - Government / registration: ${dollarsAndCents(deal.govFees)}\n   - Documentation fee: ${dollarsAndCents(deal.docFee)}\n\n2. Trade and cash\n   - ${tradeRequest}\n\n3. Optional products\n   - ${productRequest}\n\n4. Financing\n   - ${rateRequest}\n   - Show the current estimated amount financed of ${dollarsAndCents(analysis.amountFinanced)}, estimated payment of ${dollarsAndCents(analysis.calculatedPayment)}, quoted payment of ${dollarsAndCents(deal.quotedPayment)}, and total payment over ${deal.term} months.\n\nPlease confirm that there are no other mandatory charges and send the complete out-the-door total, amount financed, APR, term, and payment—not only the monthly payment.`;
+    ? `Thanks for working through the ${deal.vehicle || "vehicle"} quote with me. Based on the dealer-given original and the revised figures I entered, please review the following counter proposal:\n\n1. Requested changes\n${counterProposalLines.join("\n")}\n\n2. Revised live calculation to confirm\n   - Amount financed: ${dollarsAndCents(revisionComparison.originalMath?.amountFinanced ?? 0)} → ${dollarsAndCents(analysis.amountFinanced)}\n${counterProposalMath}${isCashDeal ? `\n   - Purchase type: cash, one payment, no APR or financing charge` : `\n   - APR: ${dealerApr}\n   - Term: ${deal.term} months`}\n\nPlease send a revised buyer's order showing each requested change, all mandatory charges, the complete out-the-door total, amount financed, APR or cash terms, and payment. Please confirm whether any difference between the printed figure and the live calculation comes from an omitted amount, deferred first payment, or another documented term.`
+    : `Thanks for working through the ${deal.vehicle || "vehicle"} quote with me. I would like a revised buyer's order that reflects these numbers so I can make a clear decision:\n\n1. Vehicle and price\n   - Selling price: ${dollarsAndCents(deal.sellingPrice)}\n   - Rebate: ${dollarsAndCents(deal.rebate)}\n   - Sales tax: ${dollarsAndCents(deal.tax)}\n   - Government / registration: ${dollarsAndCents(deal.govFees)}\n   - Documentation fee: ${dollarsAndCents(deal.docFee)}\n\n2. Trade and cash\n   - ${tradeRequest}\n\n3. Optional products\n   - ${productRequest}\n\n4. Financing\n   - ${rateRequest}\n   - ${currentDealMath}\n\nPlease confirm that there are no other mandatory charges and send the complete out-the-door total, amount financed, APR or cash terms, and payment—not only the monthly payment.`;
 
   const copyMessage = async () => {
     await navigator.clipboard.writeText(message);
@@ -1547,7 +1561,7 @@ export default function AnalyzePage() {
                   <small className="credit-score-note">{isCashDeal ? "Cash purchase: no financing rate estimate." : "Based on Experian Q1 2026 national averages; actual lender terms vary by credit history, term, vehicle, down payment, and lender."}</small>
                 </div>
               </div>
-              <label className="input-field"><span>Loan term</span><select aria-label="Loan term" value={deal.term} onChange={(event) => setNumber("term", event.target.value)}>{[1, 24, 30, 36, 39, 42, 48, 54, 60, 63, 66, 72, 75, 78, 83, 84, 96].map((term) => <option key={term} value={term}>{term === 1 ? "1 payment (cash)" : `${term} months`}</option>)}</select></label>
+              <label className="input-field"><span>Loan term</span><select aria-label="Loan term" value={deal.term} onChange={(event) => { setNumber("term", event.target.value); if (Number(event.target.value) === 1) setNumber("apr", "0"); }}>{[1, 24, 30, 36, 39, 42, 48, 54, 60, 63, 66, 72, 75, 78, 83, 84, 96].map((term) => <option key={term} value={term}>{term === 1 ? "1 payment (cash)" : `${term} months`}</option>)}</select></label>
               <MoneyField label={isCashDeal ? "Cash due / finance amount" : "Dealer's quoted monthly payment"} field="quotedPayment" value={deal.quotedPayment} onChange={setNumber} hint={isCashDeal ? "The one payment shown on the quote" : "Keeps the amount printed on the quote for comparison"} />
             </div>
             <div className="live-payment" aria-live="polite">
@@ -1625,23 +1639,23 @@ export default function AnalyzePage() {
               </div>
 
               <div className="payment-compare">
-                <div className="payment-compare-dealer"><span>DEALER QUOTED PAYMENT</span><strong>{deal.quotedPayment > 0 ? dollars(deal.quotedPayment) : "Not entered"}</strong><small>Printed on quote · stays fixed</small></div>
-                <div><span>WITH PRODUCTS</span><strong>{dollars(analysis.calculatedPayment)}<small>/mo</small></strong><small>Current live calculation</small></div>
-                <div><span>WITHOUT PRODUCTS</span><strong>{dollars(analysis.paymentWithoutProducts)}<small>/mo</small></strong><small>Live calculation without products</small></div>
+                <div className="payment-compare-dealer"><span>{isCashDeal ? "DEALER QUOTED CASH TOTAL" : "DEALER QUOTED PAYMENT"}</span><strong>{deal.quotedPayment > 0 ? dollars(deal.quotedPayment) : "Not entered"}</strong><small>Printed on quote · stays fixed</small></div>
+                <div><span>{isCashDeal ? "WITH PRODUCTS · CASH TOTAL" : "WITH PRODUCTS"}</span><strong>{dollars(analysis.calculatedPayment)}{isCashDeal ? null : <small>/mo</small>}</strong><small>{isCashDeal ? "One-payment total" : "Current live calculation"}</small></div>
+                <div><span>{isCashDeal ? "WITHOUT PRODUCTS · CASH TOTAL" : "WITHOUT PRODUCTS"}</span><strong>{dollars(analysis.paymentWithoutProducts)}{isCashDeal ? null : <small>/mo</small>}</strong><small>{isCashDeal ? "One-payment total without products" : "Live calculation without products"}</small></div>
                 <div><span>COUNTER-PROPOSAL / LIVE</span><strong>{counterProposalPaymentLabel}{counterProposalPaymentLabel !== "—" && !isCashDeal ? <small>/mo</small> : null}</strong><small>{counterProposalPaymentDetail}</small></div>
               </div>
 
               <div className={`payment-truth ${deal.quotedPayment > 0 && Math.abs(analysis.paymentGap) > PAYMENT_MATCH_TOLERANCE ? "payment-truth-warning" : ""}`}>
-                <div><span>DEALER'S PRINTED PAYMENT</span><strong>{deal.quotedPayment > 0 ? dollarsAndCents(deal.quotedPayment) : "Not entered"}</strong></div>
-                <div><span>PENCILPROOF CALCULATION</span><strong>{dollarsAndCents(analysis.calculatedPayment)}</strong></div>
+                <div><span>{isCashDeal ? "DEALER'S PRINTED CASH TOTAL" : "DEALER'S PRINTED PAYMENT"}</span><strong>{deal.quotedPayment > 0 ? dollarsAndCents(deal.quotedPayment) : "Not entered"}</strong></div>
+                <div><span>{isCashDeal ? "PENCILPROOF CASH CALCULATION" : "PENCILPROOF CALCULATION"}</span><strong>{dollarsAndCents(analysis.calculatedPayment)}</strong></div>
                 <div><span>DIFFERENCE</span><strong>{deal.quotedPayment > 0 ? dollarsAndCents(Math.abs(analysis.paymentGap)) : "—"}</strong></div>
               </div>
 
               <div className="result-numbers">
-                <div><span>Estimated amount financed</span><strong>{dollars(analysis.amountFinanced)}</strong></div>
+                <div><span>{isCashDeal ? "Estimated cash due" : "Estimated amount financed"}</span><strong>{dollars(analysis.amountFinanced)}</strong></div>
                 <div><span>Entered optional products</span><strong>{dollars(analysis.addons)}</strong></div>
-                <div><span>Total of payments</span><strong>{dollars(analysis.totalPayments)}</strong></div>
-                <div><span>Total finance charge</span><strong>{dollars(analysis.financeCharge)}</strong></div>
+                <div><span>{isCashDeal ? "Total cash due" : "Total of payments"}</span><strong>{dollars(analysis.totalPayments)}</strong></div>
+                <div><span>{isCashDeal ? "Finance charge" : "Total finance charge"}</span><strong>{dollars(analysis.financeCharge)}</strong></div>
               </div>
 
               <div className="deal-equation">
@@ -1662,7 +1676,7 @@ export default function AnalyzePage() {
                     <strong>{dollarsAndCents(Number(amount))}</strong>
                   </div>
                 ))}
-                <div className="deal-equation-total"><span>= Estimated amount financed</span><strong>{dollarsAndCents(analysis.amountFinanced)}</strong></div>
+                <div className="deal-equation-total"><span>= {isCashDeal ? "Estimated cash due" : "Estimated amount financed"}</span><strong>{dollarsAndCents(analysis.amountFinanced)}</strong></div>
               </div>
 
               <div className="result-section-title"><span>PRIORITY FINDINGS</span></div>
@@ -1681,8 +1695,8 @@ export default function AnalyzePage() {
                   <article className="product-insight" key={product.name}>
                     <div><h3>{product.name}</h3><strong>{dollars(product.amount)}</strong></div>
                     <div className="product-cost-grid">
-                      <span>Payment impact <b>{dollarsAndCents(product.monthlyImpact)}/mo</b></span>
-                      <span>Over {deal.term} months <b>{dollarsAndCents(product.financedTotal)}</b></span>
+                      <span>{isCashDeal ? "Cash-total impact" : "Payment impact"} <b>{dollarsAndCents(product.monthlyImpact)}{isCashDeal ? "" : "/mo"}</b></span>
+                      <span>{isCashDeal ? "Total purchase impact" : `Over ${deal.term} months`} <b>{dollarsAndCents(product.financedTotal)}</b></span>
                       <span>Financing cost <b>{dollarsAndCents(product.financingCost)}</b></span>
                     </div>
                     <p>{product.explanation}</p>

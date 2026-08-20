@@ -141,6 +141,8 @@ test("analytics dashboard renders the selected range and business funnel", async
             firstSeenAt: 1_700_000_000,
             lastRole: "consumer",
             lastSeenAt: 1_700_000_100,
+            paid: false,
+            paidSource: null,
             role: "consumer",
             userId: "user-consumer",
           },
@@ -149,6 +151,8 @@ test("analytics dashboard renders the selected range and business funnel", async
             firstSeenAt: 1_700_000_000,
             lastRole: "salesperson",
             lastSeenAt: 1_700_000_100,
+            paid: true,
+            paidSource: "salesperson subscription",
             role: "salesperson",
             userId: "user-sales",
           },
@@ -157,6 +161,8 @@ test("analytics dashboard renders the selected range and business funnel", async
             firstSeenAt: 1_700_000_000,
             lastRole: "consumer",
             lastSeenAt: 1_700_000_100,
+            paid: true,
+            paidSource: "audit pass + salesperson subscription",
             role: "both",
             userId: "user-both",
           },
@@ -188,6 +194,9 @@ test("analytics dashboard renders the selected range and business funnel", async
   assert.match(body, /consumer@example\.com/);
   assert.match(body, /Salesperson/);
   assert.match(body, /Both/);
+  assert.match(body, /Filter by payment status/);
+  assert.match(body, /Payment status/);
+  assert.match(body, /Paid accounts/);
 });
 
 test("analytics feedback export uses dashboard authentication", async () => {
@@ -209,8 +218,8 @@ test("analytics account filter keeps the selected role and hides other accounts"
     get: () => ({
       fetch: async () => Response.json({
         accounts: [
-          { email: "consumer@example.com", firstSeenAt: 1_700_000_000, lastRole: "consumer", lastSeenAt: 1_700_000_100, role: "consumer", userId: "user-consumer" },
-          { email: "sales@example.com", firstSeenAt: 1_700_000_000, lastRole: "salesperson", lastSeenAt: 1_700_000_100, role: "salesperson", userId: "user-sales" },
+          { email: "consumer@example.com", firstSeenAt: 1_700_000_000, lastRole: "consumer", lastSeenAt: 1_700_000_100, paid: false, paidSource: null, role: "consumer", userId: "user-consumer" },
+          { email: "sales@example.com", firstSeenAt: 1_700_000_000, lastRole: "salesperson", lastSeenAt: 1_700_000_100, paid: true, paidSource: "salesperson subscription", role: "salesperson", userId: "user-sales" },
         ],
       }),
     }),
@@ -228,6 +237,37 @@ test("analytics account filter keeps the selected role and hides other accounts"
   assert.match(body, /sales@example\.com/);
   assert.doesNotMatch(body, /consumer@example\.com/);
   assert.match(body, /pencilproof-analytics-scroll-y/);
+});
+
+test("analytics account paid filter keeps paid accounts and preserves the role filter", async () => {
+  const env = makeEnv([]);
+  env.ACCOUNTS = {
+    idFromName: (name: string) => name,
+    get: () => ({
+      fetch: async () => Response.json({
+        accounts: [
+          { email: "paid-sales@example.com", firstSeenAt: 1_700_000_000, lastRole: "salesperson", lastSeenAt: 1_700_000_100, paid: true, paidSource: "salesperson subscription", role: "salesperson", userId: "user-paid-sales" },
+          { email: "unpaid-sales@example.com", firstSeenAt: 1_700_000_000, lastRole: "salesperson", lastSeenAt: 1_700_000_100, paid: false, paidSource: null, role: "salesperson", userId: "user-unpaid-sales" },
+          { email: "paid-consumer@example.com", firstSeenAt: 1_700_000_000, lastRole: "consumer", lastSeenAt: 1_700_000_100, paid: true, paidSource: "audit pass", role: "consumer", userId: "user-paid-consumer" },
+        ],
+      }),
+    }),
+  };
+  const response = await worker.fetch(
+    new Request("https://audit.pencilproof.com/analytics?range=1m&account_role=salesperson&account_paid=paid", {
+      headers: { Authorization: basicAuth("test-admin", "test-dashboard-password") },
+    }),
+    env,
+  );
+  const body = await response.text();
+  assert.equal(response.status, 200);
+  assert.match(body, /name="account_role"/);
+  assert.match(body, /value="salesperson" selected/);
+  assert.match(body, /name="account_paid"/);
+  assert.match(body, /value="paid" selected/);
+  assert.match(body, /paid-sales@example\.com/);
+  assert.doesNotMatch(body, /unpaid-sales@example\.com/);
+  assert.doesNotMatch(body, /paid-consumer@example\.com/);
 });
 
 test("analytics routes reject the wrong method before reaching storage", async () => {
