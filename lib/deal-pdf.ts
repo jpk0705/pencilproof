@@ -1738,13 +1738,18 @@ const extractDealWithServerVision = async (
   file: File,
   onProgress?: (update: DealImportProgress) => void,
   upload?: { bytes: Uint8Array; mimeType: string },
+  authToken?: string | null,
 ): Promise<DealPdfResult> => {
   if (typeof window === "undefined") throw new Error("AI_IMPORT_UNAVAILABLE");
   const prepared = upload ?? { bytes: new Uint8Array(await file.arrayBuffer()), mimeType: mimeTypeForDealImport(file) };
   onProgress?.({ progress: 0.08, status: "sending the document to PencilProof vision import" });
   const response = await fetch("https://audit.pencilproof.com/api/ai-import", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+    },
     body: JSON.stringify({
       mimeType: prepared.mimeType || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/png"),
       base64: bytesToBase64(prepared.bytes),
@@ -1850,6 +1855,7 @@ const reconcileLocalAndVision = (
 export const extractDealFromFile = async (
   file: File,
   onProgress?: (update: DealImportProgress) => void,
+  authToken?: string | null,
 ): Promise<DealPdfResult> => {
   const isPdf = isDealImportPdf(file);
   const isImage = isDealImportFile(file) && !isPdf;
@@ -1868,7 +1874,7 @@ export const extractDealFromFile = async (
             ? { bytes: new Uint8Array(await file.arrayBuffer()), mimeType: mimeTypeForDealImport(file) }
             : await prepareVisionImage(file)
           : undefined;
-        return await extractDealWithServerVision(file, onProgress, upload);
+        return await extractDealWithServerVision(file, onProgress, upload, authToken);
       } catch (visionError) {
         // Preserve the provider category when local extraction failed too, so
         // the user sees the actionable cause instead of a generic OCR error.
@@ -1883,7 +1889,7 @@ export const extractDealFromFile = async (
 
     const upload = isImage ? await prepareVisionImage(file) : undefined;
     try {
-      const visionResult = await extractDealWithServerVision(file, onProgress, upload);
+      const visionResult = await extractDealWithServerVision(file, onProgress, upload, authToken);
       return reconcileLocalAndVision(localResult, visionResult);
     } catch (visionError) {
       // Local extraction is still valuable when Gemini is rate-limited or
