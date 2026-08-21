@@ -39,6 +39,7 @@ const salesPageSource = await readFile(join(projectRoot, "app/sales/page.tsx"), 
 const accountNavSource = await readFile(join(projectRoot, "app/components/AccountNav.tsx"), "utf8");
 const salesCoachSource = await readFile(join(projectRoot, "app/components/SalesCoach.tsx"), "utf8");
 const accountPageSource = await readFile(join(projectRoot, "app/account/page.tsx"), "utf8");
+const accountStoreSource = await readFile(join(projectRoot, "worker/accounts.ts"), "utf8");
 
 assert.match(salesPageSource, /const PUBLIC_SALES_URL = "https:\/\/pencilproof\.com\/sales"/);
 assert.match(salesPageSource, /const PAID_AUDIT_URL = "https:\/\/audit\.pencilproof\.com\/analyze\/secure\/"/);
@@ -64,8 +65,9 @@ assert.match(salesCoachSource, /Type a customer scenario/);
 assert.doesNotMatch(salesCoachSource, /FULL PLAYBOOK ·/);
 const salesWorkerSource = await readFile(join(projectRoot, "worker/index.ts"), "utf8");
 assert.match(salesWorkerSource, /addSalespersonSubscriptionCredit/);
-assert.match(salesWorkerSource, /profile\?\.subscriptionStatus === "active"/);
-assert.doesNotMatch(salesWorkerSource, /profile\?\.subscriptionStatus === "active" \|\| profile\?\.subscriptionStatus === "past_due"/);
+assert.match(accountStoreSource, /profile\?\.subscriptionStatus === "active"/);
+assert.doesNotMatch(accountStoreSource, /profile\?\.subscriptionStatus === "active" \|\| profile\?\.subscriptionStatus === "past_due"/);
+assert.match(salesWorkerSource, /accountCall\(env, "\/access-summary", \{ userId, guestId \}\)/);
 assert.match(salesWorkerSource, /profile\.subscriptionStatus !== "active"/);
 assert.match(salesWorkerSource, /accountCall\(env, "\/salesperson", \{ action: "get", userId \}\)/);
 assert.match(salesWorkerSource, /stripeRequest\("\/invoiceitems"/);

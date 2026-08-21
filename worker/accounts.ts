@@ -142,6 +142,27 @@ export const verifyProviderToken = async (token: string, env: AccountEnv) => {
 const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { "Cache-Control": "no-store" } });
 const isoNow = () => Math.floor(Date.now() / 1000);
 const owner = (userId: string | null, guestId: string | null) => userId ? `user:${userId}` : guestId ? `guest:${guestId}` : "";
+const validEmail = (value: unknown) => {
+  const email = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(email) && email.length <= 254 ? email : null;
+};
+
+const sessionRole = ({
+  requestedRole,
+  hasSalespersonProfile,
+  knownConsumer,
+  hasPriorIdentity,
+}: {
+  requestedRole: AccountRole;
+  hasSalespersonProfile: boolean;
+  knownConsumer: boolean;
+  hasPriorIdentity: boolean;
+}): AccountRole => {
+  if (requestedRole === "consumer") return "consumer";
+  if (hasSalespersonProfile) return "salesperson";
+  if (knownConsumer || hasPriorIdentity) return "consumer";
+  return "salesperson";
+};
 
 export class AccountStore {
   private readonly sql: Sql;
@@ -179,6 +200,64 @@ export class AccountStore {
     const createdAt = isoNow();
     this.sql.exec(`INSERT INTO users VALUES (?, ?, ?)`, id, providerSubject, createdAt);
     return { id, providerSubject, createdAt } satisfies User;
+  }
+  sessionBootstrap(input: {
+    providerSubject: string;
+    email?: string | null;
+    requestedRole: AccountRole;
+    guestId?: string | null;
+    legacyEntitlement?: { sessionId: string; createdAt: number; accessExpiresAt: number } | null;
+  }) {
+    const user = this.user(input.providerSubject);
+    const email = validEmail(input.email);
+    if (email) this.saveEmailContact(user.id, email);
+
+    const profile = this.salesperson({ action: "get", userId: user.id });
+    const priorIdentity = this.accountIdentity(user.id);
+    const role = sessionRole({
+      requestedRole: input.requestedRole,
+      hasSalespersonProfile: Boolean(profile),
+      knownConsumer: Boolean(priorIdentity?.consumerSeenAt),
+      hasPriorIdentity: Boolean(priorIdentity),
+    });
+    this.saveAccountIdentity(user.id, email, role, Boolean(profile));
+
+    if (input.guestId) this.migrateGuest(input.guestId, user.id);
+    const legacy = input.legacyEntitlement;
+    if (legacy && typeof legacy.sessionId === "string" && typeof legacy.createdAt === "number" && typeof legacy.accessExpiresAt === "number") {
+      this.entitlement({
+        userId: user.id,
+        stripeSessionId: legacy.sessionId,
+        activatedAt: legacy.createdAt,
+        exactExpiresAt: legacy.accessExpiresAt,
+      });
+    }
+
+    const expiresAt = profile?.subscriptionStatus === "active"
+      ? isoNow() + 60 * 60 * 24
+      : this.hasAccess(user.id, null);
+    return { user, role, expiresAt };
+  }
+  accessSummary(userId: string | null, guestId: string | null) {
+    const profile = userId ? this.salesperson({ action: "get", userId }) : null;
+    return {
+      expiresAt: profile?.subscriptionStatus === "active"
+        ? isoNow() + 60 * 60 * 24
+        : this.hasAccess(userId, guestId),
+    };
+  }
+  accountSummary(userId: string, ownerId: string) {
+    const profile = this.salesperson({ action: "get", userId });
+    const identity = this.accountIdentity(userId);
+    return {
+      expiresAt: profile?.subscriptionStatus === "active"
+        ? isoNow() + 60 * 60 * 24
+        : this.hasAccess(userId, null),
+      audits: this.audits(ownerId),
+      marketingOptedIn: this.marketingOptedIn(userId),
+      identity,
+      salespersonProfile: profile,
+    };
   }
   migrateGuest(guestId: string, userId: string) {
     const existing = this.sql.exec<{ id: string }>(`SELECT id FROM entitlements WHERE guest_id = ? AND user_id IS NULL`, guestId).toArray();
@@ -607,6 +686,24 @@ export class AccountStore {
     if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
     const path = new URL(request.url).pathname;
     const body = await request.json().catch(() => ({})) as Record<string, unknown>;
+    if (path === "/session-bootstrap") {
+      if (typeof body.providerSubject !== "string") return json({ error: "invalid_subject" }, 400);
+      const legacyValue = body.legacyEntitlement;
+      const legacy = legacyValue && typeof legacyValue === "object" ? legacyValue as Record<string, unknown> : null;
+      const legacyEntitlement = legacy
+        && typeof legacy.sessionId === "string"
+        && typeof legacy.createdAt === "number"
+        && typeof legacy.accessExpiresAt === "number"
+        ? { sessionId: legacy.sessionId, createdAt: legacy.createdAt, accessExpiresAt: legacy.accessExpiresAt }
+        : null;
+      return json(this.sessionBootstrap({
+        providerSubject: body.providerSubject,
+        email: typeof body.email === "string" ? body.email : null,
+        requestedRole: body.requestedRole === "salesperson" ? "salesperson" : "consumer",
+        guestId: typeof body.guestId === "string" ? body.guestId : null,
+        legacyEntitlement,
+      }));
+    }
     if (path === "/user") {
       if (typeof body.providerSubject !== "string") return json({ error: "invalid_subject" }, 400);
       return json({ user: this.user(body.providerSubject) });
@@ -642,7 +739,17 @@ export class AccountStore {
       this.entitlement({ userId: typeof body.userId === "string" ? body.userId : null, guestId: typeof body.guestId === "string" ? body.guestId : null, stripeSessionId: body.stripeSessionId, activatedAt: body.activatedAt, exactExpiresAt: typeof body.exactExpiresAt === "number" ? body.exactExpiresAt : undefined });
       return json({ stored: true });
     }
+    if (path === "/access-summary") return json(this.accessSummary(
+      typeof body.userId === "string" ? body.userId : null,
+      typeof body.guestId === "string" ? body.guestId : null,
+    ));
     if (path === "/access") return json({ expiresAt: this.hasAccess(typeof body.userId === "string" ? body.userId : null, typeof body.guestId === "string" ? body.guestId : null) });
+    if (path === "/account-summary") {
+      const userId = typeof body.userId === "string" ? body.userId : "";
+      const ownerId = typeof body.ownerId === "string" ? body.ownerId : "";
+      if (!/^[A-Za-z0-9_:-]{8,200}$/.test(userId) || !/^user:[A-Za-z0-9_:-]{8,200}$/.test(ownerId)) return json({ error: "invalid_account_summary" }, 400);
+      return json(this.accountSummary(userId, ownerId));
+    }
     if (path === "/marketing") {
       const userId = typeof body.userId === "string" ? body.userId : "";
       if (!/^[A-Za-z0-9_:-]{8,200}$/.test(userId)) return json({ error: "invalid_marketing_preference" }, 400);

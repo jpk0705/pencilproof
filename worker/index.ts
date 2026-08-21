@@ -205,7 +205,7 @@ const aiImportCorsHeaders = (env: Env) => ({
   ...noStoreHeaders,
   "Access-Control-Allow-Origin": env.PUBLIC_SITE_ORIGIN,
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
   "Vary": "Origin",
 });
 
@@ -1227,6 +1227,29 @@ const canonicalAccountRole = async (
   return result?.profile ? "salesperson" : fallback;
 };
 
+/**
+ * The page where an account session was established is the source of truth
+ * for the active experience. A salesperson profile is only a fallback for
+ * older sessions that do not yet have a signed role cookie; it must not turn a
+ * deliberate consumer session into a salesperson session.
+ */
+export const resolveAccountSessionRole = ({
+  requestedRole,
+  hasSalespersonProfile,
+  knownConsumer,
+  hasPriorIdentity,
+}: {
+  requestedRole: AccountRole;
+  hasSalespersonProfile: boolean;
+  knownConsumer: boolean;
+  hasPriorIdentity: boolean;
+}): AccountRole => {
+  if (requestedRole === "consumer") return "consumer";
+  if (hasSalespersonProfile) return "salesperson";
+  if (knownConsumer || hasPriorIdentity) return "consumer";
+  return "salesperson";
+};
+
 const markSalespersonProfile = async (env: Env, userId: string, email: string) => {
   const normalizedEmail = email.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(normalizedEmail) || normalizedEmail.length > 254) return;
@@ -1244,29 +1267,31 @@ const markSalespersonProfile = async (env: Env, userId: string, email: string) =
 };
 
 const currentAccountRole = async (request: Request, env: Env): Promise<AccountRole> => {
-  const sessionRole = await verifyAccountRoleSession(readCookie(request, ROLE_COOKIE), env.SESSION_SECRET) ?? "consumer";
-  return canonicalAccountRole(env, await currentUser(request, env), sessionRole);
+  const signedRole = await verifyAccountRoleSession(readCookie(request, ROLE_COOKIE), env.SESSION_SECRET);
+  if (signedRole) return signedRole;
+  return canonicalAccountRole(env, await currentUser(request, env), "consumer");
 };
 
 const accountAccess = async (request: Request, env: Env) => {
   if (!env.ACCOUNTS) return null;
   const userId = await currentUser(request, env);
   const guestId = userId ? null : await requestGuestId(request);
-  const result = await accountCall(env, "/access", { userId, guestId });
-  const expiresAt = result?.expiresAt;
-  const now = Math.floor(Date.now() / 1000);
-  if (typeof expiresAt === "number" && expiresAt > now) return expiresAt;
-
-  // A paid salesperson plan includes the same protected audit workspace as a
-  // customer pass, but its access is renewed by an active subscription rather
-  // than expiring after 30 days. Re-check the profile on each protected request
-  // so a failed payment or cancellation removes access without a stale cookie.
-  if (userId) {
-    const salesperson = await accountCall(env, "/salesperson", { action: "get", userId });
-    const profile = salesperson?.profile as { subscriptionStatus?: unknown } | undefined;
-    if (profile?.subscriptionStatus === "active") {
-      return now + 24 * 60 * 60;
-    }
+  // Anonymous requests have no account entitlement to check. Skipping the
+  // Durable Object lookup here prevents public scans and bots from consuming
+  // the account namespace quota before a signed-in customer needs it.
+  if (!userId && !guestId) return null;
+  try {
+    const result = await accountCall(env, "/access-summary", { userId, guestId });
+    const expiresAt = result?.expiresAt;
+    const now = Math.floor(Date.now() / 1000);
+    if (typeof expiresAt === "number" && expiresAt > now) return expiresAt;
+  } catch (error) {
+    // A Durable Object quota or transient namespace failure must become a
+    // normal access miss, never a Cloudflare 1101 page. A valid legacy access
+    // token is still checked by hasAccess below.
+    console.error("Account access lookup unavailable", {
+      message: error instanceof Error ? error.message : "Unknown error",
+    });
   }
   return null;
 };
@@ -1323,44 +1348,30 @@ const handleAccount = async (request: Request, env: Env) => {
     const role: AccountRole = body.role === "salesperson" ? "salesperson" : "consumer";
     const provider = typeof body.token === "string" ? await verifyProviderToken(body.token, env) : null;
     if (!provider) return withAccountCors(Response.json({ error: "invalid_account_session" }, { status: 401, headers: noStoreHeaders }), request, env);
-    const userResult = await accountCall(env, "/user", { providerSubject: provider.id });
-    const user = userResult?.user as { id?: string } | undefined;
-    if (!user?.id) return withAccountCors(Response.json({ error: "account_unavailable" }, { status: 503, headers: noStoreHeaders }), request, env);
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-    if (/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(email) && email.length <= 254) {
-      await accountCall(env, "/email-contact", { email, userId: user.id });
-    }
-    // The entry context controls the page shown after sign-in, but it is not
-    // itself a salesperson account. Analytics and campaign segmentation only
-    // become salesperson-specific after a real salesperson profile exists.
-    const salespersonResult = await accountCall(env, "/salesperson", { action: "get", userId: user.id });
-    const hasSalespersonProfile = Boolean(salespersonResult?.profile);
-    const identityResult = await accountCall(env, "/account-identity", { action: "get", userId: user.id });
-    const knownConsumer = Boolean(identityResult?.identity?.consumerSeenAt);
-    const hasPriorIdentity = Boolean(identityResult?.identity);
-    const resolvedRole = hasSalespersonProfile ? "salesperson" : role === "salesperson" && !knownConsumer && !hasPriorIdentity ? "salesperson" : "consumer";
-    await accountCall(env, "/account-identity", {
-      action: "upsert",
-      email: /^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(email) && email.length <= 254 ? email : undefined,
-      role: hasSalespersonProfile ? "salesperson" : "consumer",
-      salespersonProfile: hasSalespersonProfile,
-      userId: user.id,
-    });
     const guestId = await requestGuestId(request);
-    if (guestId) {
-      await accountCall(env, "/migrate", { guestId, userId: user.id });
-      const legacy = await legacyAccountOrder(request, env);
-      if (legacy) await accountCall(env, "/entitlement", {
-        userId: user.id,
-        stripeSessionId: legacy.sessionId,
-        activatedAt: legacy.createdAt,
-        exactExpiresAt: legacy.accessExpiresAt,
-      });
-    }
+    const legacy = guestId ? await legacyAccountOrder(request, env) : null;
+    const sessionResult = await accountCall(env, "/session-bootstrap", {
+      providerSubject: provider.id,
+      email,
+      requestedRole: role,
+      guestId,
+      legacyEntitlement: legacy
+        ? {
+            sessionId: legacy.sessionId,
+            createdAt: legacy.createdAt,
+            accessExpiresAt: legacy.accessExpiresAt,
+          }
+        : null,
+    });
+    const user = sessionResult?.user as { id?: string } | undefined;
+    if (!user?.id) return withAccountCors(Response.json({ error: "account_unavailable" }, { status: 503, headers: noStoreHeaders }), request, env);
+    const resolvedRole: AccountRole = sessionResult?.role === "salesperson" ? "salesperson" : "consumer";
+    const expiresAt = typeof sessionResult?.expiresAt === "number" ? sessionResult.expiresAt : null;
     const headers = new Headers(noStoreHeaders);
     headers.append("Set-Cookie", await accountCookie(user.id, env.SESSION_SECRET));
     headers.append("Set-Cookie", await accountRoleCookie(resolvedRole, env.SESSION_SECRET));
-    return withAccountCors(Response.json({ ok: true, role: resolvedRole, expiresAt: await accountAccess(request, env) }, { headers }), request, env);
+    return withAccountCors(Response.json({ ok: true, role: resolvedRole, expiresAt }, { headers }), request, env);
   }
   if (url.pathname === "/api/account/logout" && request.method === "POST") {
    const headers = new Headers(noStoreHeaders);
@@ -1371,6 +1382,14 @@ const handleAccount = async (request: Request, env: Env) => {
   }
   const userId = await currentUser(request, env);
   if (!userId) return withAccountCors(Response.json({ error: "account_required" }, { status: 401, headers: noStoreHeaders }), request, env);
+  const salespersonPath = url.pathname === "/api/salesperson/me"
+    || url.pathname === "/api/salesperson/playbook"
+    || url.pathname === "/api/salesperson/credit"
+    || url.pathname === "/api/salesperson/portal"
+    || url.pathname === "/api/salesperson/gift/claim";
+  if (salespersonPath && await currentAccountRole(request, env) !== "salesperson") {
+    return withAccountCors(Response.json({ error: "salesperson_role_required" }, { status: 403, headers: noStoreHeaders }), request, env);
+  }
   if (url.pathname === "/api/salesperson/me" && (request.method === "GET" || request.method === "POST")) {
     const body = await request.json().catch(() => ({})) as { email?: string; displayName?: string };
     if (request.method === "POST") {
@@ -1475,12 +1494,20 @@ const handleAccount = async (request: Request, env: Env) => {
   }
   const ownerId = accountOwner(userId, null);
   if (url.pathname === "/api/account/me" && request.method === "GET") {
-    const access = await accountAccess(request, env);
-    const result = await accountCall(env, "/audits", { ownerId, action: "list" });
-    const marketing = await accountCall(env, "/marketing", { action: "status", userId });
-    const identity = await accountCall(env, "/account-identity", { action: "get", userId });
-    const email = typeof identity?.identity?.email === "string" ? identity.identity.email : null;
-    return withAccountCors(Response.json({ userId, email, role: await currentAccountRole(request, env), expiresAt: access, audits: result?.audits ?? [], marketingOptedIn: marketing?.optedIn === true }, { headers: noStoreHeaders }), request, env);
+    const result = await accountCall(env, "/account-summary", { userId, ownerId });
+    const identity = result?.identity as { email?: unknown } | null | undefined;
+    const profile = result?.salespersonProfile as { subscriptionStatus?: unknown } | null | undefined;
+    const signedRole = await verifyAccountRoleSession(readCookie(request, ROLE_COOKIE), env.SESSION_SECRET);
+    const role: AccountRole = signedRole ?? (profile ? "salesperson" : "consumer");
+    const email = typeof identity?.email === "string" ? identity.email : null;
+    return withAccountCors(Response.json({
+      userId,
+      email,
+      role,
+      expiresAt: typeof result?.expiresAt === "number" ? result.expiresAt : null,
+      audits: Array.isArray(result?.audits) ? result.audits : [],
+      marketingOptedIn: result?.marketingOptedIn === true,
+    }, { headers: noStoreHeaders }), request, env);
   }
   if (url.pathname === "/api/account/audits" && request.method === "DELETE") {
     const body = await request.json().catch(() => ({})) as { id?: string };
@@ -1508,6 +1535,9 @@ const handleSalespersonCheckout = async (request: Request, env: Env) => {
   if (origin && origin !== env.SITE_ORIGIN && origin !== env.PUBLIC_SITE_ORIGIN) return new Response("Forbidden", { status: 403 });
   const userId = await currentUser(request, env);
   if (!userId) return respond(Response.json({ error: "account_required" }, { status: 401, headers: noStoreHeaders }));
+  if (await currentAccountRole(request, env) !== "salesperson") {
+    return respond(Response.json({ error: "salesperson_role_required" }, { status: 403, headers: noStoreHeaders }));
+  }
   try {
     const body = await request.json().catch(() => ({})) as { email?: string; displayName?: string };
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
@@ -3514,9 +3544,12 @@ export const handleRequest = async (request: Request, env: Env) => {
     });
   }
 
+  // Only the audit HTML route needs an entitlement check. The analyze bundle
+  // contains no customer data and is shared by the public scan, so serving
+  // its static chunks directly avoids a Durable Object lookup for every JS
+  // asset loaded after a successful secure-page check.
   const protectedPath = url.pathname === "/analyze"
-    || url.pathname.startsWith("/analyze/")
-    || url.pathname.startsWith("/_next/static/chunks/app/analyze/");
+    || url.pathname.startsWith("/analyze/");
   if (protectedPath) {
     const access = await hasAccess(request, env);
     if (access.allowed) {
@@ -3534,10 +3567,7 @@ export const handleRequest = async (request: Request, env: Env) => {
         headers,
       });
     }
-    const isAnalyzeAsset = url.pathname.startsWith("/_next/static/chunks/app/analyze/");
-    const location = isAnalyzeAsset
-      ? `${env.SITE_ORIGIN}/handoff?reason=access_required`
-      : access.reason === "not_found"
+    const location = access.reason === "not_found"
         ? `${env.PUBLIC_SITE_ORIGIN}/analyze${url.search}`
         : access.reason === "revoked"
       ? `${env.SITE_ORIGIN}/recover?reason=revoked`

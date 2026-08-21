@@ -6,6 +6,7 @@ import {
   marketingCampaignSlot,
   normalizeImportedVehicle,
   OrderStore,
+  resolveAccountSessionRole,
   salespersonEmailContent,
   type Env,
   verifyAccessToken,
@@ -82,6 +83,21 @@ const makeAccountNamespace = (subscriptionStatus: string | null): Env["ACCOUNTS"
   get: () => ({
     fetch: async (request: Request) => {
       const path = new URL(request.url).pathname;
+      if (path === "/session-bootstrap") return Response.json({
+        user: { id: "account-session-user" },
+        role: subscriptionStatus ? "salesperson" : "consumer",
+        expiresAt: subscriptionStatus === "active" ? Math.floor(Date.now() / 1000) + 86400 : null,
+      });
+      if (path === "/access-summary") return Response.json({
+        expiresAt: subscriptionStatus === "active" ? Math.floor(Date.now() / 1000) + 86400 : null,
+      });
+      if (path === "/account-summary") return Response.json({
+        expiresAt: subscriptionStatus === "active" ? Math.floor(Date.now() / 1000) + 86400 : null,
+        audits: [],
+        marketingOptedIn: false,
+        identity: { email: "user@example.com" },
+        salespersonProfile: subscriptionStatus ? { subscriptionStatus } : null,
+      });
       if (path === "/access") return Response.json({ expiresAt: null });
       if (path === "/salesperson") {
         return Response.json(subscriptionStatus
@@ -155,6 +171,30 @@ test("account role sessions preserve the sign-in entry context", async () => {
   assert.equal(await verifyAccountRoleSession(`${salesperson}tampered`, secret), null);
 });
 
+test("account session role resolution keeps consumer entry sessions separate", () => {
+  assert.equal(resolveAccountSessionRole({ requestedRole: "consumer", hasSalespersonProfile: true, knownConsumer: true, hasPriorIdentity: true }), "consumer");
+  assert.equal(resolveAccountSessionRole({ requestedRole: "salesperson", hasSalespersonProfile: true, knownConsumer: true, hasPriorIdentity: true }), "salesperson");
+  assert.equal(resolveAccountSessionRole({ requestedRole: "salesperson", hasSalespersonProfile: false, knownConsumer: true, hasPriorIdentity: true }), "consumer");
+  assert.equal(resolveAccountSessionRole({ requestedRole: "salesperson", hasSalespersonProfile: false, knownConsumer: false, hasPriorIdentity: false }), "salesperson");
+});
+
+test("account CORS preflight allows the authorization header used by account loading", async () => {
+  const response = await handleRequest(
+    new Request("https://audit.pencilproof.com/api/account/me", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://pencilproof.com",
+        "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Headers": "authorization",
+      },
+    }),
+    makeEnv(),
+  );
+  assert.equal(response.status, 204);
+  assert.equal(response.headers.get("Access-Control-Allow-Origin"), "https://pencilproof.com");
+  assert.match(response.headers.get("Access-Control-Allow-Headers") ?? "", /Authorization/i);
+});
+
 test("active salesperson subscriptions unlock unlimited protected audits", async () => {
   const env = makeEnv();
   env.ACCOUNTS = makeAccountNamespace("active");
@@ -224,6 +264,35 @@ test("salesperson audit history allows the public dashboard origin to read it", 
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("Access-Control-Allow-Origin"), env.PUBLIC_SITE_ORIGIN);
   assert.equal(response.headers.get("Access-Control-Allow-Credentials"), "true");
+});
+
+test("account summary consolidates account page reads into one Durable Object request", async () => {
+  const env = makeEnv();
+  const paths: string[] = [];
+  env.ACCOUNTS = {
+    idFromName: (name: string) => name,
+    get: () => ({
+      fetch: async (request: Request) => {
+        paths.push(new URL(request.url).pathname);
+        return Response.json({
+          expiresAt: null,
+          audits: [],
+          marketingOptedIn: false,
+          identity: { email: "user@example.com" },
+          salespersonProfile: null,
+        });
+      },
+    }),
+  };
+  const session = await createUserSession("account-summary-user", env.SESSION_SECRET);
+  const response = await handleRequest(
+    new Request("https://audit.pencilproof.com/api/account/me", {
+      headers: { Cookie: `pp_user=${session}` },
+    }),
+    env,
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(paths, ["/account-summary"]);
 });
 
 test("saved audit deletion returns the public dashboard CORS headers", async () => {
@@ -348,7 +417,7 @@ test("salesperson checkout falls back to full price after the configured promoti
   assert.equal(parameters.get("line_items[0][price]"), "price_salespersonTest");
 });
 
-test("an existing salesperson profile overrides a stale consumer role cookie", async () => {
+test("a signed consumer role keeps salesperson tools separate", async () => {
   const env = makeEnv();
   env.ACCOUNTS = makeAccountNamespace("active");
   const userSession = await createUserSession("salesperson-user", env.SESSION_SECRET);
@@ -361,7 +430,16 @@ test("an existing salesperson profile overrides a stale consumer role cookie", a
   );
   assert.equal(response.status, 200);
   const data = await response.json() as { role?: string };
-  assert.equal(data.role, "salesperson");
+  assert.equal(data.role, "consumer");
+
+  const salespersonApi = await handleRequest(
+    new Request("https://audit.pencilproof.com/api/salesperson/me", {
+      headers: { Cookie: `pp_user=${userSession}; pp_role=${consumerRole}` },
+    }),
+    env,
+  );
+  assert.equal(salespersonApi.status, 403);
+  assert.deepEqual(await salespersonApi.json(), { error: "salesperson_role_required" });
 });
 
 const paidSession = (
@@ -500,6 +578,37 @@ test("the audit host sends an unauthenticated analyze visitor to the free scan",
     response.headers.get("Location"),
     "https://pencilproof.com/analyze?source=direct",
   );
+});
+
+test("secure access degrades to a normal redirect when account storage is unavailable", async () => {
+  const env = makeEnv();
+  env.ACCOUNTS = {
+    idFromName: () => "account-store",
+    get: () => ({
+      fetch: async () => { throw new Error("Exceeded allowed volume of requests in Durable Objects free tier."); },
+    }),
+  } as unknown as Env["ACCOUNTS"];
+  const response = await handleRequest(
+    new Request("https://audit.pencilproof.com/analyze/secure/"),
+    env,
+  );
+  assert.equal(response.status, 303);
+  assert.equal(response.headers.get("Location"), "https://pencilproof.com/analyze");
+});
+
+test("analyze static chunks do not consume account access lookups", async () => {
+  const env = makeEnv();
+  env.ACCOUNTS = {
+    idFromName: () => "account-store",
+    get: () => ({
+      fetch: async () => { throw new Error("The account namespace should not be called for static chunks."); },
+    }),
+  } as unknown as Env["ACCOUNTS"];
+  const response = await handleRequest(
+    new Request("https://audit.pencilproof.com/_next/static/chunks/app/analyze/page.js"),
+    env,
+  );
+  assert.equal(response.status, 200);
 });
 
 test("the audit host redirects public information pages and marks service pages noindex", async () => {
