@@ -33,9 +33,23 @@ const syncAccountContact = async (instance: Clerk, authContext: PencilProofAuthC
     credentials: "include",
     body: JSON.stringify({ email, token, role: authContext }),
   }).catch(() => null);
-  if (!response?.ok) return { role: authContext, expiresAt: null, email };
-  const data = await response.json().catch(() => ({})) as { role?: string; expiresAt?: unknown };
-  return sessionState({ ...data, email }, authContext, email);
+  const sessionData = response?.ok
+    ? await response.json().catch(() => ({})) as { role?: string; expiresAt?: unknown }
+    : {};
+  // The bootstrap response normally contains entitlement state. If that
+  // response was delayed or incomplete, immediately read the authenticated
+  // account summary before falling back to a public upload link. This keeps a
+  // paid account from being sent through the free scan and checkout again.
+  const summaryResponse = await fetch(`${ACCOUNT_API_URL}/api/account/me`, {
+    cache: "no-store",
+    credentials: "include",
+    headers: { Authorization: `Bearer ${token}` },
+  }).catch(() => null);
+  if (summaryResponse?.ok) {
+    const summary = await summaryResponse.json().catch(() => ({})) as { role?: string; expiresAt?: unknown; email?: unknown };
+    return sessionState({ ...sessionData, ...summary, email }, authContext, email);
+  }
+  return sessionState({ ...sessionData, email }, authContext, email);
 };
 
 const readAuditHostAccount = async (): Promise<AccountSessionState | null> => {

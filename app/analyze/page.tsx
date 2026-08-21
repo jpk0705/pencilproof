@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import {
   DEAL_IMPORT_ACCEPT,
   DEAL_CAMERA_ACCEPT,
@@ -21,6 +21,7 @@ import {
   CHECKOUT_URL,
   createQuoteHandoffEnvelope,
   QUOTE_HANDOFF_KEY,
+  QUOTE_HANDOFF_TYPE,
 } from "@/lib/checkout";
 import { track } from "@/lib/analytics";
 import VehiclePhoto from "@/app/components/VehiclePhoto";
@@ -501,7 +502,18 @@ export default function AnalyzePage() {
   }, []);
 
   useEffect(() => {
-    const saved = sessionStorage.getItem(QUOTE_HANDOFF_KEY);
+    let saved = sessionStorage.getItem(QUOTE_HANDOFF_KEY);
+    if (!saved && window.name) {
+      try {
+        const envelope = JSON.parse(window.name) as { type?: unknown; payload?: unknown };
+        if (envelope.type !== QUOTE_HANDOFF_TYPE || !envelope.payload || typeof envelope.payload !== "object") return;
+        saved = JSON.stringify(envelope.payload);
+        window.name = "";
+      } catch {
+        window.name = "";
+        return;
+      }
+    }
     if (!saved) return;
     try {
       const handoff = JSON.parse(saved) as {
@@ -663,6 +675,13 @@ export default function AnalyzePage() {
     startCheckout(payload);
   };
 
+  const continueToPaidAudit = useCallback(() => {
+    if (pendingCheckout === null) return;
+    window.name = createQuoteHandoffEnvelope(pendingCheckout);
+    sessionStorage.removeItem(PENDING_CHECKOUT_KEY);
+    window.location.assign(PAID_AUDIT_URL);
+  }, [pendingCheckout]);
+
   const completePreCheckoutFeedback = () => {
     setPreCheckoutFeedbackCompleted(true);
     localStorage.setItem(PRECHECKOUT_FEEDBACK_KEY, "true");
@@ -707,6 +726,13 @@ export default function AnalyzePage() {
       progress: 0.02,
     });
     try {
+      // Keep the public scan available to guests, but carry the active Clerk
+      // session into the secured vision fallback. Without this token, a
+      // signed-in customer can be treated as anonymous when the server-side
+      // importer is selected for a camera image.
+      const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+      const clerk = publishableKey ? await createLoadedClerk(publishableKey).catch(() => null) : null;
+      const authToken = clerk?.session ? await clerk.session.getToken().catch(() => null) : null;
       const result = await extractDealFromFile(file, ({ progress, status }) => {
         const percent = Math.max(0, Math.min(100, Math.round(progress * 100)));
         const readableStatus = status.replace(/_/g, " ");
@@ -716,7 +742,7 @@ export default function AnalyzePage() {
           fields: [],
           progress,
         });
-      });
+      }, authToken);
       if (!isPreviewImportUsable(result)) {
         setDealImport({
           status: "error",
@@ -1498,7 +1524,7 @@ export default function AnalyzePage() {
               <button className="button button-primary" type="button" onClick={confirmPendingImport}>{isPaidAuditHost ? "Confirm values and see audits" : "Confirm values and continue to checkout"} <Arrow /></button>
             </div>
             {!isPaidAuditHost && auditHostResolved && preCheckoutFeedbackCompleted === false ? <PreCheckoutFeedback onCompleted={completePreCheckoutFeedback} /> : null}
-            {pendingCheckout !== null ? <div ref={checkoutGateRef} className="checkout-gate-anchor"><PreCheckoutAccountGate onContinue={continueCheckout} /></div> : null}
+            {pendingCheckout !== null ? <div ref={checkoutGateRef} className="checkout-gate-anchor"><PreCheckoutAccountGate onContinue={continueCheckout} onPaidAccess={continueToPaidAudit} /></div> : null}
           </section>
         ) : null}
         {selectedOfferType === "lease" ? (
@@ -1590,7 +1616,7 @@ export default function AnalyzePage() {
               >
                 Continue to secure checkout <Arrow />
               </button>
-              {pendingCheckout !== null ? <div ref={checkoutGateRef} className="checkout-gate-anchor"><PreCheckoutAccountGate onContinue={continueCheckout} /></div> : null}
+              {pendingCheckout !== null ? <div ref={checkoutGateRef} className="checkout-gate-anchor"><PreCheckoutAccountGate onContinue={continueCheckout} onPaidAccess={continueToPaidAudit} /></div> : null}
             </div>
           ) : null}
         </form>

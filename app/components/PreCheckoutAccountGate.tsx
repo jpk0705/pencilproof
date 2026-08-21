@@ -7,15 +7,17 @@ import { authRedirectOptions, createLoadedClerk } from "@/lib/clerk-client";
 
 type Props = {
   onContinue: () => void;
+  onPaidAccess?: () => void;
 };
 
 const accountEndpoint = (path: string) => new URL(path, CHECKOUT_URL).toString();
 
-export default function PreCheckoutAccountGate({ onContinue }: Props) {
+export default function PreCheckoutAccountGate({ onContinue, onPaidAccess }: Props) {
   const configured = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
   const [clerk, setClerk] = useState<Clerk | null>(null);
   const [clerkError, setClerkError] = useState(false);
   const [accountReady, setAccountReady] = useState(false);
+  const [paidAccess, setPaidAccess] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   useEffect(() => {
@@ -47,6 +49,29 @@ export default function PreCheckoutAccountGate({ onContinue }: Props) {
     const interval = window.setInterval(checkSession, 500);
     return () => window.clearInterval(interval);
   }, [clerk]);
+
+  useEffect(() => {
+    if (!clerk?.user || !clerk.session) return;
+    let cancelled = false;
+    void (async () => {
+      const token = await clerk.session?.getToken().catch(() => null);
+      if (!token) return;
+      const response = await fetch(accountEndpoint("/api/account/me"), {
+        cache: "no-store",
+        credentials: "include",
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => null);
+      if (cancelled || !response?.ok) return;
+      const data = await response.json().catch(() => ({})) as { expiresAt?: unknown };
+      if (typeof data.expiresAt === "number" && data.expiresAt > Math.floor(Date.now() / 1000)) {
+        setPaidAccess(true);
+        onPaidAccess?.();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [clerk, onPaidAccess]);
 
   const continueAsAccount = async () => {
     if (!clerk?.user || !clerk.session) {
@@ -96,7 +121,11 @@ export default function PreCheckoutAccountGate({ onContinue }: Props) {
         <p className="pre-checkout-privacy">Your quote scan stays in this browser. An account is optional and does not change the price or require a subscription.</p>
       </div>
       <div className="pre-checkout-account-actions">
-        {accountReady ? (
+        {paidAccess ? (
+          <button className="button button-primary" type="button" onClick={() => onPaidAccess?.()} disabled={busy || !onPaidAccess}>
+            Open your paid audit
+          </button>
+        ) : accountReady ? (
           <button className="button button-primary" type="button" onClick={() => void continueAsAccount()} disabled={busy}>
             {busy ? "Preparing checkout…" : "Continue to secure checkout"}
           </button>
