@@ -51,7 +51,10 @@ export default function PreCheckoutAccountGate({ onContinue, onPaidAccess }: Pro
     const checkSession = () => {
       const ready = Boolean(clerk.user && clerk.session);
       setAccountReady(ready);
-      if (!ready) setAccountAccessState("not_paid");
+      setAccountAccessState((current) => {
+        if (!ready) return "not_paid";
+        return current === "paid" ? current : "checking";
+      });
     };
     checkSession();
     const interval = window.setInterval(checkSession, 500);
@@ -92,7 +95,7 @@ export default function PreCheckoutAccountGate({ onContinue, onPaidAccess }: Pro
     return () => {
       cancelled = true;
     };
-  }, [accessCheckVersion, clerk, onPaidAccess]);
+  }, [accessCheckVersion, clerk, clerk?.session?.id, clerk?.user?.id, onPaidAccess]);
 
   const continueAsAccount = async () => {
     if (!clerk?.user || !clerk.session) {
