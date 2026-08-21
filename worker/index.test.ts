@@ -596,6 +596,25 @@ test("secure access degrades to a normal redirect when account storage is unavai
   assert.equal(response.headers.get("Location"), "https://pencilproof.com/analyze");
 });
 
+test("account summary reports a retryable service error when storage is unavailable", async () => {
+  const env = makeEnv();
+  env.ACCOUNTS = {
+    idFromName: () => "account-store",
+    get: () => ({
+      fetch: async () => { throw new Error("Exceeded allowed volume of requests in Durable Objects free tier."); },
+    }),
+  } as unknown as Env["ACCOUNTS"];
+  const session = await createUserSession("account-summary-user", env.SESSION_SECRET);
+  const response = await handleRequest(
+    new Request("https://audit.pencilproof.com/api/account/me", {
+      headers: { Cookie: `pp_user=${session}` },
+    }),
+    env,
+  );
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), { error: "account_unavailable" });
+});
+
 test("analyze static chunks do not consume account access lookups", async () => {
   const env = makeEnv();
   env.ACCOUNTS = {

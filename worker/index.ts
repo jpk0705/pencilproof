@@ -1351,19 +1351,27 @@ const handleAccount = async (request: Request, env: Env) => {
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
     const guestId = await requestGuestId(request);
     const legacy = guestId ? await legacyAccountOrder(request, env) : null;
-    const sessionResult = await accountCall(env, "/session-bootstrap", {
-      providerSubject: provider.id,
-      email,
-      requestedRole: role,
-      guestId,
-      legacyEntitlement: legacy
-        ? {
-            sessionId: legacy.sessionId,
-            createdAt: legacy.createdAt,
-            accessExpiresAt: legacy.accessExpiresAt,
-          }
-        : null,
-    });
+    let sessionResult: Record<string, unknown> | null = null;
+    try {
+      sessionResult = await accountCall(env, "/session-bootstrap", {
+        providerSubject: provider.id,
+        email,
+        requestedRole: role,
+        guestId,
+        legacyEntitlement: legacy
+          ? {
+              sessionId: legacy.sessionId,
+              createdAt: legacy.createdAt,
+              accessExpiresAt: legacy.accessExpiresAt,
+            }
+          : null,
+      });
+    } catch (error) {
+      console.error("Account session bootstrap unavailable", {
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+      return withAccountCors(Response.json({ error: "account_unavailable" }, { status: 503, headers: noStoreHeaders }), request, env);
+    }
     const user = sessionResult?.user as { id?: string } | undefined;
     if (!user?.id) return withAccountCors(Response.json({ error: "account_unavailable" }, { status: 503, headers: noStoreHeaders }), request, env);
     const resolvedRole: AccountRole = sessionResult?.role === "salesperson" ? "salesperson" : "consumer";
@@ -1494,7 +1502,15 @@ const handleAccount = async (request: Request, env: Env) => {
   }
   const ownerId = accountOwner(userId, null);
   if (url.pathname === "/api/account/me" && request.method === "GET") {
-    const result = await accountCall(env, "/account-summary", { userId, ownerId });
+    let result: Record<string, unknown> | null = null;
+    try {
+      result = await accountCall(env, "/account-summary", { userId, ownerId });
+    } catch (error) {
+      console.error("Account summary unavailable", {
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+      return withAccountCors(Response.json({ error: "account_unavailable" }, { status: 503, headers: noStoreHeaders }), request, env);
+    }
     const identity = result?.identity as { email?: unknown } | null | undefined;
     const profile = result?.salespersonProfile as { subscriptionStatus?: unknown } | null | undefined;
     const signedRole = await verifyAccountRoleSession(readCookie(request, ROLE_COOKIE), env.SESSION_SECRET);

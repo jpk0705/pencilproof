@@ -10,6 +10,8 @@ type Props = {
   onPaidAccess?: () => void;
 };
 
+type AccountAccessState = "checking" | "paid" | "not_paid" | "unavailable";
+
 const accountEndpoint = (path: string) => new URL(path, CHECKOUT_URL).toString();
 
 export default function PreCheckoutAccountGate({ onContinue, onPaidAccess }: Props) {
@@ -17,7 +19,8 @@ export default function PreCheckoutAccountGate({ onContinue, onPaidAccess }: Pro
   const [clerk, setClerk] = useState<Clerk | null>(null);
   const [clerkError, setClerkError] = useState(false);
   const [accountReady, setAccountReady] = useState(false);
-  const [paidAccess, setPaidAccess] = useState(false);
+  const [accountAccessState, setAccountAccessState] = useState<AccountAccessState>("not_paid");
+  const [accessCheckVersion, setAccessCheckVersion] = useState(0);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   useEffect(() => {
@@ -31,6 +34,7 @@ export default function PreCheckoutAccountGate({ onContinue, onPaidAccess }: Pro
         if (!cancelled) {
           setClerk(instance);
           setAccountReady(Boolean(instance.user && instance.session));
+          setAccountAccessState(instance.user && instance.session ? "checking" : "not_paid");
         }
       })
       .catch(() => {
@@ -44,38 +48,59 @@ export default function PreCheckoutAccountGate({ onContinue, onPaidAccess }: Pro
 
   useEffect(() => {
     if (!clerk) return;
-    const checkSession = () => setAccountReady(Boolean(clerk.user && clerk.session));
+    const checkSession = () => {
+      const ready = Boolean(clerk.user && clerk.session);
+      setAccountReady(ready);
+      if (!ready) setAccountAccessState("not_paid");
+    };
     checkSession();
     const interval = window.setInterval(checkSession, 500);
     return () => window.clearInterval(interval);
   }, [clerk]);
 
   useEffect(() => {
-    if (!clerk?.user || !clerk.session) return;
+    if (!clerk?.user || !clerk.session) {
+      setAccountAccessState("not_paid");
+      return;
+    }
     let cancelled = false;
+    setAccountAccessState("checking");
     void (async () => {
       const token = await clerk.session?.getToken().catch(() => null);
-      if (!token) return;
+      if (!token) {
+        if (!cancelled) setAccountAccessState("unavailable");
+        return;
+      }
       const response = await fetch(accountEndpoint("/api/account/me"), {
         cache: "no-store",
         credentials: "include",
         headers: { Authorization: `Bearer ${token}` },
       }).catch(() => null);
-      if (cancelled || !response?.ok) return;
+      if (cancelled) return;
+      if (!response?.ok) {
+        setAccountAccessState("unavailable");
+        return;
+      }
       const data = await response.json().catch(() => ({})) as { expiresAt?: unknown };
       if (typeof data.expiresAt === "number" && data.expiresAt > Math.floor(Date.now() / 1000)) {
-        setPaidAccess(true);
+        setAccountAccessState("paid");
         onPaidAccess?.();
+      } else {
+        setAccountAccessState("not_paid");
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [clerk, onPaidAccess]);
+  }, [accessCheckVersion, clerk, onPaidAccess]);
 
   const continueAsAccount = async () => {
     if (!clerk?.user || !clerk.session) {
       setMessage("Finish creating or signing in to your account, then continue.");
+      return;
+    }
+    if (accountAccessState !== "not_paid") {
+      setMessage("PencilProof is still checking this account. Please try again in a moment.");
       return;
     }
 
@@ -121,10 +146,21 @@ export default function PreCheckoutAccountGate({ onContinue, onPaidAccess }: Pro
         <p className="pre-checkout-privacy">Your quote scan stays in this browser. An account is optional and does not change the price or require a subscription.</p>
       </div>
       <div className="pre-checkout-account-actions">
-        {paidAccess ? (
+        {accountAccessState === "paid" ? (
           <button className="button button-primary" type="button" onClick={() => onPaidAccess?.()} disabled={busy || !onPaidAccess}>
             Open your paid audit
           </button>
+        ) : accountReady && accountAccessState === "checking" ? (
+          <button className="button button-primary" type="button" disabled>
+            Checking your PencilProof access…
+          </button>
+        ) : accountReady && accountAccessState === "unavailable" ? (
+          <>
+            <button className="button button-primary" type="button" onClick={() => setAccessCheckVersion((current) => current + 1)} disabled={busy}>
+              Retry access check
+            </button>
+            <p className="pre-checkout-message" role="status">We could not verify your account access yet. Your quote is safe; retry before opening checkout.</p>
+          </>
         ) : accountReady ? (
           <button className="button button-primary" type="button" onClick={() => void continueAsAccount()} disabled={busy}>
             {busy ? "Preparing checkout…" : "Continue to secure checkout"}
