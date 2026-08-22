@@ -58,6 +58,16 @@ type ReferralReward = {
   creditedAt: number | null;
 };
 
+type AccountIdentityContext = {
+  userId: string;
+  email: string;
+  consumerSeenAt: number | null;
+  salespersonSeenAt: number | null;
+  lastRole: AccountRole;
+  firstSeenAt: number;
+  lastSeenAt: number;
+};
+
 const b64 = (bytes: Uint8Array) => {
   let text = "";
   for (const byte of bytes) text += String.fromCharCode(byte);
@@ -166,19 +176,33 @@ const sessionRole = ({
 
 export class AccountStore {
   private readonly sql: Sql;
+  // These caches are deliberately short-lived and are only performance
+  // optimizations. Durable SQL remains the source of truth.
+  private lastPurgeAt = 0;
+  private readonly userCache = new Map<string, { cachedAt: number; value: User }>();
+  private readonly accessCache = new Map<string, { checkedAt: number; expiresAt: number | null }>();
+  private readonly auditsCache = new Map<string, { cachedAt: number; value: StoredAudit[] }>();
+  private readonly identityCache = new Map<string, { cachedAt: number; value: AccountIdentityContext | null }>();
+  private readonly marketingCache = new Map<string, { checkedAt: number; value: boolean }>();
+  private identityListCache: { cachedAt: number; value: AccountIdentity[] } | null = null;
   constructor(state: AccountState) {
     this.sql = state.storage.sql;
     this.sql.exec(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, provider_subject TEXT UNIQUE NOT NULL, created_at INTEGER NOT NULL)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS entitlements (id TEXT PRIMARY KEY, user_id TEXT, guest_id TEXT, stripe_session_id TEXT UNIQUE NOT NULL, activated_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, status TEXT NOT NULL)`);
     this.sql.exec(`CREATE INDEX IF NOT EXISTS entitlements_owner ON entitlements(user_id, guest_id, status)`);
+    this.sql.exec(`CREATE INDEX IF NOT EXISTS entitlements_user_status_expires ON entitlements(user_id, status, expires_at)`);
+    this.sql.exec(`CREATE INDEX IF NOT EXISTS entitlements_guest_status_expires ON entitlements(guest_id, status, expires_at)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS audits (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, data TEXT NOT NULL)`);
     this.sql.exec(`CREATE INDEX IF NOT EXISTS audits_owner ON audits(owner_id, expires_at)`);
+    this.sql.exec(`CREATE INDEX IF NOT EXISTS audits_expires ON audits(expires_at)`);
+    this.sql.exec(`CREATE INDEX IF NOT EXISTS audits_owner_created ON audits(owner_id, created_at DESC)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS marketing_preferences (user_id TEXT PRIMARY KEY, email TEXT NOT NULL, opted_in_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS email_contacts (user_id TEXT PRIMARY KEY, email TEXT NOT NULL, added_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS marketing_suppressions (email TEXT PRIMARY KEY, suppressed_at INTEGER NOT NULL)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS marketing_activity (user_id TEXT PRIMARY KEY, last_scan_at INTEGER, last_checkout_at INTEGER, last_purchase_at INTEGER)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS marketing_deliveries (user_id TEXT NOT NULL, campaign_key TEXT NOT NULL, claimed_at INTEGER NOT NULL, sent_at INTEGER, PRIMARY KEY (user_id, campaign_key))`);
     this.sql.exec(`CREATE INDEX IF NOT EXISTS marketing_deliveries_user ON marketing_deliveries(user_id, sent_at)`);
+    this.sql.exec(`CREATE INDEX IF NOT EXISTS marketing_deliveries_sent ON marketing_deliveries(sent_at)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS account_identity_contexts (user_id TEXT PRIMARY KEY, email TEXT NOT NULL, consumer_seen_at INTEGER, salesperson_seen_at INTEGER, last_role TEXT NOT NULL, first_seen_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL)`);
     this.sql.exec(`CREATE INDEX IF NOT EXISTS account_identity_contexts_last_seen ON account_identity_contexts(last_seen_at)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS salesperson_profiles (user_id TEXT PRIMARY KEY, email TEXT NOT NULL, display_name TEXT NOT NULL, referral_code TEXT UNIQUE NOT NULL, stripe_customer_id TEXT, stripe_subscription_id TEXT, subscription_status TEXT NOT NULL, earned_credits INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`);
@@ -192,14 +216,28 @@ export class AccountStore {
     this.sql.exec(`INSERT OR IGNORE INTO account_identity_contexts (user_id, email, consumer_seen_at, salesperson_seen_at, last_role, first_seen_at, last_seen_at) SELECT contacts.user_id, contacts.email, CASE WHEN profiles.user_id IS NULL THEN contacts.added_at ELSE NULL END, CASE WHEN profiles.user_id IS NOT NULL THEN profiles.created_at ELSE NULL END, CASE WHEN profiles.user_id IS NOT NULL THEN 'salesperson' ELSE 'consumer' END, contacts.added_at, MAX(contacts.updated_at, COALESCE(profiles.updated_at, contacts.updated_at)) FROM email_contacts AS contacts LEFT JOIN salesperson_profiles AS profiles ON profiles.user_id = contacts.user_id`);
     this.sql.exec(`INSERT OR IGNORE INTO account_identity_contexts (user_id, email, consumer_seen_at, salesperson_seen_at, last_role, first_seen_at, last_seen_at) SELECT profiles.user_id, profiles.email, NULL, profiles.created_at, 'salesperson', profiles.created_at, profiles.updated_at FROM salesperson_profiles AS profiles`);
   }
-  private purge() { this.sql.exec(`DELETE FROM audits WHERE expires_at <= ?`, isoNow()); }
+  private purge() {
+    const now = isoNow();
+    if (now - this.lastPurgeAt < 30) return;
+    this.lastPurgeAt = now;
+    this.sql.exec(`DELETE FROM audits WHERE expires_at <= ?`, now);
+  }
   user(providerSubject: string) {
+    const cached = this.userCache.get(providerSubject);
+    const now = isoNow();
+    if (cached && now - cached.cachedAt < 30) return cached.value;
     const existing = this.sql.exec<{ id: string; provider_subject: string; created_at: number }>(`SELECT * FROM users WHERE provider_subject = ?`, providerSubject).toArray()[0];
-    if (existing) return { id: existing.id, providerSubject: existing.provider_subject, createdAt: existing.created_at } satisfies User;
+    if (existing) {
+      const value = { id: existing.id, providerSubject: existing.provider_subject, createdAt: existing.created_at } satisfies User;
+      this.userCache.set(providerSubject, { cachedAt: now, value });
+      return value;
+    }
     const id = crypto.randomUUID();
     const createdAt = isoNow();
     this.sql.exec(`INSERT INTO users VALUES (?, ?, ?)`, id, providerSubject, createdAt);
-    return { id, providerSubject, createdAt } satisfies User;
+    const value = { id, providerSubject, createdAt } satisfies User;
+    this.userCache.set(providerSubject, { cachedAt: now, value });
+    return value;
   }
   sessionBootstrap(input: {
     providerSubject: string;
@@ -271,6 +309,10 @@ export class AccountStore {
     const existing = this.sql.exec<{ id: string }>(`SELECT id FROM entitlements WHERE guest_id = ? AND user_id IS NULL`, guestId).toArray();
     for (const row of existing) this.sql.exec(`UPDATE entitlements SET user_id = ?, guest_id = NULL WHERE id = ?`, userId, row.id);
     this.sql.exec(`UPDATE audits SET owner_id = ? WHERE owner_id = ?`, `user:${userId}`, `guest:${guestId}`);
+    this.accessCache.clear();
+    this.auditsCache.delete(`guest:${guestId}`);
+    this.auditsCache.delete(`user:${userId}`);
+    this.identityListCache = null;
   }
   entitlement(input: { userId?: string | null; guestId?: string | null; stripeSessionId: string; activatedAt: number; exactExpiresAt?: number; now?: number }) {
     const now = input.now ?? isoNow();
@@ -282,14 +324,36 @@ export class AccountStore {
     const existing = this.sql.exec<{ id: string }>(`SELECT id FROM entitlements WHERE stripe_session_id = ?`, input.stripeSessionId).toArray()[0];
     if (existing) return;
     this.sql.exec(`INSERT INTO entitlements VALUES (?, ?, ?, ?, ?, ?, 'active')`, crypto.randomUUID(), input.userId ?? null, input.guestId ?? null, input.stripeSessionId, input.activatedAt, expiresAt);
+    this.accessCache.clear();
+    this.identityListCache = null;
   }
   hasAccess(userId: string | null, guestId: string | null) {
+    const cacheKey = `${userId ?? ""}|${guestId ?? ""}`;
+    const now = isoNow();
+    const cached = this.accessCache.get(cacheKey);
+    if (cached && now - cached.checkedAt < 15) {
+      return cached.expiresAt && cached.expiresAt > now ? cached.expiresAt : null;
+    }
     this.purge();
-    const row = this.sql.exec<{ expires_at: number }>(`SELECT MAX(expires_at) AS expires_at FROM entitlements WHERE (user_id = ? OR guest_id = ?) AND status = 'active'`, userId, guestId).toArray()[0];
-    return row?.expires_at && row.expires_at > isoNow() ? row.expires_at : null;
+    const row = this.sql.exec<{ expires_at: number }>(`SELECT MAX(expires_at) AS expires_at FROM entitlements WHERE (user_id = ? AND status = 'active') OR (guest_id = ? AND status = 'active')`, userId, guestId).toArray()[0];
+    const expiresAt = typeof row?.expires_at === "number" ? row.expires_at : null;
+    this.accessCache.set(cacheKey, { checkedAt: now, expiresAt });
+    return expiresAt && expiresAt > now ? expiresAt : null;
   }
-  revoke(stripeSessionId: string) { this.sql.exec(`UPDATE entitlements SET status = 'revoked' WHERE stripe_session_id = ?`, stripeSessionId); }
-  audits(ownerId: string) { this.purge(); return this.sql.exec<{ id: string; created_at: number; expires_at: number; data: string }>(`SELECT id, created_at, expires_at, data FROM audits WHERE owner_id = ? ORDER BY created_at DESC`, ownerId).toArray().map((row) => ({ id: row.id, ownerId, createdAt: row.created_at, expiresAt: row.expires_at, data: JSON.parse(row.data) })); }
+  revoke(stripeSessionId: string) {
+    this.sql.exec(`UPDATE entitlements SET status = 'revoked' WHERE stripe_session_id = ?`, stripeSessionId);
+    this.accessCache.clear();
+    this.identityListCache = null;
+  }
+  audits(ownerId: string) {
+    this.purge();
+    const now = isoNow();
+    const cached = this.auditsCache.get(ownerId);
+    if (cached && now - cached.cachedAt < 15) return cached.value;
+    const value = this.sql.exec<{ id: string; created_at: number; expires_at: number; data: string }>(`SELECT id, created_at, expires_at, data FROM audits WHERE owner_id = ? ORDER BY created_at DESC`, ownerId).toArray().map((row) => ({ id: row.id, ownerId, createdAt: row.created_at, expiresAt: row.expires_at, data: JSON.parse(row.data) }));
+    this.auditsCache.set(ownerId, { cachedAt: now, value });
+    return value;
+  }
   saveAudit(ownerId: string, data: Record<string, unknown>) {
     this.purge();
     const serialized = JSON.stringify(data);
@@ -298,9 +362,10 @@ export class AccountStore {
     const now = isoNow();
     const id = crypto.randomUUID();
     this.sql.exec(`INSERT INTO audits VALUES (?, ?, ?, ?, ?)`, id, ownerId, now, now + 60 * 60 * 24 * 30, serialized);
+    this.auditsCache.delete(ownerId);
     return id;
   }
-  deleteAudit(ownerId: string, id: string) { this.sql.exec(`DELETE FROM audits WHERE id = ? AND owner_id = ?`, id, ownerId); }
+  deleteAudit(ownerId: string, id: string) { this.sql.exec(`DELETE FROM audits WHERE id = ? AND owner_id = ?`, id, ownerId); this.auditsCache.delete(ownerId); }
   saveEmailContact(userId: string, email: string) {
     const now = isoNow();
     this.sql.exec(`INSERT OR IGNORE INTO email_contacts (user_id, email, added_at, updated_at) VALUES (?, ?, ?, ?)`, userId, email, now, now);
@@ -320,10 +385,14 @@ export class AccountStore {
     } else {
       this.sql.exec(`INSERT INTO account_identity_contexts (user_id, email, consumer_seen_at, salesperson_seen_at, last_role, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, userId, nextEmail, consumerSeenAt, salespersonSeenAt, role, now, now);
     }
+    this.identityCache.delete(userId);
+    this.identityListCache = null;
     return true;
   }
   accountIdentities() {
-    return this.sql.exec<{
+    const now = isoNow();
+    if (this.identityListCache && now - this.identityListCache.cachedAt < 15) return this.identityListCache.value;
+    const value = this.sql.exec<{
       user_id: string;
       email: string;
       paid: number;
@@ -373,7 +442,7 @@ export class AccountStore {
       FROM account_identity_contexts AS contexts
       ORDER BY contexts.last_seen_at DESC
       LIMIT 1000
-    `, isoNow(), isoNow()).toArray().map((row) => ({
+    `, now, now).toArray().map((row) => ({
       userId: row.user_id,
       email: row.email,
       paid: row.paid === 1,
@@ -393,8 +462,13 @@ export class AccountStore {
       firstSeenAt: row.first_seen_at,
       lastSeenAt: row.last_seen_at,
     } satisfies AccountIdentity));
+    this.identityListCache = { cachedAt: now, value };
+    return value;
   }
   accountIdentity(userId: string) {
+    const now = isoNow();
+    const cached = this.identityCache.get(userId);
+    if (cached && now - cached.cachedAt < 15) return cached.value;
     const row = this.sql.exec<{
       user_id: string;
       email: string;
@@ -404,8 +478,11 @@ export class AccountStore {
       first_seen_at: number;
       last_seen_at: number;
     }>(`SELECT user_id, email, consumer_seen_at, salesperson_seen_at, last_role, first_seen_at, last_seen_at FROM account_identity_contexts WHERE user_id = ?`, userId).toArray()[0];
-    if (!row) return null;
-    return {
+    if (!row) {
+      this.identityCache.set(userId, { cachedAt: now, value: null });
+      return null;
+    }
+    const value = {
       userId: row.user_id,
       email: row.email,
       consumerSeenAt: row.consumer_seen_at,
@@ -414,6 +491,8 @@ export class AccountStore {
       firstSeenAt: row.first_seen_at,
       lastSeenAt: row.last_seen_at,
     };
+    this.identityCache.set(userId, { cachedAt: now, value });
+    return value;
   }
   marketingEnabled(userId: string) {
     return this.sql.exec<{ user_id: string }>(`
@@ -429,18 +508,26 @@ export class AccountStore {
     const now = isoNow();
     this.sql.exec(`INSERT OR IGNORE INTO marketing_preferences (user_id, email, opted_in_at, updated_at) VALUES (?, ?, ?, ?)`, userId, email, now, now);
     this.sql.exec(`UPDATE marketing_preferences SET email = ?, updated_at = ? WHERE user_id = ?`, email, now, userId);
+    this.marketingCache.delete(userId);
   }
   marketingOptedIn(userId: string) {
-    return this.marketingEnabled(userId);
+    const now = isoNow();
+    const cached = this.marketingCache.get(userId);
+    if (cached && now - cached.checkedAt < 15) return cached.value;
+    const value = this.marketingEnabled(userId);
+    this.marketingCache.set(userId, { checkedAt: now, value });
+    return value;
   }
   suppressMarketingEmail(email: string) {
     this.sql.exec(`INSERT OR REPLACE INTO marketing_suppressions (email, suppressed_at) VALUES (?, ?)`, email, isoNow());
     this.sql.exec(`DELETE FROM marketing_preferences WHERE lower(email) = lower(?)`, email);
+    this.marketingCache.clear();
   }
   clearMarketingOptIn(userId: string, email: string) {
     this.saveEmailContact(userId, email);
     this.suppressMarketingEmail(email);
     this.sql.exec(`DELETE FROM marketing_preferences WHERE user_id = ?`, userId);
+    this.marketingCache.delete(userId);
   }
   marketingActivity(userId: string, event: "scan_ready" | "checkout_started" | "purchase_completed") {
     const now = isoNow();

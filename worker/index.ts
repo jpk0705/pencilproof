@@ -706,12 +706,62 @@ const readCookie = (request: Request, name: string) => {
   return null;
 };
 
+const accountReadCacheablePaths = new Set([
+  "/user",
+  "/access",
+  "/access-summary",
+  "/account-summary",
+  "/account-identity",
+  "/marketing",
+  "/salesperson",
+]);
+type AccountReadState = {
+  cache: Map<string, { cachedAt: number; value: Record<string, unknown> | null }>;
+  inFlight: Map<string, Promise<Record<string, unknown> | null>>;
+};
+const accountReadStates = new WeakMap<object, AccountReadState>();
+const accountReadState = (env: Env): AccountReadState => {
+  const binding = env.ACCOUNTS as object;
+  const existing = accountReadStates.get(binding);
+  if (existing) return existing;
+  const created: AccountReadState = { cache: new Map(), inFlight: new Map() };
+  accountReadStates.set(binding, created);
+  return created;
+};
+
 const accountCall = async (env: Env, path: string, body: Record<string, unknown>) => {
   if (!env.ACCOUNTS) return null;
-  const response = await accountStub(env).fetch(new Request(`https://accounts.internal${path}`, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-  }));
-  return response.ok ? await response.json() as Record<string, unknown> : null;
+  const state = accountReadState(env);
+  const cacheable = accountReadCacheablePaths.has(path);
+  const cacheKey = cacheable ? `${path}:${JSON.stringify(body)}` : "";
+  const now = Date.now();
+  if (cacheable) {
+    const cached = state.cache.get(cacheKey);
+    if (cached && now - cached.cachedAt < 10_000) return cached.value;
+    const pending = state.inFlight.get(cacheKey);
+    if (pending) return pending;
+  }
+  const request = (async () => {
+    const response = await accountStub(env).fetch(new Request(`https://accounts.internal${path}`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    }));
+    const value = response.ok ? await response.json() as Record<string, unknown> : null;
+    if (cacheable) {
+      state.cache.set(cacheKey, { cachedAt: Date.now(), value });
+      if (state.cache.size > 256) {
+        const oldestKey = state.cache.keys().next().value;
+        if (typeof oldestKey === "string") state.cache.delete(oldestKey);
+      }
+    }
+    return value;
+  })();
+  if (!cacheable) return request;
+  state.inFlight.set(cacheKey, request);
+  try {
+    return await request;
+  } finally {
+    if (state.inFlight.get(cacheKey) === request) state.inFlight.delete(cacheKey);
+  }
 };
 
 const recordMarketingActivity = async (
