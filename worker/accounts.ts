@@ -222,6 +222,13 @@ export class AccountStore {
     this.lastPurgeAt = now;
     this.sql.exec(`DELETE FROM audits WHERE expires_at <= ?`, now);
   }
+  private trimCache<T>(cache: Map<string, T>, limit: number) {
+    while (cache.size > limit) {
+      const oldestKey = cache.keys().next().value;
+      if (typeof oldestKey !== "string") return;
+      cache.delete(oldestKey);
+    }
+  }
   user(providerSubject: string) {
     const cached = this.userCache.get(providerSubject);
     const now = isoNow();
@@ -230,6 +237,7 @@ export class AccountStore {
     if (existing) {
       const value = { id: existing.id, providerSubject: existing.provider_subject, createdAt: existing.created_at } satisfies User;
       this.userCache.set(providerSubject, { cachedAt: now, value });
+      this.trimCache(this.userCache, 512);
       return value;
     }
     const id = crypto.randomUUID();
@@ -237,6 +245,7 @@ export class AccountStore {
     this.sql.exec(`INSERT INTO users VALUES (?, ?, ?)`, id, providerSubject, createdAt);
     const value = { id, providerSubject, createdAt } satisfies User;
     this.userCache.set(providerSubject, { cachedAt: now, value });
+    this.trimCache(this.userCache, 512);
     return value;
   }
   sessionBootstrap(input: {
@@ -338,6 +347,7 @@ export class AccountStore {
     const row = this.sql.exec<{ expires_at: number }>(`SELECT MAX(expires_at) AS expires_at FROM entitlements WHERE (user_id = ? AND status = 'active') OR (guest_id = ? AND status = 'active')`, userId, guestId).toArray()[0];
     const expiresAt = typeof row?.expires_at === "number" ? row.expires_at : null;
     this.accessCache.set(cacheKey, { checkedAt: now, expiresAt });
+    this.trimCache(this.accessCache, 512);
     return expiresAt && expiresAt > now ? expiresAt : null;
   }
   revoke(stripeSessionId: string) {
@@ -352,6 +362,7 @@ export class AccountStore {
     if (cached && now - cached.cachedAt < 15) return cached.value;
     const value = this.sql.exec<{ id: string; created_at: number; expires_at: number; data: string }>(`SELECT id, created_at, expires_at, data FROM audits WHERE owner_id = ? ORDER BY created_at DESC`, ownerId).toArray().map((row) => ({ id: row.id, ownerId, createdAt: row.created_at, expiresAt: row.expires_at, data: JSON.parse(row.data) }));
     this.auditsCache.set(ownerId, { cachedAt: now, value });
+    this.trimCache(this.auditsCache, 256);
     return value;
   }
   saveAudit(ownerId: string, data: Record<string, unknown>) {
@@ -480,6 +491,7 @@ export class AccountStore {
     }>(`SELECT user_id, email, consumer_seen_at, salesperson_seen_at, last_role, first_seen_at, last_seen_at FROM account_identity_contexts WHERE user_id = ?`, userId).toArray()[0];
     if (!row) {
       this.identityCache.set(userId, { cachedAt: now, value: null });
+      this.trimCache(this.identityCache, 512);
       return null;
     }
     const value = {
@@ -492,6 +504,7 @@ export class AccountStore {
       lastSeenAt: row.last_seen_at,
     };
     this.identityCache.set(userId, { cachedAt: now, value });
+    this.trimCache(this.identityCache, 512);
     return value;
   }
   marketingEnabled(userId: string) {
@@ -516,6 +529,7 @@ export class AccountStore {
     if (cached && now - cached.checkedAt < 15) return cached.value;
     const value = this.marketingEnabled(userId);
     this.marketingCache.set(userId, { checkedAt: now, value });
+    this.trimCache(this.marketingCache, 512);
     return value;
   }
   suppressMarketingEmail(email: string) {
