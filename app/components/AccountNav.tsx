@@ -61,6 +61,9 @@ export default function AccountNav() {
     let unsubscribe: (() => void) | undefined;
     let profileListener: (() => void) | undefined;
     let previousSignedIn: boolean | null = null;
+    let previousUserId: string | null = null;
+    let previousEmail = "";
+    let previousContext: PencilProofAuthContext | null = null;
     void createLoadedClerk(publishableKey)
       .then((instance) => {
         if (cancelled) return;
@@ -68,9 +71,12 @@ export default function AccountNav() {
         setAuthReady(true);
         const initialSignedIn = Boolean(instance.user);
         previousSignedIn = initialSignedIn;
+        previousUserId = instance.user?.id ?? null;
+        previousEmail = instance.user?.primaryEmailAddress?.emailAddress.trim() ?? "";
         setSignedIn(initialSignedIn);
-        setSignedInEmail(instance.user?.primaryEmailAddress?.emailAddress.trim() ?? "");
+        setSignedInEmail(previousEmail);
         const context = getAuthContext();
+        previousContext = context;
         setAuthContext(context);
         if (instance.user) {
           void syncAccountContact(instance, context).then((resolvedSession) => {
@@ -96,16 +102,28 @@ export default function AccountNav() {
         unsubscribe = instance.addListener(() => {
           if (!cancelled) {
             const nextSignedIn = Boolean(instance.user);
+            const nextUserId = instance.user?.id ?? null;
+            const nextEmail = instance.user?.primaryEmailAddress?.emailAddress.trim() ?? "";
+            const nextContext = getAuthContext();
+            const accountChanged = previousSignedIn !== nextSignedIn
+              || previousUserId !== nextUserId
+              || previousEmail !== nextEmail
+              || previousContext !== nextContext;
             if (previousSignedIn === true && !nextSignedIn) {
               void clearServerAccountSession();
               setAccountSession(null);
             }
             previousSignedIn = nextSignedIn;
+            previousUserId = nextUserId;
+            previousEmail = nextEmail;
+            previousContext = nextContext;
             setSignedIn(nextSignedIn);
-            setSignedInEmail(instance.user?.primaryEmailAddress?.emailAddress.trim() ?? "");
-            const nextContext = getAuthContext();
+            setSignedInEmail(nextEmail);
             setAuthContext(nextContext);
-            if (instance.user) {
+            // Clerk also calls this listener for routine token refreshes. Those
+            // refreshes keep the browser signed in but do not represent an
+            // account change and must not re-run the Durable Object bootstrap.
+            if (instance.user && accountChanged) {
               void syncAccountContact(instance, nextContext).then((resolvedSession) => {
                 if (cancelled) return;
                 persistAuthContext(resolvedSession.role);

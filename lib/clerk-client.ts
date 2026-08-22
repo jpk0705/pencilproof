@@ -143,7 +143,12 @@ export const syncAccountContact = async (
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ email, token, role: authContext }),
+      body: JSON.stringify({
+        email,
+        token,
+        role: authContext,
+        ...(options.force ? { force: true } : {}),
+      }),
     }).catch(() => null);
     const data = response
       ? await response.json().catch(() => ({})) as AccountSessionResponse

@@ -729,6 +729,61 @@ const accountReadState = (env: Env): AccountReadState => {
   return created;
 };
 
+// A browser can refresh its Clerk token without changing the PencilProof
+// account. Keep a short-lived per-binding copy of the last successful session
+// response so an older client cannot turn that background refresh into a
+// Durable Object request every minute. Explicit force calls still reconcile
+// account changes immediately.
+const ACCOUNT_SESSION_BOOTSTRAP_CACHE_TTL_MS = 5 * 60 * 1000;
+type AccountSessionBootstrapState = {
+  cache: Map<string, { cachedAt: number; value: Record<string, unknown> }>;
+  inFlight: Map<string, Promise<Record<string, unknown> | null>>;
+};
+const accountSessionBootstrapStates = new WeakMap<object, AccountSessionBootstrapState>();
+const accountSessionBootstrapState = (env: Env): AccountSessionBootstrapState => {
+  const binding = env.ACCOUNTS as object;
+  const existing = accountSessionBootstrapStates.get(binding);
+  if (existing) return existing;
+  const created: AccountSessionBootstrapState = { cache: new Map(), inFlight: new Map() };
+  accountSessionBootstrapStates.set(binding, created);
+  return created;
+};
+
+const accountSessionBootstrapCall = async (
+  env: Env,
+  key: string,
+  body: Record<string, unknown>,
+  force: boolean,
+) => {
+  const state = accountSessionBootstrapState(env);
+  const now = Date.now();
+  if (!force) {
+    const cached = state.cache.get(key);
+    if (cached && now - cached.cachedAt < ACCOUNT_SESSION_BOOTSTRAP_CACHE_TTL_MS) return cached.value;
+  }
+  const pending = state.inFlight.get(key);
+  if (pending) return pending;
+
+  const request = (async () => {
+    const value = await accountCall(env, "/session-bootstrap", body);
+    if (value?.user && typeof value.user === "object") {
+      state.cache.set(key, { cachedAt: Date.now(), value });
+      while (state.cache.size > 256) {
+        const oldestKey = state.cache.keys().next().value;
+        if (typeof oldestKey !== "string") break;
+        state.cache.delete(oldestKey);
+      }
+    }
+    return value;
+  })();
+  state.inFlight.set(key, request);
+  try {
+    return await request;
+  } finally {
+    if (state.inFlight.get(key) === request) state.inFlight.delete(key);
+  }
+};
+
 const accountCall = async (env: Env, path: string, body: Record<string, unknown>) => {
   if (!env.ACCOUNTS) return null;
   const state = accountReadState(env);
@@ -1412,7 +1467,7 @@ const handleAccount = async (request: Request, env: Env) => {
     return new Response(null, { status: 204, headers: accountCorsHeaders(request, env) });
   }
   if (url.pathname === "/api/account/session" && request.method === "POST") {
-    const body = await request.json().catch(() => ({})) as { email?: string; token?: string; role?: AccountRole };
+    const body = await request.json().catch(() => ({})) as { email?: string; token?: string; role?: AccountRole; force?: boolean };
     const role: AccountRole = body.role === "salesperson" ? "salesperson" : "consumer";
     const provider = typeof body.token === "string" ? await verifyProviderToken(body.token, env) : null;
     if (!provider) return withAccountCors(Response.json({ error: "invalid_account_session" }, { status: 401, headers: noStoreHeaders }), request, env);
@@ -1421,7 +1476,7 @@ const handleAccount = async (request: Request, env: Env) => {
     const legacy = guestId ? await legacyAccountOrder(request, env) : null;
     let sessionResult: Record<string, unknown> | null = null;
     try {
-      sessionResult = await accountCall(env, "/session-bootstrap", {
+      sessionResult = await accountSessionBootstrapCall(env, `${provider.id}:${role}:${email}`, {
         providerSubject: provider.id,
         email,
         requestedRole: role,
@@ -1433,7 +1488,7 @@ const handleAccount = async (request: Request, env: Env) => {
               accessExpiresAt: legacy.accessExpiresAt,
             }
           : null,
-      });
+      }, body.force === true);
     } catch (error) {
       console.error("Account session bootstrap unavailable", {
         message: error instanceof Error ? error.message : "Unknown error",
