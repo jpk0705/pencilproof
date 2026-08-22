@@ -1121,38 +1121,56 @@ const runMarketingCampaign = async (env: Env, scheduledTime: number) => {
   }
   const now = Math.floor(scheduledTime / 1000);
   let failedDeliveries = 0;
+  const marketingDeliveryBatchSize = 100;
 
-  const deliver = async (
-    candidate: { email: string; userId: string },
+  const deliver = async <T extends { email: string; userId: string }>(
+    candidates: T[],
     campaignKey: string,
-    content: MarketingEmailContent,
+    contentFor: (candidate: T) => MarketingEmailContent,
   ) => {
-    if (!candidate.userId || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(candidate.email)) return;
-    const claim = await accountCall(env, "/marketing-delivery", {
-      action: "claim",
-      campaignKey,
-      userId: candidate.userId,
-    });
-    if (claim?.claimed !== true) return;
-    const sent = await sendMarketingEmail(candidate, content, env);
-    await accountCall(env, "/marketing-delivery", {
-      action: sent ? "complete" : "release",
-      campaignKey,
-      userId: candidate.userId,
-    });
-    if (!sent) failedDeliveries += 1;
+    const eligible = candidates.filter((candidate) => candidate.userId && /^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(candidate.email));
+    for (let offset = 0; offset < eligible.length; offset += marketingDeliveryBatchSize) {
+      const batch = eligible.slice(offset, offset + marketingDeliveryBatchSize);
+      const claim = await accountCall(env, "/marketing-delivery-batch", {
+        action: "claim",
+        campaignKey,
+        userIds: batch.map((candidate) => candidate.userId),
+      });
+      const claimedIds = new Set(
+        Array.isArray(claim?.claimed)
+          ? claim.claimed.filter((userId): userId is string => typeof userId === "string")
+          : [],
+      );
+      if (!claimedIds.size) continue;
+      const completedIds: string[] = [];
+      const releasedIds: string[] = [];
+      for (const candidate of batch) {
+        if (!claimedIds.has(candidate.userId)) continue;
+        let sent = false;
+        try {
+          sent = await sendMarketingEmail(candidate, contentFor(candidate), env);
+        } catch (error) {
+          console.error("Marketing email send exception", { message: error instanceof Error ? error.message : "Unknown error" });
+        }
+        if (sent) completedIds.push(candidate.userId);
+        else {
+          releasedIds.push(candidate.userId);
+          failedDeliveries += 1;
+        }
+      }
+      if (completedIds.length) await accountCall(env, "/marketing-delivery-batch", { action: "complete", campaignKey, userIds: completedIds });
+      if (releasedIds.length) await accountCall(env, "/marketing-delivery-batch", { action: "release", campaignKey, userIds: releasedIds });
+    }
   };
 
   const customerResult = await accountCall(env, "/marketing-candidates", { now });
-  for (const candidate of marketingCandidates(customerResult?.candidates)) {
-    if (slot.kind === "promotional" && candidate.lastPurchaseAt) continue;
-    await deliver(candidate, `customer:${slot.campaignKey}`, marketingEmailContent(candidate, now));
-  }
+  const customerCandidates = marketingCandidates(customerResult?.candidates)
+    .filter((candidate) => !(slot.kind === "promotional" && candidate.lastPurchaseAt));
+  await deliver(customerCandidates, `customer:${slot.campaignKey}`, (candidate) => marketingEmailContent(candidate, now));
 
   const salespersonResult = await accountCall(env, "/salesperson-marketing-candidates", { now });
-  for (const candidate of salespersonMarketingCandidates(salespersonResult?.candidates)) {
-    await deliver(candidate, `salesperson:${slot.campaignKey}`, salespersonEmailContent(now, slot.kind));
-  }
+  const salespersonCandidates = salespersonMarketingCandidates(salespersonResult?.candidates);
+  await deliver(salespersonCandidates, `salesperson:${slot.campaignKey}`, () => salespersonEmailContent(now, slot.kind));
 
   if (failedDeliveries > 0) {
     await sendMarketingAlert(

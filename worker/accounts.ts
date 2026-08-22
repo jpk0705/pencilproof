@@ -802,6 +802,25 @@ export class AccountStore {
       if (action === "release") { this.releaseMarketingDelivery(userId, campaignKey); return json({ released: true }); }
       return json({ error: "invalid_marketing_delivery_action" }, 400);
     }
+    if (path === "/marketing-delivery-batch") {
+      const campaignKey = typeof body.campaignKey === "string" ? body.campaignKey : "";
+      const action = body.action;
+      const rawUserIds = body.userIds;
+      const userIds = Array.isArray(rawUserIds) ? [...new Set(rawUserIds.filter((value): value is string => typeof value === "string"))] : [];
+      if (!/^[A-Za-z0-9_:-]{1,100}$/.test(campaignKey) || !userIds.length || userIds.length > 100 || !userIds.every((userId) => /^[A-Za-z0-9_:-]{8,200}$/.test(userId))) {
+        return json({ error: "invalid_marketing_delivery_batch" }, 400);
+      }
+      if (action === "claim") return json({ claimed: userIds.filter((userId) => this.claimMarketingDelivery(userId, campaignKey)) });
+      if (action === "complete") {
+        userIds.forEach((userId) => this.completeMarketingDelivery(userId, campaignKey));
+        return json({ completed: userIds.length });
+      }
+      if (action === "release") {
+        userIds.forEach((userId) => this.releaseMarketingDelivery(userId, campaignKey));
+        return json({ released: userIds.length });
+      }
+      return json({ error: "invalid_marketing_delivery_action" }, 400);
+    }
     if (path === "/salesperson") {
       const userId = typeof body.userId === "string" ? body.userId : "";
       if (!/^[A-Za-z0-9_:-]{8,200}$/.test(userId) || (body.action !== "get" && body.action !== "ensure")) return json({ error: "invalid_salesperson_profile" }, 400);
