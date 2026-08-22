@@ -3,54 +3,24 @@
 import Link from "next/link";
 import { Clerk } from "@clerk/clerk-js";
 import { useEffect, useState } from "react";
-import { authRedirectOptions, clearServerAccountSession, createLoadedClerk, getAuthContext, setAuthContext as persistAuthContext, type PencilProofAuthContext } from "@/lib/clerk-client";
+import { authRedirectOptions, clearServerAccountSession, createLoadedClerk, getAuthContext, setAuthContext as persistAuthContext, syncAccountContact, type PencilProofAccountSession, type PencilProofAuthContext } from "@/lib/clerk-client";
 
 const ACCOUNT_URL = "https://pencilproof.com/account";
-const ACCOUNT_API_URL = "https://audit.pencilproof.com";
 const SALES_URL = "https://pencilproof.com/sales";
 const PAID_AUDIT_URL = "https://audit.pencilproof.com/analyze/secure/";
 const PUBLIC_ANALYZE_URL = "https://pencilproof.com/analyze";
 
-type AccountSessionState = {
-  role: PencilProofAuthContext;
-  expiresAt: number | null;
-  email: string;
-};
+type AccountSessionState = PencilProofAccountSession;
 
 const sessionState = (data: { role?: string; expiresAt?: unknown; email?: unknown }, fallbackRole: PencilProofAuthContext, fallbackEmail: string): AccountSessionState => ({
+  ok: true,
   role: data.role === "salesperson" ? "salesperson" : fallbackRole,
   expiresAt: typeof data.expiresAt === "number" ? data.expiresAt : null,
   email: typeof data.email === "string" && data.email.trim() ? data.email.trim() : fallbackEmail,
+  audits: [],
+  marketingOptedIn: false,
+  salespersonProfile: null,
 });
-
-const syncAccountContact = async (instance: Clerk, authContext: PencilProofAuthContext): Promise<AccountSessionState> => {
-  const token = await instance.session?.getToken();
-  const email = instance.user?.primaryEmailAddress?.emailAddress.trim() ?? "";
-  if (!token) return { role: authContext, expiresAt: null, email };
-  const response = await fetch(`${ACCOUNT_API_URL}/api/account/session`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify({ email, token, role: authContext }),
-  }).catch(() => null);
-  const sessionData = response?.ok
-    ? await response.json().catch(() => ({})) as { role?: string; expiresAt?: unknown }
-    : {};
-  // The bootstrap response normally contains entitlement state. If that
-  // response was delayed or incomplete, immediately read the authenticated
-  // account summary before falling back to a public upload link. This keeps a
-  // paid account from being sent through the free scan and checkout again.
-  const summaryResponse = await fetch(`${ACCOUNT_API_URL}/api/account/me`, {
-    cache: "no-store",
-    credentials: "include",
-    headers: { Authorization: `Bearer ${token}` },
-  }).catch(() => null);
-  if (summaryResponse?.ok) {
-    const summary = await summaryResponse.json().catch(() => ({})) as { role?: string; expiresAt?: unknown; email?: unknown };
-    return sessionState({ ...sessionData, ...summary, email }, authContext, email);
-  }
-  return sessionState({ ...sessionData, email }, authContext, email);
-};
 
 const readAuditHostAccount = async (): Promise<AccountSessionState | null> => {
   const response = await fetch("/api/account/me", { cache: "no-store", credentials: "include" }).catch(() => null);
@@ -71,8 +41,9 @@ export default function AccountNav() {
 
   useEffect(() => {
     const isAuditHost = window.location.hostname.toLowerCase() === "audit.pencilproof.com";
+    const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
     let cancelled = false;
-    if (!isAuditHost) {
+    if (!isAuditHost || publishableKey) {
       setServerAccountReady(true);
     } else {
       void readAuditHostAccount().then((account) => {
@@ -82,7 +53,6 @@ export default function AccountNav() {
       });
     }
 
-    const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
     if (!publishableKey) {
       setAuthReady(true);
       return () => { cancelled = true; };
@@ -114,7 +84,7 @@ export default function AccountNav() {
           const nextContext = getAuthContext();
           setAuthContext(nextContext);
           if (instance.user) {
-            void syncAccountContact(instance, nextContext).then((resolvedSession) => {
+            void syncAccountContact(instance, nextContext, { force: true }).then((resolvedSession) => {
               if (cancelled) return;
               persistAuthContext(resolvedSession.role);
               setAuthContext(resolvedSession.role);

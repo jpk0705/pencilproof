@@ -4,7 +4,18 @@ import { Clerk } from "@clerk/clerk-js";
 
 export type PencilProofAuthContext = "consumer" | "salesperson";
 
+export type PencilProofAccountSession = {
+  ok: boolean;
+  role: PencilProofAuthContext;
+  expiresAt: number | null;
+  email: string;
+  audits: unknown[];
+  marketingOptedIn: boolean;
+  salespersonProfile: unknown | null;
+};
+
 const ACCOUNT_API_URL = "https://audit.pencilproof.com";
+const ACCOUNT_SESSION_CACHE_TTL_MS = 60_000;
 
 const AUTH_CONTEXT_STORAGE_KEY = "pencilproof-auth-context";
 
@@ -16,6 +27,24 @@ type ClerkWindow = Window & {
   __pencilProofClerkUiPromise?: Promise<void>;
   __pencilProofClerkPromise?: Promise<Clerk>;
 };
+
+type AccountSessionResponse = {
+  ok?: unknown;
+  role?: unknown;
+  expiresAt?: unknown;
+  email?: unknown;
+  audits?: unknown;
+  marketingOptedIn?: unknown;
+  salespersonProfile?: unknown;
+};
+
+type AccountSessionCacheEntry = {
+  value: PencilProofAccountSession;
+  cachedAt: number;
+};
+
+const accountSessionCache = new Map<string, AccountSessionCacheEntry>();
+const accountSessionInFlight = new Map<string, Promise<PencilProofAccountSession>>();
 
 const getClerkWindow = () => window as ClerkWindow;
 
@@ -73,6 +102,73 @@ export const createLoadedClerk = async (publishableKey: string) => {
   return clerkWindow.__pencilProofClerkPromise;
 };
 
+const accountSessionKey = (instance: Clerk, authContext: PencilProofAuthContext) =>
+  `${instance.user?.id ?? "anonymous"}:${authContext}`;
+
+const accountSessionFallback = (
+  authContext: PencilProofAuthContext,
+  email: string,
+): PencilProofAccountSession => ({
+  ok: false,
+  role: authContext,
+  expiresAt: null,
+  email,
+  audits: [],
+  marketingOptedIn: false,
+  salespersonProfile: null,
+});
+
+export const clearAccountSessionCache = () => {
+  accountSessionCache.clear();
+  accountSessionInFlight.clear();
+};
+
+export const syncAccountContact = async (
+  instance: Clerk,
+  authContext: PencilProofAuthContext,
+  options: { force?: boolean } = {},
+): Promise<PencilProofAccountSession> => {
+  const token = await instance.session?.getToken().catch(() => null);
+  const email = instance.user?.primaryEmailAddress?.emailAddress.trim() ?? "";
+  if (!token) return accountSessionFallback(authContext, email);
+
+  const key = accountSessionKey(instance, authContext);
+  const cached = accountSessionCache.get(key);
+  if (!options.force && cached && Date.now() - cached.cachedAt < ACCOUNT_SESSION_CACHE_TTL_MS) return cached.value;
+  const pending = accountSessionInFlight.get(key);
+  if (pending) return pending;
+
+  const request = (async () => {
+    const response = await fetch(`${ACCOUNT_API_URL}/api/account/session`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ email, token, role: authContext }),
+    }).catch(() => null);
+    const data = response
+      ? await response.json().catch(() => ({})) as AccountSessionResponse
+      : {};
+    const resolvedRole: PencilProofAuthContext = data.role === "salesperson" ? "salesperson" : authContext;
+    const value: PencilProofAccountSession = {
+      ok: Boolean(response?.ok && data.ok === true),
+      role: resolvedRole,
+      expiresAt: typeof data.expiresAt === "number" ? data.expiresAt : null,
+      email: typeof data.email === "string" && data.email.trim() ? data.email.trim() : email,
+      audits: Array.isArray(data.audits) ? data.audits : [],
+      marketingOptedIn: data.marketingOptedIn === true,
+      salespersonProfile: data.salespersonProfile && typeof data.salespersonProfile === "object" ? data.salespersonProfile : null,
+    };
+    if (value.ok) accountSessionCache.set(key, { value, cachedAt: Date.now() });
+    return value;
+  })();
+  accountSessionInFlight.set(key, request);
+  try {
+    return await request;
+  } finally {
+    if (accountSessionInFlight.get(key) === request) accountSessionInFlight.delete(key);
+  }
+};
+
 export const setAuthContext = (context: PencilProofAuthContext) => {
   window.sessionStorage.setItem(AUTH_CONTEXT_STORAGE_KEY, context);
 };
@@ -88,6 +184,7 @@ export const getAuthContext = (): PencilProofAuthContext => {
 };
 
 export const clearServerAccountSession = async () => {
+  clearAccountSessionCache();
   await fetch(`${ACCOUNT_API_URL}/api/account/logout`, {
     method: "POST",
     cache: "no-store",

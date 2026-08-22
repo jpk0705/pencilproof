@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Clerk } from "@clerk/clerk-js";
 import { CHECKOUT_URL } from "@/lib/checkout";
-import { authRedirectOptions, createLoadedClerk } from "@/lib/clerk-client";
+import { authRedirectOptions, createLoadedClerk, syncAccountContact } from "@/lib/clerk-client";
 
 type Props = {
   onContinue: () => void;
@@ -23,6 +23,10 @@ export default function PreCheckoutAccountGate({ onContinue, onPaidAccess }: Pro
   const [accessCheckVersion, setAccessCheckVersion] = useState(0);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const onPaidAccessRef = useRef(onPaidAccess);
+  useEffect(() => {
+    onPaidAccessRef.current = onPaidAccess;
+  }, [onPaidAccess]);
   useEffect(() => {
     if (!configured) return;
     const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
@@ -69,25 +73,15 @@ export default function PreCheckoutAccountGate({ onContinue, onPaidAccess }: Pro
     let cancelled = false;
     setAccountAccessState("checking");
     void (async () => {
-      const token = await clerk.session?.getToken().catch(() => null);
-      if (!token) {
-        if (!cancelled) setAccountAccessState("unavailable");
-        return;
-      }
-      const response = await fetch(accountEndpoint("/api/account/me"), {
-        cache: "no-store",
-        credentials: "include",
-        headers: { Authorization: `Bearer ${token}` },
-      }).catch(() => null);
+      const session = await syncAccountContact(clerk, "consumer", { force: accessCheckVersion > 0 });
       if (cancelled) return;
-      if (!response?.ok) {
+      if (!session.ok) {
         setAccountAccessState("unavailable");
         return;
       }
-      const data = await response.json().catch(() => ({})) as { expiresAt?: unknown };
-      if (typeof data.expiresAt === "number" && data.expiresAt > Math.floor(Date.now() / 1000)) {
+      if (typeof session.expiresAt === "number" && session.expiresAt > Math.floor(Date.now() / 1000)) {
         setAccountAccessState("paid");
-        onPaidAccess?.();
+        onPaidAccessRef.current?.();
       } else {
         setAccountAccessState("not_paid");
       }
@@ -95,7 +89,7 @@ export default function PreCheckoutAccountGate({ onContinue, onPaidAccess }: Pro
     return () => {
       cancelled = true;
     };
-  }, [accessCheckVersion, clerk, clerk?.session?.id, clerk?.user?.id, onPaidAccess]);
+  }, [accessCheckVersion, clerk, clerk?.session?.id, clerk?.user?.id]);
 
   const continueAsAccount = async () => {
     if (!clerk?.user || !clerk.session) {
@@ -110,16 +104,8 @@ export default function PreCheckoutAccountGate({ onContinue, onPaidAccess }: Pro
     setBusy(true);
     setMessage("");
     try {
-      const token = await clerk.session.getToken();
-      if (!token) throw new Error("account_session");
-      const email = clerk.user.primaryEmailAddress?.emailAddress.trim().toLowerCase() ?? "";
-      const sessionResponse = await fetch(accountEndpoint("/api/account/session"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ email, token, role: "consumer" }),
-      });
-      if (!sessionResponse.ok) throw new Error("account_session");
+      const session = await syncAccountContact(clerk, "consumer", { force: true });
+      if (!session.ok) throw new Error("account_session");
 
       await fetch(accountEndpoint("/api/account/marketing/activity"), {
         method: "POST",

@@ -236,7 +236,15 @@ export class AccountStore {
     const expiresAt = profile?.subscriptionStatus === "active"
       ? isoNow() + 60 * 60 * 24
       : this.hasAccess(user.id, null);
-    return { user, role, expiresAt };
+    return {
+      user,
+      role,
+      expiresAt,
+      audits: this.audits(`user:${user.id}`),
+      marketingOptedIn: this.marketingOptedIn(user.id),
+      identity: this.accountIdentity(user.id),
+      salespersonProfile: profile,
+    };
   }
   accessSummary(userId: string | null, guestId: string | null) {
     const profile = userId ? this.salesperson({ action: "get", userId }) : null;

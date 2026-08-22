@@ -84,9 +84,13 @@ const makeAccountNamespace = (subscriptionStatus: string | null): Env["ACCOUNTS"
     fetch: async (request: Request) => {
       const path = new URL(request.url).pathname;
       if (path === "/session-bootstrap") return Response.json({
+        ok: true,
         user: { id: "account-session-user" },
         role: subscriptionStatus ? "salesperson" : "consumer",
         expiresAt: subscriptionStatus === "active" ? Math.floor(Date.now() / 1000) + 86400 : null,
+        audits: [],
+        marketingOptedIn: false,
+        salespersonProfile: subscriptionStatus ? { subscriptionStatus } : null,
       });
       if (path === "/access-summary") return Response.json({
         expiresAt: subscriptionStatus === "active" ? Math.floor(Date.now() / 1000) + 86400 : null,

@@ -4,7 +4,7 @@ import Link from "next/link";
 import QRCode from "qrcode";
 import { Clerk } from "@clerk/clerk-js";
 import { useEffect, useMemo, useState } from "react";
-import { authRedirectOptions, clearServerAccountSession, createLoadedClerk, getAuthContext, setAuthContext as persistAuthContext } from "@/lib/clerk-client";
+import { authRedirectOptions, clearServerAccountSession, createLoadedClerk, getAuthContext, setAuthContext as persistAuthContext, syncAccountContact } from "@/lib/clerk-client";
 import { flushAnalyticsQueue, track } from "@/lib/analytics";
 import { SiteNav } from "@/app/components/SiteChrome";
 import SalesCoach from "@/app/components/SalesCoach";
@@ -110,24 +110,23 @@ export default function SalespersonPage() {
   useEffect(() => {
     if (!clerk?.user || !clerk.session) return;
     void (async () => {
-      const token = await clerk.session?.getToken();
-      if (!token) return;
       const requestedRole = getAuthContext();
-      const response = await fetch(`${SALES_API_URL}/api/account/session`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ email, token, role: requestedRole }),
-      });
-      const data = await response.json().catch(() => ({})) as { role?: string };
-      const resolvedRole = data.role === "salesperson" ? "salesperson" : "consumer";
+      const session = await syncAccountContact(clerk, requestedRole);
+      const resolvedRole = session.role;
       persistAuthContext(resolvedRole);
-      if (!response.ok || resolvedRole !== "salesperson") {
+      if (!session.ok || resolvedRole !== "salesperson") {
         setRoleBlocked(true);
         return;
       }
       setRoleBlocked(false);
-      await refresh();
+      const nextProfile = session.salespersonProfile as Profile | null;
+      setProfile(nextProfile);
+      if (nextProfile?.displayName) setDisplayName(nextProfile.displayName);
+      if (nextProfile && isActive(nextProfile.subscriptionStatus)) {
+        setSavedAudits(uniqueRealAudits((session.audits ?? []) as SavedAudit[]));
+      } else {
+        setSavedAudits([]);
+      }
     })();
   }, [clerk, email]);
 

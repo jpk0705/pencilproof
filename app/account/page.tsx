@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Clerk } from "@clerk/clerk-js";
 import { useEffect, useState, type ReactNode } from "react";
-import { authRedirectOptions, clearServerAccountSession, createLoadedClerk, getAuthContext } from "@/lib/clerk-client";
+import { authRedirectOptions, clearServerAccountSession, createLoadedClerk, getAuthContext, syncAccountContact } from "@/lib/clerk-client";
 import { flushAnalyticsQueue, track } from "@/lib/analytics";
 import { SiteNav } from "@/app/components/SiteChrome";
 import AuditComparison, { type AuditComparisonRecord } from "@/app/components/AuditComparison";
@@ -60,33 +60,15 @@ export default function AccountPage() {
       setAccountRole(role);
       if (role === "salesperson") return;
       const token = await clerk.session?.getToken();
-      const email = clerk.user?.primaryEmailAddress?.emailAddress.trim().toLowerCase() ?? "";
       setAccountToken(token ?? null);
-      if (token) {
-        await fetch(`${ACCOUNT_API_URL}/api/account/session`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ email, token, role: "consumer" }),
-        });
-      }
-      const response = await fetch(`${ACCOUNT_API_URL}/api/account/me`, {
-        cache: "no-store",
-        credentials: "include",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      });
-      if (!response.ok) return;
-      const data = await response.json() as {
-        audits?: Audit[];
-        expiresAt?: number | null;
-        role?: "consumer" | "salesperson";
-      };
-      if (data.role === "salesperson") {
+      const session = await syncAccountContact(clerk, "consumer");
+      if (!session.ok) return;
+      if (session.role === "salesperson") {
         setAccountRole("salesperson");
         return;
       }
-      setAudits(uniqueRealAudits(data.audits ?? []));
-      const nextExpiresAt = data.expiresAt ?? null;
+      setAudits(uniqueRealAudits((session.audits ?? []) as Audit[]));
+      const nextExpiresAt = session.expiresAt;
       setExpiresAt(nextExpiresAt);
       if (nextExpiresAt && nextExpiresAt > Math.floor(Date.now() / 1000)) {
         setAuditPath("https://audit.pencilproof.com/analyze/secure/");

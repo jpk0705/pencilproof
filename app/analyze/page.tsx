@@ -29,7 +29,7 @@ import PhoneCameraBridge from "@/app/components/PhoneCameraBridge";
 import PreCheckoutAccountGate from "@/app/components/PreCheckoutAccountGate";
 import PreCheckoutFeedback from "@/app/components/PreCheckoutFeedback";
 import AccountNav from "@/app/components/AccountNav";
-import { createLoadedClerk } from "@/lib/clerk-client";
+import { createLoadedClerk, getAuthContext, syncAccountContact } from "@/lib/clerk-client";
 
 type Deal = {
   vehicle: string;
@@ -360,16 +360,23 @@ export default function AnalyzePage() {
     }
     setAccountRoleKnown(false);
     let current = true;
-    void fetch("/api/account/me", { cache: "no-store", credentials: "include" })
-      .then((response) => response.ok ? response.json() as Promise<{ role?: string }> : null)
-      .then((data) => {
-        if (!current) return;
-        setAccountRole(data?.role === "salesperson" ? "salesperson" : "consumer");
-        setAccountRoleKnown(true);
-      })
-      .catch(() => {
+    const loadRole = async () => {
+      const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+      if (!publishableKey) {
         if (current) setAccountRoleKnown(true);
-      });
+        return;
+      }
+      const clerk = await createLoadedClerk(publishableKey).catch(() => null);
+      if (!current || !clerk?.user || !clerk.session) {
+        if (current) setAccountRoleKnown(true);
+        return;
+      }
+      const session = await syncAccountContact(clerk, getAuthContext());
+      if (!current) return;
+      setAccountRole(session.role === "salesperson" ? "salesperson" : "consumer");
+      setAccountRoleKnown(true);
+    };
+    void loadRole();
     return () => { current = false; };
   }, [isPaidAuditHost]);
 

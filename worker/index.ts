@@ -1376,10 +1376,19 @@ const handleAccount = async (request: Request, env: Env) => {
     if (!user?.id) return withAccountCors(Response.json({ error: "account_unavailable" }, { status: 503, headers: noStoreHeaders }), request, env);
     const resolvedRole: AccountRole = sessionResult?.role === "salesperson" ? "salesperson" : "consumer";
     const expiresAt = typeof sessionResult?.expiresAt === "number" ? sessionResult.expiresAt : null;
+    const identity = sessionResult?.identity as { email?: unknown } | null | undefined;
     const headers = new Headers(noStoreHeaders);
     headers.append("Set-Cookie", await accountCookie(user.id, env.SESSION_SECRET));
     headers.append("Set-Cookie", await accountRoleCookie(resolvedRole, env.SESSION_SECRET));
-    return withAccountCors(Response.json({ ok: true, role: resolvedRole, expiresAt }, { headers }), request, env);
+    return withAccountCors(Response.json({
+      ok: true,
+      role: resolvedRole,
+      expiresAt,
+      email: typeof identity?.email === "string" ? identity.email : email,
+      audits: Array.isArray(sessionResult?.audits) ? sessionResult.audits : [],
+      marketingOptedIn: sessionResult?.marketingOptedIn === true,
+      salespersonProfile: sessionResult?.salespersonProfile ?? null,
+    }, { headers }), request, env);
   }
   if (url.pathname === "/api/account/logout" && request.method === "POST") {
    const headers = new Headers(noStoreHeaders);
