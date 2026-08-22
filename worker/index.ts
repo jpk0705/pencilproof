@@ -750,28 +750,28 @@ const accountSessionBootstrapState = (env: Env): AccountSessionBootstrapState =>
   return created;
 };
 
-const accountSessionGuardRequest = async (key: string) => {
+const accountSessionGuardRequest = async (env: Env, key: string) => {
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", encoder.encode(key)));
-  return new Request(`https://pencilproof-session-guard.invalid/${base64UrlEncode(digest)}`);
+  return new Request(`${new URL(env.SITE_ORIGIN).origin}/__pencilproof-session-guard/${base64UrlEncode(digest)}`);
 };
 
-const accountSessionGuardActive = async (key: string) => {
+const accountSessionGuardActive = async (env: Env, key: string) => {
   try {
     const cacheStorage = (globalThis as typeof globalThis & { caches?: CacheStorage }).caches;
     if (!cacheStorage) return false;
-    return Boolean(await cacheStorage.default.match(await accountSessionGuardRequest(key)));
+    return Boolean(await cacheStorage.default.match(await accountSessionGuardRequest(env, key)));
   } catch {
     return false;
   }
 };
 
-const markAccountSessionGuard = async (key: string) => {
+const markAccountSessionGuard = async (env: Env, key: string) => {
   try {
     const cacheStorage = (globalThis as typeof globalThis & { caches?: CacheStorage }).caches;
     if (!cacheStorage) return;
     await cacheStorage.default.put(
-      await accountSessionGuardRequest(key),
-      new Response("retry later", { status: 429, headers: { "Cache-Control": "max-age=300" } }),
+      await accountSessionGuardRequest(env, key),
+      new Response("retry later", { headers: { "Cache-Control": "max-age=300" } }),
     );
   } catch {
     // The in-memory guard below remains active when the edge cache is absent.
@@ -791,7 +791,7 @@ const accountSessionBootstrapCall = async (
     if (cached && now - cached.cachedAt < ACCOUNT_SESSION_BOOTSTRAP_CACHE_TTL_MS) return cached.value;
     const failedUntil = state.failedUntil.get(key) ?? 0;
     if (failedUntil > now) return null;
-    if (await accountSessionGuardActive(key)) {
+    if (await accountSessionGuardActive(env, key)) {
       state.failedUntil.set(key, now + ACCOUNT_SESSION_BOOTSTRAP_CACHE_TTL_MS);
       return null;
     }
@@ -813,7 +813,7 @@ const accountSessionBootstrapCall = async (
       // If the namespace is temporarily unavailable, do not let an older
       // browser retry the same failed Durable Object request every minute.
       state.failedUntil.set(key, Date.now() + ACCOUNT_SESSION_BOOTSTRAP_CACHE_TTL_MS);
-      await markAccountSessionGuard(key);
+      await markAccountSessionGuard(env, key);
     }
     return value;
   })();
