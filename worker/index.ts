@@ -737,6 +737,7 @@ const accountReadState = (env: Env): AccountReadState => {
 const ACCOUNT_SESSION_BOOTSTRAP_CACHE_TTL_MS = 5 * 60 * 1000;
 type AccountSessionBootstrapState = {
   cache: Map<string, { cachedAt: number; value: Record<string, unknown> }>;
+  failedUntil: Map<string, number>;
   inFlight: Map<string, Promise<Record<string, unknown> | null>>;
 };
 const accountSessionBootstrapStates = new WeakMap<object, AccountSessionBootstrapState>();
@@ -744,7 +745,7 @@ const accountSessionBootstrapState = (env: Env): AccountSessionBootstrapState =>
   const binding = env.ACCOUNTS as object;
   const existing = accountSessionBootstrapStates.get(binding);
   if (existing) return existing;
-  const created: AccountSessionBootstrapState = { cache: new Map(), inFlight: new Map() };
+  const created: AccountSessionBootstrapState = { cache: new Map(), failedUntil: new Map(), inFlight: new Map() };
   accountSessionBootstrapStates.set(binding, created);
   return created;
 };
@@ -760,6 +761,8 @@ const accountSessionBootstrapCall = async (
   if (!force) {
     const cached = state.cache.get(key);
     if (cached && now - cached.cachedAt < ACCOUNT_SESSION_BOOTSTRAP_CACHE_TTL_MS) return cached.value;
+    const failedUntil = state.failedUntil.get(key) ?? 0;
+    if (failedUntil > now) return null;
   }
   const pending = state.inFlight.get(key);
   if (pending) return pending;
@@ -768,11 +771,16 @@ const accountSessionBootstrapCall = async (
     const value = await accountCall(env, "/session-bootstrap", body);
     if (value?.user && typeof value.user === "object") {
       state.cache.set(key, { cachedAt: Date.now(), value });
+      state.failedUntil.delete(key);
       while (state.cache.size > 256) {
         const oldestKey = state.cache.keys().next().value;
         if (typeof oldestKey !== "string") break;
         state.cache.delete(oldestKey);
       }
+    } else if (!force) {
+      // If the namespace is temporarily unavailable, do not let an older
+      // browser retry the same failed Durable Object request every minute.
+      state.failedUntil.set(key, Date.now() + ACCOUNT_SESSION_BOOTSTRAP_CACHE_TTL_MS);
     }
     return value;
   })();
