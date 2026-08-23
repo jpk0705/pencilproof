@@ -1057,6 +1057,7 @@ h3,
 
 .hero {
   position: relative;
+  overflow: hidden;
   min-height: 680px;
   padding-top: 70px;
   padding-bottom: 82px;
