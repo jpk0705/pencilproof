@@ -48,7 +48,7 @@ const colors = {
   danger: "#ffb4ab",
 };
 
-type Screen = "home" | "auth" | "review" | "survey" | "audits" | "auditDetail" | "account";
+type Screen = "home" | "auth" | "review" | "survey" | "audits" | "auditDetail" | "account" | "salesDashboard";
 type AuthStrategy = "oauth_google" | "oauth_apple" | "oauth_facebook";
 type AccountRole = "consumer" | "salesperson";
 type CompareSlot = "first" | "second" | null;
@@ -560,7 +560,7 @@ function PencilProofApp() {
       <Pressable accessibilityLabel="PencilProof home" onPress={() => setScreen("home")} style={styles.brandLockup}><BrandMark /><Text style={styles.brand}>PencilProof</Text></Pressable>
       <View style={styles.navLinks}>
         {isSignedIn && accountRole === "consumer" ? <Pressable onPress={() => { setScreen("audits"); void loadAudits(); }}><Text style={styles.navLink}>My Audits</Text></Pressable> : null}
-        {isSignedIn && accountRole === "salesperson" ? <Pressable onPress={() => void Linking.openURL("https://pencilproof.com/sales")}><Text style={styles.navLink}>Sales Dashboard</Text></Pressable> : null}
+        {isSignedIn && accountRole === "salesperson" ? <Pressable onPress={() => setScreen("salesDashboard")}><Text style={styles.navLink}>Sales Dashboard</Text></Pressable> : null}
         <Pressable accessibilityLabel={isSignedIn ? "Account" : "Sign in"} onPress={() => { if (!isSignedIn) setAuthContext("consumer"); setScreen(isSignedIn ? "account" : "auth"); }}><Text style={styles.navLink}>{isSignedIn ? "Account" : "Sign in"}</Text></Pressable>
       </View>
     </View>
@@ -613,12 +613,35 @@ function PencilProofApp() {
           <Text style={styles.eyebrow}>SIGNED IN</Text>
           <Text style={styles.cardBody}>{email || "Your PencilProof account"}{accountRole === "salesperson" ? " · Salesperson" : " · Consumer"}</Text>
           {accountRole === "salesperson" ? (
-            <Button secondary onPress={() => void Linking.openURL("https://pencilproof.com/sales")}>Open Salesperson Dashboard</Button>
+            <Button secondary onPress={() => setScreen("salesDashboard")}>Open Salesperson Dashboard</Button>
           ) : (
             <Button secondary onPress={() => { setScreen("audits"); void loadAudits(); }}>Open My Audits</Button>
           )}
         </View>
       )}
+    </>
+  );
+
+  const renderSalesDashboard = () => (
+    <>
+      <SectionTitle
+        eyebrow="SALESPERSON DASHBOARD"
+        title="Keep the next quote conversation clear."
+        body={`Signed in as ${email || "your verified account"}. Your salesperson tools stay inside the app.`}
+      />
+      <View style={styles.dashboardCard}>
+        <Text style={styles.eyebrow}>YOUR TOOLS</Text>
+        <Text style={styles.cardTitle}>Move from quote to answer without leaving PencilProof.</Text>
+        <Text style={styles.cardBody}>Review saved audits, start another quote, and keep your account access in one place.</Text>
+        <Button onPress={() => { setScreen("audits"); void loadAudits(); }}>Open saved audits</Button>
+        <Button secondary onPress={() => setScreen("home")}>Review another quote</Button>
+      </View>
+      <View style={styles.dashboardCard}>
+        <Text style={styles.eyebrow}>SALESPERSON ACCESS</Text>
+        <Text style={styles.cardTitle}>{isActive(expiresAt) ? "Subscription active" : "Subscription status"}</Text>
+        <Text style={styles.cardBody}>{isActive(expiresAt) ? `Available through ${formatDate(expiresAt)}.` : "Your dashboard is connected. Check your account for subscription details."}</Text>
+        <Button secondary onPress={() => setScreen("account")}>Open account</Button>
+      </View>
     </>
   );
 
@@ -743,10 +766,10 @@ function PencilProofApp() {
 
   const renderAudits = () => (
     <>
-      <SectionTitle eyebrow="MY AUDITS" title="Your saved audit history."
+      <SectionTitle eyebrow={accountRole === "salesperson" ? "SALESPERSON SAVED AUDITS" : "MY AUDITS"} title="Your saved audit history."
         body={!isSignedIn ? "Sign in to see audits connected to this account." : expiresAt ? `Your account access is available through ${formatDate(expiresAt)}.` : "Your saved paid audits will appear here after you complete one while signed in."} />
       {busy ? <ActivityIndicator color={colors.gold} /> : null}
-      {accountRole === "salesperson" ? <View style={styles.roleBanner}><Text style={styles.eyebrow}>SALESPERSON ACCOUNT</Text><Text style={styles.cardBody}>Salesperson audits belong in the salesperson dashboard.</Text><Button secondary onPress={() => void Linking.openURL("https://pencilproof.com/sales")}>Open Salesperson Dashboard</Button></View> : null}
+      {accountRole === "salesperson" ? <View style={styles.roleBanner}><Text style={styles.eyebrow}>SALESPERSON ACCOUNT</Text><Text style={styles.cardBody}>These are your saved salesperson audits. Use the dashboard to start another review.</Text><Button secondary onPress={() => setScreen("salesDashboard")}>Back to Sales Dashboard</Button></View> : null}
       {!busy && audits.length === 0 ? <View style={styles.emptyCard}><Text style={styles.cardTitle}>No saved audits yet.</Text><Text style={styles.cardBody}>Complete a paid audit while signed in and it will appear here.</Text><Button onPress={() => setScreen("home")}>Review a quote</Button></View> : null}
       {audits.map((audit) => (
         <Pressable accessibilityRole="button" key={audit.id} onPress={() => openSavedAudit(audit.id)} style={styles.auditCard}>
@@ -791,7 +814,7 @@ function PencilProofApp() {
     ];
     return (
       <>
-        <Button secondary onPress={() => { setSelectedAudit(null); setScreen("audits"); }}>Back to My Audits</Button>
+        <Button secondary onPress={() => { setSelectedAudit(null); setScreen(accountRole === "salesperson" ? "salesDashboard" : "audits"); }}>{accountRole === "salesperson" ? "Back to Sales Dashboard" : "Back to My Audits"}</Button>
         <SectionTitle
           eyebrow="SAVED AUDIT"
           title={displayText(data.vehicle, "Saved quote audit")}
@@ -837,8 +860,8 @@ function PencilProofApp() {
           body={`Signed in as ${email || "your verified account"}.`} />
         <View style={styles.accountCard}>
           <Text style={styles.cardTitle}>Account access</Text>
-          <Text style={styles.cardBody}>Signed in as {email || "your verified account"}. Use My Audits to view saved purchase history.</Text>
-          {accountRole === "salesperson" ? <Button secondary onPress={() => void Linking.openURL("https://pencilproof.com/sales")}>Open Salesperson Dashboard</Button> : null}
+          <Text style={styles.cardBody}>Signed in as {email || "your verified account"}. {accountRole === "salesperson" ? "Use the Sales Dashboard to manage salesperson tools and saved audits." : "Use My Audits to view saved purchase history."}</Text>
+          {accountRole === "salesperson" ? <Button secondary onPress={() => setScreen("salesDashboard")}>Open Salesperson Dashboard</Button> : null}
           <Button secondary onPress={() => { setAuthContext("consumer"); void signOut(); }}>Sign out</Button>
         </View>
         <View style={styles.accountCard}>
@@ -870,6 +893,7 @@ function PencilProofApp() {
   if (screen === "audits") content = renderAudits();
   if (screen === "auditDetail") content = renderAuditDetail();
   if (screen === "account") content = isSignedIn ? renderAccount() : renderHome();
+  if (screen === "salesDashboard") content = isSignedIn && accountRole === "salesperson" ? renderSalesDashboard() : renderHome();
 
   if (booting) {
     return (
@@ -948,6 +972,7 @@ const styles = StyleSheet.create({
   featureCard: { backgroundColor: colors.panel, borderColor: colors.border, borderWidth: 1, borderRadius: 14, padding: 18, gap: 12 },
   signInCard: { backgroundColor: colors.panelStrong, borderColor: colors.border, borderWidth: 1, borderRadius: 14, padding: 18, gap: 12 },
   accountStrip: { backgroundColor: colors.panel, borderColor: colors.border, borderWidth: 1, borderRadius: 14, padding: 18, gap: 12 },
+  dashboardCard: { backgroundColor: colors.panelStrong, borderColor: colors.border, borderWidth: 1, borderRadius: 16, padding: 18, gap: 13 },
   cardTitle: { color: colors.text, fontSize: 21, lineHeight: 27, fontWeight: "700", flexShrink: 1 },
   cardBody: { color: colors.muted, fontSize: 15, lineHeight: 22, flexShrink: 1 },
   button: { minHeight: 50, borderRadius: 10, backgroundColor: colors.gold, paddingHorizontal: 18, paddingVertical: 14, alignItems: "center", justifyContent: "center" },

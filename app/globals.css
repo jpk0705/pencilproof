@@ -2001,3 +2001,19 @@ h1 { font-weight: 700; letter-spacing: -.055em; }
   .nav-account-email { max-width: 92px; font-size: 9px; }
   .nav-links > a.nav-cta { display: inline-flex; }
 }
+
+/* Keep the authenticated navigation inside narrow mobile viewports. The
+   earlier mobile rule made the link row non-shrinkable, which allowed the
+   desktop-width nav to create horizontal page scrolling. */
+@media (max-width: 680px) {
+  .site-nav,
+  .analyzer-nav { width: calc(100% - 24px); min-width: 0; }
+  .site-nav .brand,
+  .analyzer-nav .brand { min-width: 0; flex: 1 1 auto; overflow: hidden; white-space: nowrap; }
+  .site-nav .nav-links,
+  .analyzer-nav .nav-links { min-width: 0; max-width: calc(100% - 122px); flex: 0 1 auto; gap: 6px; overflow: hidden; }
+  .site-nav .nav-account-session,
+  .analyzer-nav .nav-account-session { min-width: 0; max-width: 100%; }
+  .site-nav .nav-cta,
+  .analyzer-nav .nav-cta { max-width: 116px; overflow: hidden; text-overflow: ellipsis; }
+}
