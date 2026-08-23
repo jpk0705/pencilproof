@@ -546,6 +546,61 @@ test("AI import reports a stable Gemini quota diagnostic", async () => {
   assert.equal(generateCalls, 3);
 });
 
+test("AI import keeps itemized product amounts aligned with category totals", async () => {
+  const env = makeEnv();
+  env.GEMINI_API_KEY = "test-gemini-key";
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith("/v1beta/models")) return Response.json({ models: [] });
+    return Response.json({
+      candidates: [{
+        content: {
+          parts: [{
+            text: JSON.stringify({
+              vehicle: "2026 Example SUV",
+              sellingPrice: 50000,
+              tax: 4000,
+              accessories: 3897,
+              prepaidMaintenance: 2756,
+              apr: 8.49,
+              term: 75,
+              quotedPayment: 825.72,
+              productItems: [
+                { name: "Theft DNA DLP", amount: 199, category: "accessories" },
+                { name: "Appearance", amount: 699, category: "accessories" },
+                { name: "Connected Car 5 Year Plan", amount: 999, category: "accessories" },
+                { name: "Ally Multi Protection Bundle", amount: 2756, category: "prepaidMaintenance" },
+              ],
+              warnings: ["Accessories includes Ally Multi Protection Bundle ($2,000.00)."],
+            }),
+          }],
+        },
+      }],
+    });
+  };
+
+  const response = await handleRequest(
+    new Request("https://audit.pencilproof.com/api/ai-import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: "https://pencilproof.com" },
+      body: JSON.stringify({ base64: "aGVsbG8=", mimeType: "image/jpeg" }),
+    }),
+    env,
+  );
+  const result = await response.json() as {
+    fields: { accessories?: number; prepaidMaintenance?: number };
+    warnings: string[];
+    productItems: Array<{ name: string; amount: number; category: string }>;
+  };
+
+  assert.equal(response.status, 200);
+  assert.equal(result.fields.accessories, 1897);
+  assert.equal(result.fields.prepaidMaintenance, 2756);
+  assert.equal(result.productItems.find((item) => item.name === "Ally Multi Protection Bundle")?.amount, 2756);
+  assert.equal(result.warnings.some((warning) => warning.includes("$2,000.00")), false);
+  assert.match(result.warnings.join(" "), /Ally Multi Protection Bundle \(\$2,756\.00\)/);
+});
+
 test("AI import preserves vehicle identity when Gemini returns a structured identity", () => {
   assert.equal(
     normalizeImportedVehicle({ year: 2024, make: "Cadillac", model: "CT5-V", trim: "Blackwing" }),

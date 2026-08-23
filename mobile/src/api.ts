@@ -27,6 +27,11 @@ export type Audit = {
 
 export type ImportResult = {
   fields: QuoteFields;
+  productItems?: Array<{
+    name: string;
+    amount: number;
+    category: "serviceContract" | "gap" | "prepaidMaintenance" | "tireWheel" | "accessories";
+  }>;
   offerMatrix?: {
     options: Array<{
       id: string;

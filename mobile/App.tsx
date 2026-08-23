@@ -687,7 +687,19 @@ function PencilProofApp() {
           </View>
         ))}
       </View>
-      {quote?.warnings?.map((warning) => <Text key={warning} style={styles.warning}>Review: {warning}</Text>)}
+      {quote?.productItems?.length ? (
+        <View style={styles.productReviewCard} accessibilityLabel="Imported product details">
+          <Text style={styles.productReviewEyebrow}>PRODUCT DETAILS FROM THE QUOTE</Text>
+          <Text style={styles.productReviewBody}>These itemized amounts are tied to the category totals above. Compare each one with the original document.</Text>
+          {quote.productItems.map((item) => (
+            <View key={`${item.category}-${item.name}-${item.amount}`} style={styles.productReviewRow}>
+              <Text style={styles.productReviewName}>{item.name}</Text>
+              <Text style={styles.productReviewAmount}>{formatMoney(item.amount)}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+      {quote?.warnings?.filter((warning) => !warning.startsWith("Product details from the quote:")).map((warning) => <Text key={warning} style={styles.warning}>Review: {warning}</Text>)}
       {!Object.keys(quote?.fields ?? {}).length ? <Text style={styles.warning}>No confident values were detected. You can still continue, but review the original quote carefully.</Text> : null}
       <View style={styles.actions}>
         <Button disabled={busy || Boolean(quote?.offerMatrix && !selectedOfferId) || (isSignedIn && reviewAccess === "checking" && !isActive(reviewExpiresAt ?? expiresAt))} onPress={() => {
@@ -992,6 +1004,12 @@ const styles = StyleSheet.create({
   value: { color: colors.text, fontSize: 17, fontWeight: "700" },
   valueInput: { minHeight: 38, paddingHorizontal: 9, paddingVertical: 6, borderRadius: 7, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.navy, color: colors.text, fontSize: 16, fontWeight: "700" },
   warning: { color: colors.gold, fontSize: 14, lineHeight: 20 },
+  productReviewCard: { backgroundColor: colors.panelStrong, borderColor: colors.gold, borderWidth: 1, borderRadius: 14, padding: 16, gap: 9 },
+  productReviewEyebrow: { color: colors.gold, fontSize: 11, fontWeight: "900", letterSpacing: 1.1 },
+  productReviewBody: { color: colors.muted, fontSize: 13, lineHeight: 19 },
+  productReviewRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8 },
+  productReviewName: { flex: 1, color: colors.text, fontSize: 14, lineHeight: 20 },
+  productReviewAmount: { color: colors.gold, fontSize: 14, fontWeight: "800" },
   actions: { gap: 10 },
   offerMatrix: { backgroundColor: colors.panelStrong, borderColor: colors.gold, borderWidth: 1, borderRadius: 16, padding: 18, gap: 10 },
   offerEyebrow: { color: colors.gold, fontSize: 11, fontWeight: "900", letterSpacing: 1.2 },

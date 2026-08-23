@@ -20,6 +20,38 @@ export type ImportedDealFields = Partial<{
   quotedPayment: number;
 }>;
 
+export type ImportedProductCategory = "serviceContract" | "gap" | "prepaidMaintenance" | "tireWheel" | "accessories";
+
+export type ImportedProductItem = {
+  name: string;
+  amount: number;
+  category: ImportedProductCategory;
+};
+
+const importedProductCategories = new Set<ImportedProductCategory>([
+  "serviceContract",
+  "gap",
+  "prepaidMaintenance",
+  "tireWheel",
+  "accessories",
+]);
+
+export const normalizeImportedProductItems = (value: unknown): ImportedProductItem[] => {
+  if (!Array.isArray(value)) return [];
+  const items = value.flatMap((raw) => {
+    if (!raw || typeof raw !== "object") return [];
+    const item = raw as Record<string, unknown>;
+    const name = typeof item.name === "string" ? item.name.trim().replace(/\s+/g, " ") : "";
+    const amount = typeof item.amount === "number"
+      ? item.amount
+      : Number(String(item.amount ?? "").replace(/[$,\s]/g, ""));
+    const category = typeof item.category === "string" ? item.category as ImportedProductCategory : null;
+    if (!name || name.length > 120 || !Number.isFinite(amount) || amount <= 0 || amount > 30000 || !category || !importedProductCategories.has(category)) return [];
+    return [{ name, amount: Number(amount.toFixed(2)), category }];
+  });
+  return Array.from(new Map(items.map((item) => [`${item.category}:${item.name.toLowerCase()}:${item.amount}`, item])).values()).slice(0, 20);
+};
+
 const normalizeVehicleVin = (value?: string) => {
   const compact = String(value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
   // VINs never contain I, O, or Q. When OCR produces one of those characters
@@ -78,6 +110,7 @@ export const DEAL_FIELD_LABELS: Record<keyof ImportedDealFields, string> = {
 
 export type DealPdfResult = {
   fields: ImportedDealFields;
+  productItems?: ImportedProductItem[];
   fieldConfidence: Partial<Record<keyof ImportedDealFields, "high" | "review">>;
   fieldNames: string[];
   pageCount: number;
@@ -1863,6 +1896,7 @@ const extractDealWithServerVision = async (
   });
   const payload = await response.json() as {
     fields?: Record<string, unknown>;
+    productItems?: unknown;
     warnings?: string[];
     fieldConfidence?: DealPdfResult["fieldConfidence"];
     offerMatrix?: DealOfferMatrix;
@@ -1881,12 +1915,14 @@ const extractDealWithServerVision = async (
     }
     : undefined;
   const fields = withoutOfferSelectionFields(sanitizeImportedFields(source).fields, offerMatrix);
+  const productItems = normalizeImportedProductItems(payload.productItems);
   if (!Object.keys(fields).length) throw new Error("AI_IMPORT_EMPTY");
   const reconciled = reconcileQuotedPayment(fields);
   const warnings = [...(payload.warnings ?? []), ...reconciled.warnings];
   onProgress?.({ progress: 1, status: "AI document extraction complete" });
   return {
     fields: reconciled.fields,
+    productItems,
     fieldConfidence: payload.fieldConfidence ?? confidenceFor(reconciled.fields, "review"),
     fieldNames: Object.keys(reconciled.fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]),
     pageCount: file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf") ? 1 : 1,
@@ -1950,6 +1986,7 @@ const reconcileLocalAndVision = (
   return {
     ...local,
     fields: reconciled.fields,
+    productItems: vision.productItems?.length ? vision.productItems : local.productItems,
     fieldConfidence: Object.fromEntries(
       Object.keys(reconciled.fields).map((field) => [field, confidence[field as keyof ImportedDealFields] ?? "review"]),
     ) as DealPdfResult["fieldConfidence"],

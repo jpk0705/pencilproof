@@ -102,7 +102,7 @@ export interface Env {
 
 const AI_IMPORT_PROMPT = `You are PencilProof's document extraction engine for US automobile dealer buyer's orders, finance worksheets, F&I menus, lease worksheets, and payment quotes.
 
-Return ONLY one JSON object with exactly these keys: vehicle, vin, sellingPrice, tax, govFees, docFee, serviceContract, gap, prepaidMaintenance, tireWheel, accessories, tradeValue, tradePayoff, cashDown, rebate, apr, term, quotedPayment, offerMatrix, warnings.
+Return ONLY one JSON object with exactly these keys: vehicle, vin, sellingPrice, tax, govFees, docFee, serviceContract, gap, prepaidMaintenance, tireWheel, accessories, tradeValue, tradePayoff, cashDown, rebate, apr, term, quotedPayment, productItems, offerMatrix, warnings.
 Use null when a value is not explicitly printed or cannot be tied to a label with high confidence. Never guess, calculate, or copy a nearby total into a component field. Numbers must be numeric, not strings.
 
 Vehicle identity is required whenever the document prints it:
@@ -115,7 +115,8 @@ This is a FINANCE-FIRST parser:
 - sellingPrice means the base selling/sales price of the vehicle. Do not use MSRP, asking price, total purchase, amount financed, or a price that already includes add-ons when a base sales price is present.
 - tax is the printed sales-tax dollar amount, not the tax rate. govFees is the sum of every clearly itemized DMV, license, title, registration, transfer, smog/emissions, tire, electronic-filing, and other government/official fee when those rows are present. docFee is documentation/doc processing only; keep a separately labeled electronic filing fee in govFees unless the document clearly combines it with the documentation fee. Do not omit a fee row just because TOTAL SALES AMOUNT is also printed.
 - rebate is only a printed rebate/discount/incentive credit. Never treat a dealer discount as a second rebate when the document uses the discount to arrive at selling price. Preserve the document's signed convention and do not double-count it.
-- serviceContract includes VSC, vehicle service contract, extended service agreement, warranty, or protection plan. gap is GAP/negative-equity protection. prepaidMaintenance includes maintenance/service plans, including labels such as "Mitsubishi Maintenance", "ToyotaCare Maintenance", "Prepaid Maintenance", or a standalone "Maintenance" product. Do not put a separately priced maintenance product in accessories. tireWheel includes tire, wheel, road-hazard, dent, windshield, or appearance protection when separately priced. accessories includes connected-car, LoJack, Zurich Shield, paint protection, tint, nitrogen, alarm, theft, aftermarket accessories, and other dealer products not matching the prior categories. If multiple products exist in one category, sum only the itemized product prices and mention each item in warnings.
+- serviceContract includes VSC, vehicle service contract, extended service agreement, warranty, or protection plan. gap is GAP/negative-equity protection. prepaidMaintenance includes maintenance/service plans, including labels such as "Mitsubishi Maintenance", "ToyotaCare Maintenance", "Prepaid Maintenance", or a standalone "Maintenance" product. Do not put a separately priced maintenance product in accessories. tireWheel includes tire, wheel, road-hazard, dent, windshield, or appearance protection when separately priced. accessories includes connected-car, LoJack, Zurich Shield, paint protection, tint, nitrogen, alarm, theft, aftermarket accessories, and other dealer products not matching the prior categories.
+- productItems must list every clearly itemized optional product exactly once, preserving its printed name and exact printed dollar amount. Each item must be an object with name, amount, and category, where category is exactly one of serviceContract, gap, prepaidMaintenance, tireWheel, or accessories. Use the surrounding printed label to choose the category; do not classify a product from its brand name alone. If the product list is incomplete or an amount is ambiguous, return productItems as an empty array and put a short uncertainty note in warnings. When productItems is non-empty, the sum of its amounts for each category must equal that category field. Never put a different amount for the same product in warnings.
 - tradeValue is the allowance for the customer's trade. tradePayoff is the amount owed on that trade. cashDown is customer cash/down payment, not trade equity, rebate, or total due at signing. quotedPayment is the labeled monthly payment, never total payments or amount financed.
 - apr is the finance APR percentage. term is the loan term in months. Do not interpret a model number, page number, date, residual percentage, or money factor as APR or term. A cash purchase may be printed as "1 Months @ 0%" or a one-payment cash transaction; return apr: 0 and term: 1. For that cash case only, quotedPayment is the clearly labeled CASH DUE / FINANCE AMOUNT or one-payment amount so PencilProof can reconcile the total. For a financed quote, never put total cash due, amount financed, or total payments into quotedPayment.
 - Prefer a directly labeled value over a nearby subtotal. When a line contains several amounts, choose the amount in the value column immediately associated with that label. Ignore grand totals when an itemized component is available.
@@ -430,6 +431,36 @@ const handleAiImport = async (request: Request, env: Env) => {
       const value = numberOrNull(parsed[key]);
       return value === null ? [] : [[key, value]];
     }));
+    const productCategories = new Set(["serviceContract", "gap", "prepaidMaintenance", "tireWheel", "accessories"]);
+    const rawProductItems = Array.isArray(parsed.productItems) ? parsed.productItems : [];
+    const productItems = Array.from(new Map(rawProductItems.flatMap((raw) => {
+      if (!raw || typeof raw !== "object") return [];
+      const item = raw as Record<string, unknown>;
+      const name = typeof item.name === "string" ? item.name.trim().replace(/\s+/g, " ") : "";
+      const amount = numberOrNull(item.amount);
+      const category = typeof item.category === "string" ? item.category : "";
+      if (!name || name.length > 120 || amount === null || amount <= 0 || amount > 30000 || !productCategories.has(category)) return [];
+      return [{ name, amount: Number(amount.toFixed(2)), category }];
+    }).map((item) => [`${item.category}:${item.name.toLowerCase()}:${item.amount}`, item])).values());
+    const productTotals = productItems.reduce<Record<string, number>>((totals, item) => {
+      totals[item.category] = Number(((totals[item.category] ?? 0) + item.amount).toFixed(2));
+      return totals;
+    }, {});
+    const fieldsWithProductTotals = { ...fields } as Record<string, unknown>;
+    productCategories.forEach((category) => {
+      if (productTotals[category] !== undefined) fieldsWithProductTotals[category] = productTotals[category];
+    });
+    const rawWarnings = Array.isArray(parsed.warnings)
+      ? parsed.warnings.filter((item): item is string => typeof item === "string").slice(0, 12)
+      : [];
+    const productWarningPattern = /(?:product|accessor|add[- ]?on|protection|maintenance|service contract|warranty|connected|theft|appearance|ally|gap|tire|wheel).*\$\s*[\d,]+/i;
+    const productSummary = productItems.length
+      ? `Product details from the quote: ${productItems.map((item) => `${item.name} ($${item.amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`).join(", ")}. Verify each item against the original document.`
+      : null;
+    const warnings = [
+      ...(productItems.length ? rawWarnings.filter((warning) => !productWarningPattern.test(warning)) : rawWarnings),
+      ...(productSummary ? [productSummary] : []),
+    ];
     const rawOptions = parsed.offerMatrix && typeof parsed.offerMatrix === "object" && !Array.isArray(parsed.offerMatrix)
       ? (parsed.offerMatrix as { options?: unknown }).options
       : null;
@@ -464,9 +495,9 @@ const handleAiImport = async (request: Request, env: Env) => {
       : null;
     const selectionFields = new Set(["cashDown", "rebate", "apr", "term", "quotedPayment"]);
     const normalizedFields = offerMatrix
-      ? Object.fromEntries(Object.entries(fields).filter(([key]) => !selectionFields.has(key)))
-      : fields;
-    return Response.json({ fields: normalizedFields, offerMatrix, warnings: Array.isArray(parsed.warnings) ? parsed.warnings.filter((item): item is string => typeof item === "string").slice(0, 12) : [], fieldConfidence: Object.fromEntries(Object.keys(normalizedFields).map((key) => [key, "review"])), sourceType: "ai-vision" }, { headers });
+      ? Object.fromEntries(Object.entries(fieldsWithProductTotals).filter(([key]) => !selectionFields.has(key)))
+      : fieldsWithProductTotals;
+    return Response.json({ fields: normalizedFields, productItems, offerMatrix, warnings, fieldConfidence: Object.fromEntries(Object.keys(normalizedFields).map((key) => [key, "review"])), sourceType: "ai-vision" }, { headers });
   } catch {
     return Response.json({ error: "AI_IMPORT_INVALID_RESPONSE" }, { status: 502, headers });
   }
