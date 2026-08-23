@@ -97,6 +97,7 @@ export const verifyUserSession = async (token: string | null, secret: string) =>
 };
 
 export type AccountRole = "consumer" | "salesperson";
+export type AccountRoleRequest = AccountRole | "auto";
 
 export const createAccountRoleSession = async (role: AccountRole, secret: string, maxAge = 60 * 60 * 24 * 30) => {
   const payload = b64(encoder.encode(JSON.stringify({ role, exp: Math.floor(Date.now() / 1000) + maxAge })));
@@ -163,11 +164,12 @@ const sessionRole = ({
   knownConsumer,
   hasPriorIdentity,
 }: {
-  requestedRole: AccountRole;
+  requestedRole: AccountRoleRequest;
   hasSalespersonProfile: boolean;
   knownConsumer: boolean;
   hasPriorIdentity: boolean;
 }): AccountRole => {
+  if (requestedRole === "auto") return hasSalespersonProfile ? "salesperson" : "consumer";
   if (requestedRole === "consumer") return "consumer";
   if (hasSalespersonProfile) return "salesperson";
   if (knownConsumer || hasPriorIdentity) return "consumer";
@@ -251,7 +253,7 @@ export class AccountStore {
   sessionBootstrap(input: {
     providerSubject: string;
     email?: string | null;
-    requestedRole: AccountRole;
+    requestedRole: AccountRoleRequest;
     guestId?: string | null;
     legacyEntitlement?: { sessionId: string; createdAt: number; accessExpiresAt: number } | null;
   }) {
@@ -808,7 +810,11 @@ export class AccountStore {
       return json(this.sessionBootstrap({
         providerSubject: body.providerSubject,
         email: typeof body.email === "string" ? body.email : null,
-        requestedRole: body.requestedRole === "salesperson" ? "salesperson" : "consumer",
+        requestedRole: body.requestedRole === "salesperson"
+          ? "salesperson"
+          : body.requestedRole === "auto"
+            ? "auto"
+            : "consumer",
         guestId: typeof body.guestId === "string" ? body.guestId : null,
         legacyEntitlement,
       }));

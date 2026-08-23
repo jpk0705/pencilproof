@@ -1,4 +1,4 @@
-import { accountCookie, accountOwner, accountRoleCookie, accountStub, clearAccountCookie, clearAccountRoleCookie, verifyAccountRoleSession, verifyProviderToken, verifyUserSession, type AccountRole } from "./accounts.ts";
+import { accountCookie, accountOwner, accountRoleCookie, accountStub, clearAccountCookie, clearAccountRoleCookie, verifyAccountRoleSession, verifyProviderToken, verifyUserSession, type AccountRole, type AccountRoleRequest } from "./accounts.ts";
 import { fullSalesCoachPlaybook } from "./salesCoachPlaybook.ts";
 
 const ACCESS_COOKIE = "pp_access";
@@ -1396,6 +1396,8 @@ const currentUser = async (request: Request, env: Env) => {
   );
 };
 
+const hasBearerAuthorization = (request: Request) => /^Bearer\s+\S+$/i.test(request.headers.get("Authorization") ?? "");
+
 const requestGuestId = async (request: Request) => {
   const device = readCookie(request, DEVICE_COOKIE);
   return validDeviceId(device) ? sha256Hex(device) : null;
@@ -1423,7 +1425,7 @@ export const resolveAccountSessionRole = ({
   knownConsumer,
   hasPriorIdentity,
 }: {
-  requestedRole: AccountRole;
+  requestedRole: AccountRoleRequest;
   hasSalespersonProfile: boolean;
   knownConsumer: boolean;
   hasPriorIdentity: boolean;
@@ -1451,7 +1453,12 @@ const markSalespersonProfile = async (env: Env, userId: string, email: string) =
 };
 
 const currentAccountRole = async (request: Request, env: Env): Promise<AccountRole> => {
-  const signedRole = await verifyAccountRoleSession(readCookie(request, ROLE_COOKIE), env.SESSION_SECRET);
+  // Native clients use Clerk bearer tokens and do not have a reliable browser
+  // role cookie. Resolve their role from the durable salesperson profile so a
+  // stale consumer cookie cannot mask an existing salesperson account.
+  const signedRole = hasBearerAuthorization(request)
+    ? null
+    : await verifyAccountRoleSession(readCookie(request, ROLE_COOKIE), env.SESSION_SECRET);
   if (signedRole) return signedRole;
   return canonicalAccountRole(env, await currentUser(request, env), "consumer");
 };
@@ -1528,8 +1535,12 @@ const handleAccount = async (request: Request, env: Env) => {
     return new Response(null, { status: 204, headers: accountCorsHeaders(request, env) });
   }
   if (url.pathname === "/api/account/session" && request.method === "POST") {
-    const body = await request.json().catch(() => ({})) as { email?: string; token?: string; role?: AccountRole; force?: boolean };
-    const role: AccountRole = body.role === "salesperson" ? "salesperson" : "consumer";
+    const body = await request.json().catch(() => ({})) as { email?: string; token?: string; role?: AccountRoleRequest; force?: boolean };
+    const role: AccountRoleRequest = body.role === "salesperson"
+      ? "salesperson"
+      : body.role === "auto"
+        ? "auto"
+        : "consumer";
     const provider = typeof body.token === "string" ? await verifyProviderToken(body.token, env) : null;
     if (!provider) return withAccountCors(Response.json({ error: "invalid_account_session" }, { status: 401, headers: noStoreHeaders }), request, env);
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
@@ -1706,7 +1717,9 @@ const handleAccount = async (request: Request, env: Env) => {
     }
     const identity = result?.identity as { email?: unknown } | null | undefined;
     const profile = result?.salespersonProfile as { subscriptionStatus?: unknown } | null | undefined;
-    const signedRole = await verifyAccountRoleSession(readCookie(request, ROLE_COOKIE), env.SESSION_SECRET);
+    const signedRole = hasBearerAuthorization(request)
+      ? null
+      : await verifyAccountRoleSession(readCookie(request, ROLE_COOKIE), env.SESSION_SECRET);
     const role: AccountRole = signedRole ?? (profile ? "salesperson" : "consumer");
     const email = typeof identity?.email === "string" ? identity.email : null;
     return withAccountCors(Response.json({

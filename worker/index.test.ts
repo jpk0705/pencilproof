@@ -176,6 +176,8 @@ test("account role sessions preserve the sign-in entry context", async () => {
 });
 
 test("account session role resolution keeps consumer entry sessions separate", () => {
+  assert.equal(resolveAccountSessionRole({ requestedRole: "auto", hasSalespersonProfile: true, knownConsumer: true, hasPriorIdentity: true }), "salesperson");
+  assert.equal(resolveAccountSessionRole({ requestedRole: "auto", hasSalespersonProfile: false, knownConsumer: true, hasPriorIdentity: true }), "consumer");
   assert.equal(resolveAccountSessionRole({ requestedRole: "consumer", hasSalespersonProfile: true, knownConsumer: true, hasPriorIdentity: true }), "consumer");
   assert.equal(resolveAccountSessionRole({ requestedRole: "salesperson", hasSalespersonProfile: true, knownConsumer: true, hasPriorIdentity: true }), "salesperson");
   assert.equal(resolveAccountSessionRole({ requestedRole: "salesperson", hasSalespersonProfile: false, knownConsumer: true, hasPriorIdentity: true }), "consumer");

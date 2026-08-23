@@ -258,12 +258,14 @@ function PencilProofApp() {
   const syncAccount = useCallback(async (requestedRole?: AccountRole) => {
     const token = await getToken();
     if (!token || !user) return null;
-    if (!requestedRole) return token;
+    const role = requestedRole ?? "auto";
     const session = await apiRequest<{ ok: boolean; role?: "consumer" | "salesperson" }>("/api/account/session", {
       method: "POST",
-      body: JSON.stringify({ email, token, role: requestedRole }),
+      body: JSON.stringify({ email, token, role }),
     }, token);
-    setAccountRole(session.role === "salesperson" ? "salesperson" : "consumer");
+    const resolvedRole = session.role === "salesperson" ? "salesperson" : "consumer";
+    setAccountRole(resolvedRole);
+    setAuthContext(resolvedRole);
     return token;
   }, [email, getToken, user]);
 
