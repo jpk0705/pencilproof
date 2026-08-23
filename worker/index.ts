@@ -183,10 +183,26 @@ const normalizeImportedVin = (value: unknown) => {
  * explicitly labelled identity pieces; it never derives a trim from a VIN or
  * guesses a missing model.
  */
+const removeRepeatedVehiclePhrase = (value: string) => {
+  const tokens = value.split(" ").filter(Boolean);
+  const searchLimit = Math.min(tokens.length - 1, 8);
+  for (let start = 1; start < searchLimit; start += 1) {
+    const maxSize = Math.min(6, Math.floor((tokens.length - start) / 2));
+    for (let size = maxSize; size >= 2; size -= 1) {
+      const first = tokens.slice(start, start + size).join(" ").toLowerCase();
+      const second = tokens.slice(start + size, start + size * 2).join(" ").toLowerCase();
+      if (first && first === second) {
+        return [...tokens.slice(0, start + size), ...tokens.slice(start + size * 2)].join(" ");
+      }
+    }
+  }
+  return value;
+};
+
 export const normalizeImportedVehicle = (value: unknown) => {
   if (typeof value === "string") {
     const normalized = value.replace(/\s+/g, " ").trim();
-    return normalized ? normalized.slice(0, 120) : null;
+    return normalized ? removeRepeatedVehiclePhrase(normalized).slice(0, 120) : null;
   }
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
@@ -198,7 +214,7 @@ export const normalizeImportedVehicle = (value: unknown) => {
     .filter((part): part is string | number => typeof part === "string" || typeof part === "number")
     .map((part) => String(part).replace(/\s+/g, " ").trim())
     .filter(Boolean);
-  return parts.length ? parts.join(" ").slice(0, 120) : null;
+  return parts.length ? removeRepeatedVehiclePhrase(parts.join(" ")).slice(0, 120) : null;
 };
 
 const aiImportCorsHeaders = (env: Env) => ({

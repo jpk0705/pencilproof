@@ -553,6 +553,10 @@ test("AI import preserves vehicle identity when Gemini returns a structured iden
     normalizeImportedVehicle({ description: "2017 Toyota Tundra CrewMax TRD Pro" }),
     "2017 Toyota Tundra CrewMax TRD Pro",
   );
+  assert.equal(
+    normalizeImportedVehicle("2026 Mercedes-Benz AMG GLE 53 AMG GLE 53 4dr All-Wheel Drive 4MAT"),
+    "2026 Mercedes-Benz AMG GLE 53 4dr All-Wheel Drive 4MAT",
+  );
   assert.equal(normalizeImportedVehicle({ year: 2024, make: "Cadillac" }), "2024 Cadillac");
 });
 
