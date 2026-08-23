@@ -528,9 +528,99 @@ const valuesOnLine = (line: string) =>
 
 export const parseOfferMatrix = (rawLines: string[]): DealOfferMatrix | undefined => {
   const lines = rawLines.map((line) => line.replace(/\s+/g, " ").trim()).filter(Boolean);
-  const headerIndex = lines.findIndex((line, index) => /cash down/i.test(line) &&
-    ((lines.slice(index, index + 8).join(" ").match(/\b\d{2}\s*months?\b/gi)?.length ?? 0) >= 2));
+  const headerIndex = lines.findIndex((line, index) => {
+    if (!/cash down/i.test(line)) return false;
+    const nearbyText = lines.slice(index, index + 8).join(" ");
+    const hasColumnTerms = (nearbyText.match(/\b\d{2}\s*months?\b/gi)?.length ?? 0) >= 2;
+    if (hasColumnTerms) return true;
+    const label = line.match(/cash\s+down/i);
+    const afterLabel = label?.index === undefined ? "" : line.slice(label.index + label[0].length);
+    const cashDownCount = valuesOnLine(afterLabel).filter(({ value }) => value >= 0 && value <= 100000).length;
+    const rowTerms = lines.slice(index + 1, index + 8).join(" ").match(/\b\d{2,3}\s*(?:months?|mos?\.?|mo)\b/gi)?.length ?? 0;
+    return cashDownCount >= 2 && rowTerms >= 2;
+  });
   if (headerIndex < 0) return undefined;
+
+  // Some worksheets put cash-down choices across the header and loan terms
+  // down the rows. This is the inverse of the more common layout handled
+  // below (cash-down rows with terms across columns). Detect and transpose
+  // that layout before trying to interpret its numbers as a single choice.
+  const headerLine = lines[headerIndex];
+  const headerLabel = headerLine.match(/cash\s+down/i);
+  const headerAfterLabel = headerLabel?.index === undefined
+    ? ""
+    : headerLine.slice(headerLabel.index + headerLabel[0].length);
+  const headerHasTerm = /\b\d{2,3}\s*(?:months?|mos?\.?|mo)\b/i.test(headerLine);
+  const rowOrientedCashDowns = !headerHasTerm
+    ? valuesOnLine(headerAfterLabel)
+      .map(({ value }) => value)
+      .filter((value) => value >= 0 && value <= 100000)
+    : [];
+  const rowOrientedRows: Array<{ term: number; apr?: number; payments: number[] }> = [];
+  const rowTermPattern = /\b(\d{2,3})\s*(?:months?|mos?\.?|mo)\b/gi;
+  const rowPaymentPattern = /-?\$?(?:\d{4,6}(?:\s*\.\s*\d{1,2})?|\d{1,3}(?:,\d{3})+(?:\s*\.\s*\d{1,2})?|\d{1,3}(?:\s*\.\s*\d{1,2})?)/g;
+  const addRowOrientedCandidate = (text: string) => {
+    const termMatches = [...text.matchAll(rowTermPattern)];
+    if (termMatches.length !== 1) return;
+    const term = Number(termMatches[0][1]);
+    if (term < 12 || term > 120) return;
+    const termEnd = (termMatches[0].index ?? 0) + termMatches[0][0].length;
+    const afterTerm = text.slice(termEnd);
+    const aprMatch = afterTerm.match(/(\d{1,2}(?:\s*\.\s*\d{1,4})?)\s*(?:%|\*)/);
+    const apr = aprMatch ? Number(aprMatch[1].replace(/\s/g, "")) : undefined;
+    const paymentText = aprMatch
+      ? afterTerm.slice((aprMatch.index ?? 0) + aprMatch[0].length)
+      : afterTerm;
+    const values = [...paymentText.matchAll(rowPaymentPattern)]
+      .map((match) => parseMoney(match[0]))
+      .filter((value): value is number => value !== undefined);
+    if (apr === undefined && values.length > rowOrientedCashDowns.length && values[0] >= 0 && values[0] <= 40) {
+      values.shift();
+    }
+    const payments = values.filter((value) => value >= 50 && value <= 5000);
+    if (payments.length < rowOrientedCashDowns.length) return;
+    const candidate = { term, ...(apr !== undefined ? { apr } : {}), payments: payments.slice(0, rowOrientedCashDowns.length) };
+    const existingIndex = rowOrientedRows.findIndex((row) => row.term === term);
+    if (existingIndex < 0 || candidate.payments.length > rowOrientedRows[existingIndex].payments.length) {
+      if (existingIndex >= 0) rowOrientedRows.splice(existingIndex, 1);
+      rowOrientedRows.push(candidate);
+    }
+  };
+
+  if (rowOrientedCashDowns.length >= 2) {
+    const tableEnd = lines.findIndex((line, index) => index > headerIndex && /rebate|purchase option|estimated apr/i.test(line));
+    const rowLines = lines.slice(headerIndex + 1, tableEnd > headerIndex ? tableEnd : headerIndex + 12);
+    rowLines.forEach((line, index) => {
+      addRowOrientedCandidate(line);
+      if (index + 1 < rowLines.length && [...line.matchAll(rowTermPattern)].length === 1 &&
+        line.match(/(?:\d{2,3})\s*(?:months?|mos?\.?|mo)\b/i) &&
+        !/\b\d{2,3}\s*(?:months?|mos?\.?|mo)\b/i.test(rowLines[index + 1])) {
+        addRowOrientedCandidate(`${line} ${rowLines[index + 1]}`);
+      }
+    });
+  }
+
+  if (rowOrientedCashDowns.length >= 2 && rowOrientedRows.length >= 2) {
+    const options: DealOfferOption[] = [];
+    rowOrientedRows.forEach((row) => {
+      rowOrientedCashDowns.forEach((cashDown, index) => {
+        options.push({
+          id: `finance-${cashDown}-${row.term}-${row.payments[index]}`,
+          type: "finance",
+          cashDown,
+          term: row.term,
+          payment: row.payments[index],
+          ...(row.apr !== undefined ? { apr: row.apr } : {}),
+        });
+      });
+    });
+    return {
+      options,
+      warnings: [
+        "This is a payment-options worksheet, not a complete contract. Taxes, fees, products, lender terms, and lease details may be missing.",
+      ],
+    };
+  }
 
   const headerText = lines.slice(headerIndex, headerIndex + 8).join(" ");
   const terms = [...headerText.matchAll(/\b(\d{2})\s*months?\b/gi)].map((match) => Number(match[1]));
@@ -634,6 +724,15 @@ const offerMatrixQuality = (matrix?: DealOfferMatrix) => {
 
 const chooseBetterOfferMatrix = (first?: DealOfferMatrix, second?: DealOfferMatrix) =>
   offerMatrixQuality(second) > offerMatrixQuality(first) ? second : first;
+
+const withoutOfferSelectionFields = (
+  fields: ImportedDealFields,
+  offerMatrix?: DealOfferMatrix,
+) => {
+  if (!offerMatrix?.options.length) return fields;
+  const { cashDown, rebate, apr, term, quotedPayment, ...baseFields } = fields;
+  return baseFields;
+};
 
 const usableValues = (line: string, allowZero = false) =>
   valuesOnLine(line).filter(({ value }) => allowZero || value > 0);
@@ -926,6 +1025,11 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     /\bprice of vehicle\b/i,
   ]);
   if (sellingPrice) fields.sellingPrice = sellingPrice;
+  const adjustedPrice = findAmount(lines, [
+    /\badjusted\s+(?:selling\s+|sales\s+|vehicle\s+)?price\b/i,
+    /\bnet\s+(?:selling\s+|sales\s+|vehicle\s+)?price\b/i,
+  ]);
+  if (adjustedPrice) fields.sellingPrice = adjustedPrice;
   const askingPrice = findAmount(lines, [/\basking price\b/i]);
   const dealerDiscount = findAmount(lines, [
     /\bdealer discount\b/i,
@@ -938,6 +1042,7 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
   const linesWithoutTaxRates = lines.map((line) => line.replace(/\b\d{1,2}(?:\.\d{1,4})?\s*%/g, ""));
   const tax = findAmount(linesWithoutTaxRates, [
     /\b(?:sales|state|local|vehicle)\s+tax\b/i,
+    /^\s*tax\b/i,
     /\btax amount\b/i,
   ]);
   if (tax) fields.tax = tax;
@@ -957,6 +1062,7 @@ export const parseDealerText = (rawLines: string[]): ImportedDealFields => {
     /\btire fees?\b/i,
     /\bsmog(?: certification)? fees?\b/i,
     /\b(?:electronic\s+)?filing fees?\b/i,
+    /\bnon[- ]tax fees?\b/i,
   ]);
   if (combinedGovernmentFees || itemizedGovernmentFees) fields.govFees = combinedGovernmentFees ?? itemizedGovernmentFees;
 
@@ -1610,7 +1716,7 @@ export const extractDealFromPdf = async (
     }
   }
 
-  const reconciled = reconcileQuotedPayment(fields);
+  const reconciled = reconcileQuotedPayment(withoutOfferSelectionFields(fields, offerMatrix));
   warnings = reconciled.warnings;
   const fieldConfidence = confidenceFor(reconciled.fields, usedOcr ? "review" : "high");
   if (reconciled.warnings.length && reconciled.fields.quotedPayment) fieldConfidence.quotedPayment = "review";
@@ -1669,7 +1775,7 @@ export const extractDealFromImage = async (
   let fields = mergeImportedCandidates(candidates);
   let offerMatrix: DealOfferMatrix | undefined;
   for (const text of readableTexts) offerMatrix = chooseBetterOfferMatrix(offerMatrix, parseOfferMatrix(text.split(/\r?\n/)));
-  const reconciled = reconcileQuotedPayment(fields);
+  const reconciled = reconcileQuotedPayment(withoutOfferSelectionFields(fields, offerMatrix));
   const fieldNames = Object.keys(reconciled.fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]);
   return {
     fields: reconciled.fields,
@@ -1768,16 +1874,16 @@ const extractDealWithServerVision = async (
     throw new Error(payload.error === "AI_IMPORT_PROVIDER_ERROR" ? `AI_IMPORT_PROVIDER${code}` : (payload.error ?? "AI_IMPORT_UNAVAILABLE"));
   }
   const source = (payload.fields ?? {}) as ImportedDealFields;
-  const fields = sanitizeImportedFields(source).fields;
-  if (!Object.keys(fields).length) throw new Error("AI_IMPORT_EMPTY");
-  const reconciled = reconcileQuotedPayment(fields);
-  const warnings = [...(payload.warnings ?? []), ...reconciled.warnings];
   const offerMatrix = payload.offerMatrix?.options?.length
     ? {
       options: payload.offerMatrix.options,
       warnings: payload.offerMatrix.warnings ?? [],
     }
     : undefined;
+  const fields = withoutOfferSelectionFields(sanitizeImportedFields(source).fields, offerMatrix);
+  if (!Object.keys(fields).length) throw new Error("AI_IMPORT_EMPTY");
+  const reconciled = reconcileQuotedPayment(fields);
+  const warnings = [...(payload.warnings ?? []), ...reconciled.warnings];
   onProgress?.({ progress: 1, status: "AI document extraction complete" });
   return {
     fields: reconciled.fields,

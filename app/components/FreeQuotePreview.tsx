@@ -192,6 +192,7 @@ export default function FreeQuotePreview() {
             term: option.term,
             quotedPayment: option.payment,
             ...(option.apr !== undefined ? { apr: option.apr } : {}),
+            ...(option.rebate !== undefined ? { rebate: option.rebate } : {}),
           },
           fieldNames: Array.from(new Set([
             ...current.result.fieldNames,
@@ -199,6 +200,7 @@ export default function FreeQuotePreview() {
             DEAL_FIELD_LABELS.term,
             DEAL_FIELD_LABELS.quotedPayment,
             ...(option.apr !== undefined ? [DEAL_FIELD_LABELS.apr] : []),
+            ...(option.rebate !== undefined ? [DEAL_FIELD_LABELS.rebate] : []),
           ])),
           fieldConfidence: {
             ...current.result.fieldConfidence,
@@ -206,6 +208,7 @@ export default function FreeQuotePreview() {
             term: "review",
             quotedPayment: "review",
             ...(option.apr !== undefined ? { apr: "review" as const } : {}),
+            ...(option.rebate !== undefined ? { rebate: "review" as const } : {}),
           },
         },
       };

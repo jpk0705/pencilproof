@@ -6,6 +6,18 @@
     "orientation": "portrait",
     "scheme": "pencilproof",
     "userInterfaceStyle": "dark",
+    "newArchEnabled": false,
+    "autolinking": {
+      "android": {
+        "exclude": ["@solana-mobile/mobile-wallet-adapter-protocol"]
+      }
+    },
+    "icon": "./assets/pencilproof-profile-mark.png",
+    "splash": {
+      "image": "./assets/pencilproof-profile-mark.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#061126"
+    },
     "plugins": [
       ["expo-image-picker", { "cameraPermission": "PencilProof uses your camera to capture a dealer quote.", "microphonePermission": false, "photosPermission": "PencilProof uses your photos to read a dealer quote." }]
     ],
@@ -16,7 +28,8 @@
     "android": {
       "package": "com.pencilproof.mobile",
       "adaptiveIcon": {
-        "backgroundColor": "#061126"
+        "backgroundColor": "#061126",
+        "foregroundImage": "./assets/pencilproof-profile-mark.png"
       }
     },
     "extra": {

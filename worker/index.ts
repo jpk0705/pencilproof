@@ -120,7 +120,7 @@ This is a FINANCE-FIRST parser:
 - apr is the finance APR percentage. term is the loan term in months. Do not interpret a model number, page number, date, residual percentage, or money factor as APR or term. A cash purchase may be printed as "1 Months @ 0%" or a one-payment cash transaction; return apr: 0 and term: 1. For that cash case only, quotedPayment is the clearly labeled CASH DUE / FINANCE AMOUNT or one-payment amount so PencilProof can reconcile the total. For a financed quote, never put total cash due, amount financed, or total payments into quotedPayment.
 - Prefer a directly labeled value over a nearby subtotal. When a line contains several amounts, choose the amount in the value column immediately associated with that label. Ignore grand totals when an itemized component is available.
 - A lease or purchase section can appear beside another scenario. Identify whether the document is finance or lease. For PencilProof, extract the primary finance/buyer-order scenario when clearly identified. Never mix trade, rebates, or payment values from a separate scenario.
-- If the document contains multiple payment choices, return every clearly printed choice in offerMatrix.options. Each option must contain type (finance or lease), cashDown, term, and payment, plus apr, rebate, or purchaseOption only when explicitly printed. Do not collapse a payment-options table into one choice. Use offerMatrix: null when no multiple-choice table is present.
+- If the document contains multiple payment choices, return every clearly printed choice in offerMatrix.options. Each option must contain type (finance or lease), cashDown, term, and payment, plus apr, rebate, or purchaseOption only when explicitly printed. Payment matrices may run either direction: cash-down choices can be columns with terms as rows, or cash-down choices can be rows with terms as columns. Transpose the table when needed and never treat the whole header row as one selected cash-down value. Do not collapse a payment-options table into one choice. Use offerMatrix: null when no multiple-choice table is present.
 - If a value is not printed, return null rather than deriving it from payment math. Put short field-specific uncertainty notes in warnings.
 
 The document may be a photo, scan, screenshot, or PDF. Read the entire document and preserve cents exactly when visible.`;
@@ -444,9 +444,13 @@ const handleAiImport = async (request: Request, env: Env) => {
         warnings: Array.isArray((parsed.offerMatrix as { warnings?: unknown } | null)?.warnings)
           ? ((parsed.offerMatrix as { warnings?: unknown }).warnings ?? []).filter((item): item is string => typeof item === "string").slice(0, 12)
           : ["Multiple payment choices were detected. Select the exact row you are considering."],
-      }
+        }
       : null;
-    return Response.json({ fields, offerMatrix, warnings: Array.isArray(parsed.warnings) ? parsed.warnings.filter((item): item is string => typeof item === "string").slice(0, 12) : [], fieldConfidence: Object.fromEntries(Object.keys(fields).map((key) => [key, "review"])), sourceType: "ai-vision" }, { headers });
+    const selectionFields = new Set(["cashDown", "rebate", "apr", "term", "quotedPayment"]);
+    const normalizedFields = offerMatrix
+      ? Object.fromEntries(Object.entries(fields).filter(([key]) => !selectionFields.has(key)))
+      : fields;
+    return Response.json({ fields: normalizedFields, offerMatrix, warnings: Array.isArray(parsed.warnings) ? parsed.warnings.filter((item): item is string => typeof item === "string").slice(0, 12) : [], fieldConfidence: Object.fromEntries(Object.keys(normalizedFields).map((key) => [key, "review"])), sourceType: "ai-vision" }, { headers });
   } catch {
     return Response.json({ error: "AI_IMPORT_INVALID_RESPONSE" }, { status: 502, headers });
   }

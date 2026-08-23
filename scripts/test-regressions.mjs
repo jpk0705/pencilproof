@@ -710,6 +710,38 @@ closeTo(
   320.88,
 );
 
+const rowOrientedMatrix = parseOfferMatrix([
+  "Cash Down 10,000 20,000 24,000",
+  "60 Months / 1.9 * 1630 1455 1385",
+  "72 Months / 3.9 * 1456 1299 1237",
+]);
+assert.equal(rowOrientedMatrix?.options.length, 6);
+assert.deepEqual(
+  rowOrientedMatrix?.options.find((option) => option.cashDown === 20000 && option.term === 72),
+  { id: "finance-20000-72-1299", type: "finance", cashDown: 20000, term: 72, payment: 1299, apr: 3.9 },
+);
+const zeroDownMatrix = parseOfferMatrix([
+  "Cash Down 0 10,000",
+  "60 Months / 5.9 * 1880 1695",
+  "72 Months / 6.9 * 1605 1440",
+]);
+assert.equal(zeroDownMatrix?.options.length, 4);
+assert.equal(zeroDownMatrix?.options[0]?.cashDown, 0);
+const mercedesWorksheet = parseDealerText([
+  "Vehicle: 2026 Mercedes-Benz AMG GLE 53 4dr All-Wheel Drive 4MAT",
+  "Market Value Selling Price 102,570.00",
+  "Discount 6,000.00",
+  "Adjusted Price 96,570.00",
+  "Doc Fee 225.00",
+  "Tax 6,035.62",
+  "Non Tax Fees 300.21",
+]);
+assert.equal(mercedesWorksheet.vehicle, "2026 Mercedes-Benz AMG GLE 53 4dr All-Wheel Drive 4MAT");
+closeTo(mercedesWorksheet.sellingPrice, 96570);
+closeTo(mercedesWorksheet.tax, 6035.62);
+closeTo(mercedesWorksheet.govFees, 300.21);
+closeTo(mercedesWorksheet.docFee, 225);
+
 const mismatch = reconcileQuotedPayment({
   sellingPrice: 31000,
   cashDown: 2000,

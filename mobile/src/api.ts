@@ -7,11 +7,20 @@ export type Audit = {
   createdAt: number;
   expiresAt: number;
   data: {
-    vehicle?: string;
-    verdict?: string;
-    quotedPayment?: number;
+    amountFinanced?: number;
     apr?: number;
+    cashDown?: number;
+    dealerApr?: number;
+    loanTerm?: number;
+    payment?: number;
+    price?: number;
+    sellingPrice?: number;
+    calculatedPayment?: number;
+    quotedPayment?: number;
     term?: number;
+    vehicle?: string;
+    vin?: string;
+    verdict?: string | { label?: string; detail?: string };
     flags?: Array<{ name?: string; detail?: string }>;
   };
 };
@@ -19,7 +28,16 @@ export type Audit = {
 export type ImportResult = {
   fields: QuoteFields;
   offerMatrix?: {
-    options: Array<Record<string, string | number>>;
+    options: Array<{
+      id: string;
+      type: "finance" | "lease";
+      cashDown: number;
+      term: number;
+      payment: number;
+      apr?: number;
+      rebate?: number;
+      purchaseOption?: number;
+    }>;
     warnings?: string[];
   } | null;
   warnings: string[];
@@ -29,6 +47,8 @@ export type ImportResult = {
 
 export type AccountMe = {
   userId: string;
+  email?: string | null;
+  role?: "consumer" | "salesperson";
   expiresAt: number | null;
   audits: Audit[];
   marketingOptedIn: boolean;
@@ -74,7 +94,9 @@ export const randomSessionId = () =>
   `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 18)}`;
 
 export async function importQuote(uri: string, mimeType: string, token?: string | null) {
-  const FileSystem = await import("expo-file-system");
+  // Expo 57 keeps readAsStringAsync in the legacy namespace. Importing it
+  // explicitly prevents the deprecation LogBox from covering the scan result.
+  const FileSystem = await import("expo-file-system/legacy");
   const base64 = await FileSystem.readAsStringAsync(uri, {
     encoding: FileSystem.EncodingType.Base64,
   });

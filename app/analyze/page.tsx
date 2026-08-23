@@ -839,6 +839,7 @@ export default function AnalyzePage() {
           term: option.term,
           quotedPayment: option.payment,
           ...(option.apr !== undefined ? { apr: option.apr } : {}),
+          ...(option.rebate !== undefined ? { rebate: option.rebate } : {}),
         },
         confidence: {
           ...(current?.confidence ?? {}),
@@ -846,6 +847,7 @@ export default function AnalyzePage() {
           term: "review",
           quotedPayment: "review",
           ...(option.apr !== undefined ? { apr: "review" as const } : {}),
+          ...(option.rebate !== undefined ? { rebate: "review" as const } : {}),
         },
         fileName: current?.fileName ?? "payment menu",
         sourceUrl: current?.sourceUrl,
@@ -857,7 +859,9 @@ export default function AnalyzePage() {
       message: option.type === "finance"
         ? `Selected finance option: $${option.cashDown.toLocaleString()} down, ${option.term} months, $${option.payment.toFixed(2)} per month. The worksheet may omit taxes, fees, products, or final lender terms—verify the itemized buyer's order before relying on the audit.`
         : `Selected lease estimate: $${option.cashDown.toLocaleString()} down, ${option.term} months, $${option.payment.toFixed(2)} per month. A complete lease audit still requires the residual or purchase option, mileage allowance, acquisition and disposition fees, taxes, and exact due-at-signing amount.`,
-      fields: option.type === "finance" ? ["Cash down", "Loan term", "Quoted monthly payment"] : [],
+      fields: option.type === "finance"
+        ? ["Cash down", "Loan term", "Quoted monthly payment", ...(option.rebate !== undefined ? ["Rebate"] : [])]
+        : [],
     });
   };
 
