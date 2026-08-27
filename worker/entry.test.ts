@@ -24,6 +24,16 @@ const makeEnv = (paths: string[]): Env => ({
                 schemaVersion: 2,
                 verified: true,
               },
+              sourceFunnel: [
+                {
+                  checkoutUsers: 1,
+                  name: "threads/organic/free_scan",
+                  previewUsers: 2,
+                  purchasers: 1,
+                  scanUsers: 3,
+                  visitors: 4,
+                },
+              ],
               sessions: 0,
               updatedAt: new Date(0).toISOString(),
             })
@@ -183,6 +193,9 @@ test("analytics dashboard renders the selected range and business funnel", async
   assert.match(body, /Started a scan/);
   assert.match(body, /Preview ready/);
   assert.match(body, /Acquisition signals/);
+  assert.match(body, /Funnel by source/);
+  assert.match(body, /threads\/organic\/free_scan/);
+  assert.match(body, /Started scan/);
   assert.match(body, /Reached checkout/);
   assert.match(body, /Purchased/);
   assert.match(body, /Customer feedback/);

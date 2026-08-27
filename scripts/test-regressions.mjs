@@ -87,6 +87,7 @@ assert.match(analyticsClientSource, /const attribution = existingAttribution \|\
 assert.match(analyticsClientSource, /if \(attribution && !existingAttribution\)/);
 assert.match(analyticsWorkerSource, /"preview_ready"/);
 assert.match(analyticsWorkerSource, /Acquisition signals/);
+assert.match(analyticsWorkerSource, /sourceFunnel/);
 assert.match(accountNavSource, /const ACCOUNT_URL = "https:\/\/pencilproof\.com\/account"/);
 assert.match(accountNavSource, /const SALES_URL = "https:\/\/pencilproof\.com\/sales"/);
 assert.match(accountNavSource, /effectiveRole === "salesperson" \? SALES_URL : ACCOUNT_URL/);

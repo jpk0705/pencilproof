@@ -64,6 +64,14 @@ type DimensionCountRow = CountRow & {
   dimension: string | null;
   sessions: number;
 };
+type SourceFunnelRow = {
+  checkout_users: number;
+  dimension: string | null;
+  preview_users: number;
+  purchasers: number;
+  scan_users: number;
+  visitors: number;
+};
 type DayEventCountRow = EventCountRow & {
   day: string;
 };
@@ -451,6 +459,37 @@ export class AnalyticsStore {
       const sources = await dimensionCounts("source");
       const topPages = await dimensionCounts("path", "page_view");
       const devices = await dimensionCounts("device");
+      const sourceFunnel: Array<{
+        checkoutUsers: number;
+        name: string;
+        previewUsers: number;
+        purchasers: number;
+        scanUsers: number;
+        visitors: number;
+      }> = [];
+      for (const row of this.sql.exec<SourceFunnelRow>(`
+        SELECT COALESCE(NULLIF(source, ''), 'direct') AS dimension,
+          COUNT(DISTINCT CASE WHEN event_name = 'page_view' THEN session_id END) AS visitors,
+          COUNT(DISTINCT CASE WHEN event_name = 'scan_started' THEN session_id END) AS scan_users,
+          COUNT(DISTINCT CASE WHEN event_name = 'preview_ready' THEN session_id END) AS preview_users,
+          COUNT(DISTINCT CASE WHEN event_name = 'checkout_started' THEN session_id END) AS checkout_users,
+          COUNT(DISTINCT CASE WHEN event_name = 'payment_completed' THEN session_id END) AS purchasers
+        FROM analytics_events
+        ${eventWindow}
+        GROUP BY COALESCE(NULLIF(source, ''), 'direct')
+        HAVING COUNT(DISTINCT CASE WHEN event_name = 'page_view' THEN session_id END) > 0
+        ORDER BY visitors DESC
+        LIMIT 12
+      `, startIso, endIso)) {
+        sourceFunnel.push({
+          checkoutUsers: Number(row.checkout_users) || 0,
+          name: String(row.dimension ?? "direct"),
+          previewUsers: Number(row.preview_users) || 0,
+          purchasers: Number(row.purchasers) || 0,
+          scanUsers: Number(row.scan_users) || 0,
+          visitors: Number(row.visitors) || 0,
+        });
+      }
 
       const sessions = Number(this.sql.exec<CountRow>(`
         SELECT COUNT(DISTINCT session_id) AS count
@@ -551,6 +590,7 @@ export class AnalyticsStore {
           start: startIso,
         },
         sources,
+        sourceFunnel,
         topPages,
         devices,
         funnel,
@@ -654,6 +694,14 @@ type AnalyticsDashboardSummary = {
   byEvent?: Record<string, number>;
   byDay?: Record<string, Record<string, number>>;
   sources?: Array<{ name?: string; sessions?: number; events?: number }>;
+  sourceFunnel?: Array<{
+    checkoutUsers?: number;
+    name?: string;
+    previewUsers?: number;
+    purchasers?: number;
+    scanUsers?: number;
+    visitors?: number;
+  }>;
   topPages?: Array<{ name?: string; sessions?: number; events?: number }>;
   devices?: Array<{ name?: string; sessions?: number; events?: number }>;
   feedback?: Partial<FeedbackSummary>;
@@ -739,6 +787,12 @@ const analyticsDashboard = async (request: Request, env: Env) => {
   const maxTrend = Math.max(1, ...trend.map(([, count]) => count));
   const trendBars = trend.map(([bucket, count]) => `<div class="day"><div class="day-bar" style="height:${Math.max(8, Math.round((count / maxTrend) * 100))}%"><b>${count}</b></div><span>${esc(monthlyTrend ? bucket : bucket.slice(5))}</span></div>`).join("");
   const dimensionList = (title: string, detail: string, rows: Array<{ name?: string; sessions?: number; events?: number }>) => `<div class="dimension-list"><h3>${esc(title)}</h3><p class="subtle">${esc(detail)}</p>${rows.length ? rows.map((row) => `<div class="dimension-row"><span>${esc(row.name ?? "direct")}</span><b>${Number(row.sessions ?? 0).toLocaleString("en-US")}</b><small>${Number(row.events ?? 0).toLocaleString("en-US")} events</small></div>`).join("") : `<div class="empty">No data in this period.</div>`}</div>`;
+  const sourceFunnelCell = (count: number, visitors: number) => `<span class="source-funnel-count">${count.toLocaleString("en-US")}</span><small>${percent(count, visitors)}</small>`;
+  const sourceFunnelRows = (summary.sourceFunnel ?? []).map((row) => {
+    const visitors = Number(row.visitors ?? 0);
+    return `<tr><th scope="row">${esc(row.name ?? "direct")}</th><td>${visitors.toLocaleString("en-US")}</td><td>${sourceFunnelCell(Number(row.scanUsers ?? 0), visitors)}</td><td>${sourceFunnelCell(Number(row.previewUsers ?? 0), visitors)}</td><td>${sourceFunnelCell(Number(row.checkoutUsers ?? 0), visitors)}</td><td>${sourceFunnelCell(Number(row.purchasers ?? 0), visitors)}</td></tr>`;
+  }).join("");
+  const sourceFunnelPanel = `<section class="panel" style="margin-top:18px"><h2>Funnel by source</h2><p class="subtle">Each row follows one source from visitor to purchase. Counts are unique browsers in the selected period; percentages show the share of that source’s visitors reaching each stage.</p>${sourceFunnelRows ? `<div class="table-wrap"><table class="source-funnel-table"><thead><tr><th>Source</th><th>Visitors</th><th>Started scan</th><th>Preview ready</th><th>Checkout</th><th>Purchased</th></tr></thead><tbody>${sourceFunnelRows}</tbody></table></div>` : `<div class="empty">No source-level funnel data in this period yet.</div>`}</section>`;
   const acquisitionPanel = `<section class="panel" style="margin-top:18px"><h2>Acquisition signals</h2><p class="subtle">These dimensions show where visits came from and which public pages are attracting attention. A source is carried from UTM tags or the referring site; direct means no source was available.</p><div class="dimension-grid">${dimensionList("Traffic sources", "Unique sessions", summary.sources ?? [])}${dimensionList("Top entry pages", "Page-view sessions", summary.topPages ?? [])}${dimensionList("Devices", "Unique sessions", summary.devices ?? [])}</div></section>`;
   const accountQuery = `${selectedAccountRole === "all" ? "" : `&account_role=${encodeURIComponent(selectedAccountRole)}`}${selectedAccountPaid === "all" ? "" : `&account_paid=${encodeURIComponent(selectedAccountPaid)}`}`;
   const rangeLinks = ANALYTICS_RANGES.map((range) => `<a class="range ${range.key === rangeKey ? "selected" : ""}" href="/analytics?range=${range.key}${accountQuery}">${esc(range.label)}</a>`).join("");
@@ -778,6 +832,7 @@ const analyticsDashboard = async (request: Request, env: Env) => {
  <section class="grid"><div class="panel"><h2>Visitor funnel</h2><p class="subtle">Unique browsers are counted once per selected period. A preview is ready only after the importer or manual entry produces reviewable values.</p>${funnelStep("Visitors", `${funnel.pageViews.toLocaleString("en-US")} total page views`, funnel.visitors, funnel.visitors)}${funnelStep("Started a scan", `${funnel.scanStarts.toLocaleString("en-US")} scan starts`, funnel.scanUsers, funnel.visitors)}${funnelStep("Preview ready", `${funnel.previewsReady.toLocaleString("en-US")} reviewable previews`, funnel.previewUsers, funnel.visitors)}${funnelStep("Reached checkout", `${funnel.checkoutStarts.toLocaleString("en-US")} checkout starts`, funnel.checkoutUsers, funnel.visitors)}${funnelStep("Purchased", `${funnel.purchases.toLocaleString("en-US")} verified payment events`, funnel.purchasers, funnel.visitors)}</div>
  <div class="panel"><h2>Activity trend</h2><p class="subtle">${monthlyTrend ? "Monthly activity" : "Daily activity"} within the selected period.</p>${trendBars ? `<div class="chart">${trendBars}</div>` : `<div class="empty">No tracked activity in this period.</div>`}<div class="definitions"><strong>What “session” means</strong><p>A session is an anonymous browser visit ID. It is not a login or a person’s name. PencilProof starts a new session after 30 minutes of inactivity, so <strong>Visitors</strong> is the clearest estimate of unique browsers that visited during this period.</p><p>Page views, scan starts, preview-ready events, checkout starts, and purchases are separate signals. This keeps a scan from being counted as a completed audit or a sale.</p></div></div></section>
  ${acquisitionPanel}
+ ${sourceFunnelPanel}
 <section class="panel" style="margin-top:18px"><h2>Account sign-ins</h2><p class="subtle">Email addresses from successful account setup, with the sign-in context that has been used. If the same account has entered through both paths, it is labeled <strong>Both</strong>. Paid means an active consumer audit pass or an active salesperson subscription recorded from Stripe.</p><form class="account-filter" method="get" action="/analytics"><input type="hidden" name="range" value="${esc(rangeKey)}"><label for="account-role">Filter by account type<select id="account-role" name="account_role" onchange="try{sessionStorage.setItem('pencilproof-analytics-scroll-y', String(window.scrollY))}catch{} this.form.submit()"><option value="all"${selectedAccountRole === "all" ? " selected" : ""}>All accounts</option><option value="consumer"${selectedAccountRole === "consumer" ? " selected" : ""}>Consumer</option><option value="salesperson"${selectedAccountRole === "salesperson" ? " selected" : ""}>Salesperson</option><option value="both"${selectedAccountRole === "both" ? " selected" : ""}>Both paths</option></select></label><label for="account-paid">Filter by payment status<select id="account-paid" name="account_paid" onchange="try{sessionStorage.setItem('pencilproof-analytics-scroll-y', String(window.scrollY))}catch{} this.form.submit()"><option value="all"${selectedAccountPaid === "all" ? " selected" : ""}>All payment statuses</option><option value="paid"${selectedAccountPaid === "paid" ? " selected" : ""}>Paid</option><option value="unpaid"${selectedAccountPaid === "unpaid" ? " selected" : ""}>Not paid</option></select></label><noscript><button class="download" type="submit">Apply filter</button></noscript></form><div class="feedback-grid"><div class="feedback-metric"><div class="label">Shown accounts</div><div class="big">${accounts.length.toLocaleString("en-US")}</div></div><div class="feedback-metric"><div class="label">Paid accounts</div><div class="big">${accountCounts.paid.toLocaleString("en-US")}</div></div><div class="feedback-metric"><div class="label">Consumers</div><div class="big">${accountCounts.consumer.toLocaleString("en-US")}</div></div><div class="feedback-metric"><div class="label">Salespeople</div><div class="big">${accountCounts.salesperson.toLocaleString("en-US")}</div></div><div class="feedback-metric"><div class="label">Used both paths</div><div class="big">${accountCounts.both.toLocaleString("en-US")}</div></div></div>${accountRows ? `<div class="table-wrap"><table><thead><tr><th>Email</th><th>Account type</th><th>Payment status</th><th>First seen</th><th>Last seen</th></tr></thead><tbody>${accountRows}</tbody></table></div>` : `<div class="empty">No accounts match this filter.</div>`}</section>
 <section class="panel" style="margin-top:18px"><div class="feedback-actions"><div><h2>Customer feedback</h2><p class="subtle">Anonymous responses from the quote survey, before checkout, after checkout, or during account deletion.</p></div><a class="download" href="/analytics/feedback.csv?range=${esc(rangeKey)}">Download CSV</a></div><div class="feedback-grid"><div class="feedback-metric"><div class="label">Responses</div><div class="big">${feedbackTotal.toLocaleString("en-US")}</div></div><div class="feedback-metric"><div class="label">Average UI</div><div class="big">${feedbackAverage(feedback.averages?.ui)}</div></div><div class="feedback-metric"><div class="label">Average service</div><div class="big">${feedbackAverage(feedback.averages?.service)}</div></div><div class="feedback-metric"><div class="label">Average scan quality</div><div class="big">${feedbackAverage(feedback.averages?.scanQuality)}</div></div></div><h3>What would people pay?</h3>${feedbackWorthBars}<h3 style="margin-top:24px">Account deletion reasons</h3>${deletionReasonBars}<h3 style="margin-top:24px">Recent responses with Written comments</h3>${feedbackResponseRows ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Topic</th><th>UI</th><th>Service</th><th>Scan</th><th>Worth</th><th>Written comment</th></tr></thead><tbody>${feedbackResponseRows}</tbody></table></div>` : `<div class="empty">No feedback responses in this period.</div>`}</section>
  <p class="subtle" style="margin-top:22px">Preview-ready events: <strong>${funnel.previewsReady.toLocaleString("en-US")}</strong> from <strong>${funnel.previewUsers.toLocaleString("en-US")}</strong> unique browsers. Purchases are recorded from verified Stripe payment events; legacy audit-completed events are retained only for historical compatibility.</p>
