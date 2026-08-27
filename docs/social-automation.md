@@ -148,7 +148,7 @@ Default limits:
 ## Status endpoints
 
 - `GET /health` reports automation mode, publish/reply flags, and which platforms have complete credentials.
-- `GET /status` reports the latest direct-network status plus a separate Facebook status block.
+- `GET /status` shows a branded browser status page, while `GET /status?format=json` reports the latest direct-network status plus a separate Facebook status block for monitoring tools.
 - `GET /audit` performs read-only provider checks for Facebook, Instagram, and Threads, reports recent successful publish IDs/timestamps, weekly promotional-post completion, API/token failures, and automation errors. It has no publishing or reply code path.
 
 Neither endpoint returns access tokens, passwords, comment bodies, or other credentials.

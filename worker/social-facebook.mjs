@@ -52,6 +52,69 @@ function responseJson(body, status = 200) {
   return new Response(JSON.stringify(body, null, 2), { status, headers: JSON_HEADERS });
 }
 
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>\"']/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;",
+  }[character] ?? character));
+}
+
+function formattedStatusDate(value) {
+  const timestamp = Date.parse(String(value ?? ""));
+  return Number.isFinite(timestamp)
+    ? new Date(timestamp).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Los_Angeles" })
+    : "Not recorded yet";
+}
+
+function wantsHtmlStatus(request) {
+  const format = new URL(request.url).searchParams.get("format");
+  if (format === "html") return true;
+  if (format === "json") return false;
+  return (request.headers.get("Accept") ?? "").toLowerCase().includes("text/html");
+}
+
+function statusPageResponse(status) {
+  const configured = new Set(Array.isArray(status.configuredPlatforms) ? status.configuredPlatforms : []);
+  const platformRows = ["facebook", "instagram", "threads"].map((platform) => {
+    const platformStatus = platform === "facebook"
+      ? (status.facebook ?? {})
+      : { lastError: null, lastPostAt: status.lastPublishedByPlatform?.[platform]?.at ?? null };
+    const isConfigured = platform === "facebook"
+      ? platformStatus.configured === true
+      : configured.has(platform);
+    const hasError = Boolean(platformStatus.lastError);
+    const state = hasError ? "Needs attention" : isConfigured ? "Configured" : "Not configured";
+    const stateClass = hasError ? "bad" : isConfigured ? "good" : "muted";
+    return `<tr><th scope="row">${escapeHtml(platform[0].toUpperCase() + platform.slice(1))}</th><td><span class="pill ${stateClass}">${state}</span></td><td>${escapeHtml(formattedStatusDate(platformStatus.lastPostAt))}</td><td>${hasError ? `<span class="error">${escapeHtml(platformStatus.lastError)}</span>` : "No current error"}</td></tr>`;
+  }).join("");
+  const directSummary = status.lastSummary ?? {};
+  const facebookSummary = status.facebook?.lastSummary ?? {};
+  const overallError = status.lastError || status.facebook?.lastError || "";
+  const overallState = overallError ? "Needs attention" : "Operating normally";
+  const overallClass = overallError ? "bad" : "good";
+  const stat = (label, value, detail) => `<div class="stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(detail)}</small></div>`;
+  const html = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PencilProof automation status</title>
+<style>
+:root{font-family:Arial,sans-serif;color:#f3f6fb;background:#061329}*{box-sizing:border-box}body{margin:0;background:linear-gradient(145deg,#061329 0%,#0b2346 100%);min-height:100vh}.shell{max-width:1080px;margin:auto;padding:34px 20px 60px}header{display:flex;align-items:center;justify-content:space-between;gap:18px;border-bottom:1px solid #274269;padding-bottom:18px;margin-bottom:28px}.brand{display:flex;align-items:center;gap:12px;font-weight:800;font-size:20px}.logo{display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:#f5bf3f;color:#061329;font-size:20px;font-weight:900}.refresh{border:1px solid #4a6488;border-radius:999px;padding:9px 14px;color:#f3f6fb;text-decoration:none;font-size:13px;font-weight:700}.hero,.panel{background:#102b52;border:1px solid #35557d;border-radius:18px;box-shadow:0 14px 40px #0003}.hero{padding:28px;display:flex;align-items:flex-end;justify-content:space-between;gap:22px}.eyebrow{display:block;color:#f5bf3f;letter-spacing:.14em;font-size:11px;font-weight:800;text-transform:uppercase;margin-bottom:10px}.hero h1{font:700 clamp(30px,6vw,52px)/1.05 Georgia,serif;margin:0}.hero p{max-width:620px;color:#c4d2e5;line-height:1.55;margin:14px 0 0}.pill{display:inline-block;border-radius:999px;padding:7px 11px;font-size:12px;font-weight:800;white-space:nowrap}.pill.good{background:#153f3b;color:#79e2c4}.pill.bad{background:#542d2d;color:#ffb5a9}.pill.muted{background:#283b55;color:#bac8da}.hero>.pill{font-size:14px;padding:10px 14px}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}.stat{background:#0b1e3a;border:1px solid #2a476c;border-radius:14px;padding:16px}.stat span,.stat small{display:block;color:#a9bad0}.stat span{font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:800}.stat strong{display:block;font-size:20px;margin:9px 0 5px}.stat small{font-size:12px}.panel{padding:22px;margin-top:18px}.panel h2{font:700 26px Georgia,serif;margin:0 0 7px}.panel p{color:#bfcde0;line-height:1.5;font-size:13px;margin:0 0 16px}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:680px;font-size:13px}th,td{border-bottom:1px solid #29476e;padding:13px 10px;text-align:left;vertical-align:top}thead th{color:#a9bad0;font-size:11px;letter-spacing:.1em;text-transform:uppercase}tbody th{font-size:14px}.error{color:#ffb5a9}.notice{background:#0b1e3a;border-left:4px solid #f5bf3f;padding:13px 15px;color:#c4d2e5;font-size:13px;line-height:1.5}.footer{color:#90a6c0;font-size:12px;margin-top:18px}.footer a{color:#f5bf3f}@media(max-width:760px){.hero{display:block}.hero>.pill{margin-top:18px}.stats{grid-template-columns:repeat(2,1fr)}}@media(max-width:480px){.shell{padding:22px 14px 42px}.stats{grid-template-columns:1fr}.hero{padding:22px}.panel{padding:18px}}
+</style></head><body><main class="shell"><header><div class="brand"><span class="logo">P</span><span>PencilProof</span></div><a class="refresh" href="/status?format=html">Refresh status</a></header>
+<section class="hero"><div><span class="eyebrow">LIVE AUTOMATION</span><h1>Promotion system status</h1><p>This page shows whether the connected PencilProof social automation is running. It never displays access tokens, passwords, or customer content.</p></div><span class="pill ${overallClass}">${overallState}</span></section>
+<section class="stats">${stat("Automation", status.automationEnabled === false ? "Paused" : "Enabled", "Scheduled checks are active")}${stat("Publishing", status.publishEnabled === false ? "Paused" : "Enabled", "Posts follow the configured cadence")}${stat("Replies", status.repliesEnabled === false ? "Paused" : "Enabled", "Replies remain policy-limited")}${stat("Last run", formattedStatusDate(status.lastRunAt), "Pacific time")}</section>
+<section class="panel"><h2>Platform connections</h2><p>Configured means the required provider connection is present. A successful post time is shown when the system has recorded one.</p><div class="table-wrap"><table><thead><tr><th>Platform</th><th>Status</th><th>Last published</th><th>Errors</th></tr></thead><tbody>${platformRows}</tbody></table></div></section>
+<section class="panel"><h2>Latest activity</h2><p>Recent activity from the direct-network loop, without exposing post or comment text.</p><div class="stats">${stat("Posts today", String(status.counters?.posts ?? 0), "Publishing actions")}${stat("Replies today", String(status.counters?.replies ?? 0), "Reply actions")}${stat("Posts scanned", String(directSummary.postsScanned ?? 0), "Latest direct run")}${stat("Warnings", String((directSummary.warningCount ?? 0) + (facebookSummary.warningCount ?? 0)), "Latest run warnings")}</div>${overallError ? `<div class="notice"><strong>Attention needed:</strong> ${escapeHtml(overallError)}</div>` : `<div class="notice"><strong>No current errors.</strong> The system is waiting for its next permitted scheduled action when the cadence and active hours allow it.</div>`}</section>
+<p class="footer">Need the machine-readable response? Use <a href="/status?format=json">JSON status</a>. Read-only endpoints do not publish, reply, or change provider settings.</p></main></body></html>`;
+  return new Response(html, {
+    headers: {
+      "Cache-Control": "no-store",
+      "Content-Type": "text/html; charset=utf-8",
+      Vary: "Accept",
+    },
+  });
+}
+
 function safeErrorMessage(error) {
   return error instanceof Error ? error.message.slice(0, 500) : String(error ?? "Unknown error").slice(0, 500);
 }
@@ -597,8 +660,11 @@ export default {
       const directStatus = directResponse.ok ? await directResponse.json() : {};
       const facebookResponse = await stateStub(env).fetch(new Request("https://social.internal/facebook-status"));
       const facebookStatus = facebookResponse.ok ? await facebookResponse.json() : {};
-      return responseJson({
+      const status = {
         ...directStatus,
+        automationEnabled: parseBoolean(env.SOCIAL_AUTOMATION_ENABLED, true),
+        publishEnabled: parseBoolean(env.SOCIAL_PUBLISH_ENABLED, false),
+        repliesEnabled: parseBoolean(env.SOCIAL_REPLY_ENABLED, true),
         configuredPlatforms: combinedConfiguredPlatforms(env),
         facebook: {
           configured: facebookConfigured(env),
@@ -621,7 +687,10 @@ export default {
               }
             : null,
         },
-      });
+      };
+      return wantsHtmlStatus(request)
+        ? statusPageResponse(status)
+        : responseJson(status);
     }
 
     if (request.method === "GET" && url.pathname === "/audit") {
