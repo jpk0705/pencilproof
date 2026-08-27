@@ -336,6 +336,21 @@ h1 { max-width: 690px; margin: 0; font-family: Georgia, 'Times New Roman', serif
 .route-guide-card strong { margin-top: auto; padding-top: 21px; font-size: 12px; }
 .route-guide-card-dark { color: white; background: var(--ink); border-color: var(--ink); }
 .route-guide-card-dark > span { color: var(--accent); }.route-guide-card-dark p { color: #b7c5ca; }.route-guide-card-dark strong { color: var(--accent); }
+.pilot-hero { padding-bottom: 58px; }
+.pilot-hero .page-hero-copy { max-width: 920px; }
+.pilot-hero .hero-caution { max-width: 690px; }
+.pilot-signal-grid { grid-template-columns: repeat(3, 1fr); }
+.pilot-proof-section > .button { margin-top: 32px; }
+.pilot-steps article { min-height: 210px; }
+.pilot-guide-section { background: var(--ink); color: var(--brand-text); }
+.pilot-guide-section .kicker { color: var(--brand-gold); }
+.pilot-guide-section h2 { max-width: 720px; }
+.pilot-guide-section p { color: var(--brand-muted); }
+.pilot-guide-section .text-link { color: var(--brand-text); margin-right: 24px; }
+@media (max-width: 760px) {
+  .pilot-signal-grid { grid-template-columns: 1fr; }
+  .pilot-guide-section .text-link { display: block; margin: 18px 0 0; }
+}
 .sales-entry-section { padding-top: 72px; padding-bottom: 72px; background: var(--ink); color: white; }
 .sales-entry-card { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 52px; align-items: center; padding: 42px 46px; border: 1px solid rgba(255,255,255,.16); border-radius: 18px; background: linear-gradient(135deg,#10264a,#0b1b38); }
 .sales-entry-card .kicker { color: var(--brand-gold); }

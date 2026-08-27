@@ -38,6 +38,7 @@ const projectRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const salesPageSource = await readFile(join(projectRoot, "app/sales/page.tsx"), "utf8");
 const homePageSource = await readFile(join(projectRoot, "app/page.tsx"), "utf8");
 const pricingPageSource = await readFile(join(projectRoot, "app/pricing/page.tsx"), "utf8");
+const pilotPageSource = await readFile(join(projectRoot, "app/pilot/page.tsx"), "utf8");
 const freeQuotePreviewSource = await readFile(join(projectRoot, "app/components/FreeQuotePreview.tsx"), "utf8");
 const analyticsWorkerSource = await readFile(join(projectRoot, "worker/entry.ts"), "utf8");
 const deploymentConfigSource = await readFile(join(projectRoot, "wrangler.jsonc"), "utf8");
@@ -66,6 +67,10 @@ assert.match(salesPageSource, /message && profile && isActive\(profile\.subscrip
 assert.match(homePageSource, /guides\/dealer-quote-review/);
 assert.match(homePageSource, /guides\/car-payment-different/);
 assert.match(homePageSource, /guides\/car-dealer-fees-add-ons/);
+assert.match(pilotPageSource, /public_pilot_hero/);
+assert.match(pilotPageSource, /utm_campaign=pilot/);
+assert.match(pilotPageSource, /Verify the import/);
+assert.match(pilotPageSource, /Start the free scan/);
 assert.doesNotMatch(pricingPageSource, /href=\{CHECKOUT_URL\}/);
 assert.match(pricingPageSource, /Start with the free scan/);
 assert.match(freeQuotePreviewSource, /event: "preview_ready"/);
@@ -91,6 +96,7 @@ assert.match(salesWorkerSource, /"\/sales\/"/);
 assert.match(salesWorkerSource, /url\.pathname\.replace/);
 assert.match(deploymentConfigSource, /"\/guides"/);
 assert.match(deploymentConfigSource, /"\/guides\/\*"/);
+assert.match(deploymentConfigSource, /"\/pilot"/);
 
 const closeTo = (actual, expected, tolerance = 0.01) => {
   assert.ok(
