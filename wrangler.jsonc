@@ -2,6 +2,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "pencilproof-audit",
+  "account_id": "18447bf12deede05af695627cfdb2390",
   "main": "./worker/entry.ts",
   "compatibility_date": "2026-07-26",
   "triggers": {

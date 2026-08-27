@@ -1,6 +1,6 @@
-# PencilProof social health audit
+# PencilProof social automation
 
-PencilProof social monitoring runs as its own Cloudflare Worker in **read-only audit mode**. Cloudflare is the sole production publisher for Facebook, Instagram, and Threads; this Worker never publishes or replies.
+PencilProof social automation runs as its own Cloudflare Worker in direct, zero-cost mode. It publishes and replies only through configured provider APIs, with strict time, interval, daily, and AI-call limits.
 
 ## Cost goal
 
@@ -11,7 +11,7 @@ The target is $0/month at normal PencilProof launch volume.
 - Workers AI uses `@cf/meta/llama-3.2-1b-instruct`, a small low-cost model.
 - `SOCIAL_AI_MAX_CALLS_PER_DAY=12` caps the direct-network AI loop.
 - `SOCIAL_FACEBOOK_AI_MAX_CALLS_PER_DAY=6` separately caps Facebook AI calls.
-- X/Twitter is intentionally disabled in this mode because its API is pay-per-use.
+- X/Twitter is intentionally disabled because its API is pay-per-use.
 - No paid social aggregator is required.
 
 The AI-call caps are safety brakes, not billing guarantees. Keep the Cloudflare account on the Free plan if the objective is a hard $0 Cloudflare bill, and review Workers AI usage after activation.
@@ -20,12 +20,12 @@ The AI-call caps are safety brakes, not billing guarantees. Keep the Cloudflare 
 
 - wakes every 30 minutes with a Cloudflare Cron Trigger
 - detects which direct social credentials are configured
-- checks provider APIs with GET requests only
+- checks provider APIs and publishes only when the configured schedule and platform credentials allow it
 - reports API reachability, recent post visibility, and last successful publish telemetry
 - reports weekly promotional-post completion for Facebook, Instagram, and Threads
 - reports token/API failures and automation errors
 - exposes `/health` and `/status` without returning credentials or comment text
-- exposes a GET-only `/audit` endpoint for read-only health checks; it never publishes or replies
+- exposes a GET-only `/audit` endpoint for read-only health checks
 
 ## Direct platforms
 
@@ -133,15 +133,7 @@ Never paste social passwords or access tokens into source code, GitHub issues, P
 
 ## Publishing boundary
 
-The production Worker is explicitly read-only:
-
-```jsonc
-"SOCIAL_READ_ONLY_AUDIT": "true",
-"SOCIAL_REPLY_ENABLED": "false",
-"SOCIAL_PUBLISH_ENABLED": "false"
-```
-
-Omitting this variable means all configured direct platforms that support the needed post format are eligible.
+Scheduled publishing and replies are enabled only when the corresponding variables are true, the platform is configured, and the interval, active-hour, daily, and AI limits allow the action. All generated posts use the PencilProof brand context and route campaign traffic through the public free-pilot entry point.
 
 ## Safety defaults
 
@@ -149,13 +141,13 @@ The AI prompts prohibit requests for sensitive personal information, guarantees,
 
 Default limits:
 
-- scheduled audits use GET requests only
-- no Workers AI calls are required for audit mode
-- no reply or publish counters are incremented by an audit
+- scheduled actions are limited by active hours, a 48-hour post interval, daily reply caps, and AI-call caps
+- platform credentials remain encrypted Cloudflare secrets
+- `/audit` is read-only and does not publish, reply, or mutate provider content
 
 ## Status endpoints
 
-- `GET /health` reports read-only mode, disabled publish/reply flags, and which platforms have complete credentials.
+- `GET /health` reports automation mode, publish/reply flags, and which platforms have complete credentials.
 - `GET /status` reports the latest direct-network status plus a separate Facebook status block.
 - `GET /audit` performs read-only provider checks for Facebook, Instagram, and Threads, reports recent successful publish IDs/timestamps, weekly promotional-post completion, API/token failures, and automation errors. It has no publishing or reply code path.
 
@@ -166,9 +158,8 @@ Neither endpoint returns access tokens, passwords, comment bodies, or other cred
 Defaults live in `wrangler.social.jsonc`:
 
 - `SOCIAL_AUTOMATION_ENABLED=true`
-- `SOCIAL_READ_ONLY_AUDIT=true`
-- `SOCIAL_REPLY_ENABLED=false`
-- `SOCIAL_PUBLISH_ENABLED=false`
+- `SOCIAL_REPLY_ENABLED=true`
+- `SOCIAL_PUBLISH_ENABLED=true`
 - `SOCIAL_TIMEZONE=America/Los_Angeles`
 - `SOCIAL_ACTIVE_START_HOUR=8`
 - `SOCIAL_ACTIVE_END_HOUR=19`
