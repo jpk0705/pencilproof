@@ -130,10 +130,16 @@ export const track = (event: AnalyticsEvent) => {
   const utmMedium = query.get("utm_medium");
   const utmCampaign = query.get("utm_campaign");
   const existingAttribution = window.sessionStorage.getItem(ATTRIBUTION_KEY);
-  const attribution = utmSource
+  const currentAttribution = utmSource
     ? [utmSource, utmMedium, utmCampaign].filter(Boolean).join("/")
-    : existingAttribution;
-  if (attribution) window.sessionStorage.setItem(ATTRIBUTION_KEY, attribution);
+    : null;
+  // Keep the first campaign source for the whole browser session. Internal
+  // links such as /pilot -> /analyze may add their own UTM tags, but they
+  // must not erase the original social source that brought the visitor in.
+  const attribution = existingAttribution || currentAttribution;
+  if (attribution && !existingAttribution) {
+    window.sessionStorage.setItem(ATTRIBUTION_KEY, attribution);
+  }
   let referrer = "direct";
   try {
     referrer = document.referrer ? new URL(document.referrer).hostname : "direct";

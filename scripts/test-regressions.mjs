@@ -46,6 +46,7 @@ const layoutSource = await readFile(join(projectRoot, "app/layout.tsx"), "utf8")
 const questionsPageSource = await readFile(join(projectRoot, "app/questions/page.tsx"), "utf8");
 const structuredDataSource = await readFile(join(projectRoot, "app/components/StructuredData.tsx"), "utf8");
 const freeQuotePreviewSource = await readFile(join(projectRoot, "app/components/FreeQuotePreview.tsx"), "utf8");
+const analyticsClientSource = await readFile(join(projectRoot, "lib/analytics.ts"), "utf8");
 const analyticsWorkerSource = await readFile(join(projectRoot, "worker/entry.ts"), "utf8");
 const deploymentConfigSource = await readFile(join(projectRoot, "wrangler.jsonc"), "utf8");
 const accountNavSource = await readFile(join(projectRoot, "app/components/AccountNav.tsx"), "utf8");
@@ -81,6 +82,9 @@ assert.doesNotMatch(pricingPageSource, /href=\{CHECKOUT_URL\}/);
 assert.match(pricingPageSource, /Start with the free scan/);
 assert.match(freeQuotePreviewSource, /event: "preview_ready"/);
 assert.doesNotMatch(freeQuotePreviewSource, /event: "audit_completed"/);
+assert.match(analyticsClientSource, /const currentAttribution = utmSource/);
+assert.match(analyticsClientSource, /const attribution = existingAttribution \|\| currentAttribution/);
+assert.match(analyticsClientSource, /if \(attribution && !existingAttribution\)/);
 assert.match(analyticsWorkerSource, /"preview_ready"/);
 assert.match(analyticsWorkerSource, /Acquisition signals/);
 assert.match(accountNavSource, /const ACCOUNT_URL = "https:\/\/pencilproof\.com\/account"/);
