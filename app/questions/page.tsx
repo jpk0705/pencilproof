@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { SiteFooter, SiteNav } from "@/app/components/SiteChrome";
+import StructuredData from "@/app/components/StructuredData";
 
 export const metadata: Metadata = {
   title: "Questions & Answers | PencilProof",
@@ -61,6 +62,17 @@ const questions = [
 export default function QuestionsPage() {
   return (
     <main className="questions-page">
+      <StructuredData
+        data={{
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          mainEntity: questions.map(({ question, answer }) => ({
+            "@type": "Question",
+            name: question,
+            acceptedAnswer: { "@type": "Answer", text: answer },
+          })),
+        }}
+      />
       <SiteNav />
 
       <section className="section shell faq-section">

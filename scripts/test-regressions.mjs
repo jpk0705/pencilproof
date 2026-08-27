@@ -42,6 +42,9 @@ const pilotPageSource = await readFile(join(projectRoot, "app/pilot/page.tsx"), 
 const worksheetGuideSource = await readFile(join(projectRoot, "app/guides/reading-car-dealer-worksheet/page.tsx"), "utf8");
 const quoteComparisonGuideSource = await readFile(join(projectRoot, "app/guides/compare-car-dealer-quotes/page.tsx"), "utf8");
 const sitemapSource = await readFile(join(projectRoot, "public/sitemap.xml"), "utf8");
+const layoutSource = await readFile(join(projectRoot, "app/layout.tsx"), "utf8");
+const questionsPageSource = await readFile(join(projectRoot, "app/questions/page.tsx"), "utf8");
+const structuredDataSource = await readFile(join(projectRoot, "app/components/StructuredData.tsx"), "utf8");
 const freeQuotePreviewSource = await readFile(join(projectRoot, "app/components/FreeQuotePreview.tsx"), "utf8");
 const analyticsWorkerSource = await readFile(join(projectRoot, "worker/entry.ts"), "utf8");
 const deploymentConfigSource = await readFile(join(projectRoot, "wrangler.jsonc"), "utf8");
@@ -1028,5 +1031,10 @@ assert.match(quoteComparisonGuideSource, /How to compare two car dealer quotes/)
 assert.match(quoteComparisonGuideSource, /\/pilot/);
 assert.match(sitemapSource, /guides\/reading-car-dealer-worksheet/);
 assert.match(sitemapSource, /guides\/compare-car-dealer-quotes/);
+assert.match(layoutSource, /openGraph:/);
+assert.match(layoutSource, /twitter:/);
+assert.match(layoutSource, /<StructuredData/);
+assert.match(questionsPageSource, /FAQPage/);
+assert.match(structuredDataSource, /application\/ld\+json/);
 
 console.log("PencilProof regression checks passed.");
