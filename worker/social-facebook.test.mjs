@@ -41,12 +41,21 @@ test("browser status view is readable while JSON status remains available", asyn
               lastRunAt: "2026-08-27T22:00:00.000Z",
               lastPostAt: "2026-08-27T17:00:00.000Z",
               lastError: null,
-              lastPublishedByPlatform: { threads: { at: "2026-08-27T17:00:00.000Z" } },
+              lastPublishedByPlatform: {
+                threads: { at: "2026-08-27T17:00:00.000Z", url: "https://www.threads.net/@pencilproof/post/18090197546296438" },
+                instagram: { at: "2026-08-27T01:00:00.000Z", url: "https://www.instagram.com/p/example/" },
+              },
               counters: { posts: 1, replies: 0 },
               lastSummary: { postsScanned: 4, warningCount: 0 },
             });
           }
-          if (path === "/facebook-status") return Response.json({ lastError: null, lastSummary: null });
+          if (path === "/facebook-status") {
+            return Response.json({
+              lastError: null,
+              lastSummary: null,
+              lastPublishedByPlatform: { facebook: { at: "2026-08-27T01:30:00.000Z", url: "https://www.facebook.com/123_456" } },
+            });
+          }
           return new Response("Not found", { status: 404 });
         },
       }),
@@ -62,6 +71,10 @@ test("browser status view is readable while JSON status remains available", asyn
   assert.equal(htmlResponse.headers.get("Content-Type"), "text/html; charset=utf-8");
   assert.match(html, /Promotion system status/);
   assert.match(html, /Threads/);
+  assert.match(html, /https:\/\/www\.threads\.net\/@pencilproof\/post\/18090197546296438/);
+  assert.match(html, /https:\/\/www\.instagram\.com\/p\/example\//);
+  assert.match(html, /https:\/\/www\.facebook\.com\/123_456/);
+  assert.match(html, /Last post \(Pacific\)/);
   assert.match(html, /No current errors/);
 
   const jsonResponse = await socialWorker.fetch(
