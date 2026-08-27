@@ -19,6 +19,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/" },
   other: {
     "facebook-domain-verification": "7tqkudgd5w6zan0d720tkmluc3g0jc",
+    "google-site-verification": "qW2t8ioLegKrbU__qWxrcUDbP8kx38lIL2n37fJeyfM",
     ...(isGitHubPages ? {} : { "codex-preview": "development" }),
   },
   icons: {
