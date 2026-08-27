@@ -39,6 +39,9 @@ const salesPageSource = await readFile(join(projectRoot, "app/sales/page.tsx"), 
 const homePageSource = await readFile(join(projectRoot, "app/page.tsx"), "utf8");
 const pricingPageSource = await readFile(join(projectRoot, "app/pricing/page.tsx"), "utf8");
 const pilotPageSource = await readFile(join(projectRoot, "app/pilot/page.tsx"), "utf8");
+const worksheetGuideSource = await readFile(join(projectRoot, "app/guides/reading-car-dealer-worksheet/page.tsx"), "utf8");
+const quoteComparisonGuideSource = await readFile(join(projectRoot, "app/guides/compare-car-dealer-quotes/page.tsx"), "utf8");
+const sitemapSource = await readFile(join(projectRoot, "public/sitemap.xml"), "utf8");
 const freeQuotePreviewSource = await readFile(join(projectRoot, "app/components/FreeQuotePreview.tsx"), "utf8");
 const analyticsWorkerSource = await readFile(join(projectRoot, "worker/entry.ts"), "utf8");
 const deploymentConfigSource = await readFile(join(projectRoot, "wrangler.jsonc"), "utf8");
@@ -1019,5 +1022,11 @@ const workerSource = await readFile(join(projectRoot, "worker", "index.ts"), "ut
 assert.match(workerSource, /Native clients cannot rely on browser cookies/);
 assert.match(workerSource, /authorization\.match\(\/\^Bearer\\s\+\(\.\+\)\$\/i\)/);
 assert.match(workerSource, /accountCall\(env, "\/user", \{ providerSubject: provider\.id \}\)/);
+assert.match(worksheetGuideSource, /How to read a car dealer worksheet/);
+assert.match(worksheetGuideSource, /\/pilot/);
+assert.match(quoteComparisonGuideSource, /How to compare two car dealer quotes/);
+assert.match(quoteComparisonGuideSource, /\/pilot/);
+assert.match(sitemapSource, /guides\/reading-car-dealer-worksheet/);
+assert.match(sitemapSource, /guides\/compare-car-dealer-quotes/);
 
 console.log("PencilProof regression checks passed.");

@@ -54,7 +54,7 @@ export default function PilotPage() {
         <div className="shell section-intro compact">
           <p className="kicker">WANT A QUICK ANSWER FIRST?</p>
           <h2>Learn the common quote questions, then check your own numbers.</h2>
-          <p><Link className="text-link" href="/guides/car-payment-different">Why is the payment different? <Arrow /></Link> <Link className="text-link" href="/guides/car-dealer-fees-add-ons">What are the fees and add-ons? <Arrow /></Link></p>
+          <p><Link className="text-link" href="/guides/car-payment-different">Why is the payment different? <Arrow /></Link> <Link className="text-link" href="/guides/car-dealer-fees-add-ons">What are the fees and add-ons? <Arrow /></Link> <Link className="text-link" href="/guides/reading-car-dealer-worksheet">How do I read the worksheet? <Arrow /></Link> <Link className="text-link" href="/guides/compare-car-dealer-quotes">How do I compare quotes? <Arrow /></Link></p>
         </div>
       </section>
       <SiteFooter />
