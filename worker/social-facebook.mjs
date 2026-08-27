@@ -76,19 +76,27 @@ function wantsHtmlStatus(request) {
   return (request.headers.get("Accept") ?? "").toLowerCase().includes("text/html");
 }
 
+function safePostUrl(value) {
+  const url = String(value ?? "").trim();
+  return /^https?:\/\//i.test(url) ? url : "";
+}
+
 function statusPageResponse(status) {
   const configured = new Set(Array.isArray(status.configuredPlatforms) ? status.configuredPlatforms : []);
   const platformRows = ["facebook", "instagram", "threads"].map((platform) => {
-    const platformStatus = platform === "facebook"
-      ? (status.facebook ?? {})
-      : { lastError: null, lastPostAt: status.lastPublishedByPlatform?.[platform]?.at ?? null };
+    const platformStatus = platform === "facebook" ? (status.facebook ?? {}) : {};
+    const published = platform === "facebook"
+      ? (platformStatus.lastPublishedByPlatform?.facebook ?? platformStatus.lastPublished ?? null)
+      : (status.lastPublishedByPlatform?.[platform] ?? null);
     const isConfigured = platform === "facebook"
       ? platformStatus.configured === true
       : configured.has(platform);
     const hasError = Boolean(platformStatus.lastError);
     const state = hasError ? "Needs attention" : isConfigured ? "Configured" : "Not configured";
     const stateClass = hasError ? "bad" : isConfigured ? "good" : "muted";
-    return `<tr><th scope="row">${escapeHtml(platform[0].toUpperCase() + platform.slice(1))}</th><td><span class="pill ${stateClass}">${state}</span></td><td>${escapeHtml(formattedStatusDate(platformStatus.lastPostAt))}</td><td>${hasError ? `<span class="error">${escapeHtml(platformStatus.lastError)}</span>` : "No current error"}</td></tr>`;
+    const lastPostUrl = safePostUrl(published?.url ?? published?.postUrl);
+    const lastPost = `${escapeHtml(formattedStatusDate(published?.at ?? platformStatus.lastPostAt))}${lastPostUrl ? ` <a style="display:inline-block;margin-top:7px;color:#f5bf3f;font-weight:700;text-decoration:underline;text-underline-offset:3px" href="${escapeHtml(lastPostUrl)}" target="_blank" rel="noopener noreferrer">Open post ↗</a>` : `<span style="display:block;margin-top:7px;color:#90a6c0;font-size:12px">Link not recorded</span>`}`;
+    return `<tr><th scope="row">${escapeHtml(platform[0].toUpperCase() + platform.slice(1))}</th><td><span class="pill ${stateClass}">${state}</span></td><td>${lastPost}</td><td>${hasError ? `<span class="error">${escapeHtml(platformStatus.lastError)}</span>` : "No current error"}</td></tr>`;
   }).join("");
   const directSummary = status.lastSummary ?? {};
   const facebookSummary = status.facebook?.lastSummary ?? {};
@@ -103,7 +111,7 @@ function statusPageResponse(status) {
 </style></head><body><main class="shell"><header><div class="brand"><span class="logo">P</span><span>PencilProof</span></div><a class="refresh" href="/status?format=html">Refresh status</a></header>
 <section class="hero"><div><span class="eyebrow">LIVE AUTOMATION</span><h1>Promotion system status</h1><p>This page shows whether the connected PencilProof social automation is running. It never displays access tokens, passwords, or customer content.</p></div><span class="pill ${overallClass}">${overallState}</span></section>
 <section class="stats">${stat("Automation", status.automationEnabled === false ? "Paused" : "Enabled", "Scheduled checks are active")}${stat("Publishing", status.publishEnabled === false ? "Paused" : "Enabled", "Posts follow the configured cadence")}${stat("Replies", status.repliesEnabled === false ? "Paused" : "Enabled", "Replies remain policy-limited")}${stat("Last run", formattedStatusDate(status.lastRunAt), "Pacific time")}</section>
-<section class="panel"><h2>Platform connections</h2><p>Configured means the required provider connection is present. A successful post time is shown when the system has recorded one.</p><div class="table-wrap"><table><thead><tr><th>Platform</th><th>Status</th><th>Last published</th><th>Errors</th></tr></thead><tbody>${platformRows}</tbody></table></div></section>
+<section class="panel"><h2>Platform connections</h2><p>Configured means the required provider connection is present. Each platform shows its latest recorded post time in Pacific time and a direct link when the provider supplied one.</p><div class="table-wrap"><table><thead><tr><th>Platform</th><th>Status</th><th>Last post (Pacific)</th><th>Errors</th></tr></thead><tbody>${platformRows}</tbody></table></div></section>
 <section class="panel"><h2>Latest activity</h2><p>Recent activity from the direct-network loop, without exposing post or comment text.</p><div class="stats">${stat("Posts today", String(status.counters?.posts ?? 0), "Publishing actions")}${stat("Replies today", String(status.counters?.replies ?? 0), "Reply actions")}${stat("Posts scanned", String(directSummary.postsScanned ?? 0), "Latest direct run")}${stat("Warnings", String((directSummary.warningCount ?? 0) + (facebookSummary.warningCount ?? 0)), "Latest run warnings")}</div>${overallError ? `<div class="notice"><strong>Attention needed:</strong> ${escapeHtml(overallError)}</div>` : `<div class="notice"><strong>No current errors.</strong> The system is waiting for its next permitted scheduled action when the cadence and active hours allow it.</div>`}</section>
 <p class="footer">Need the machine-readable response? Use <a href="/status?format=json">JSON status</a>. Read-only endpoints do not publish, reply, or change provider settings.</p></main></body></html>`;
   return new Response(html, {
@@ -347,6 +355,27 @@ async function publishFacebook(env, message) {
   );
 }
 
+async function resolveFacebookPostUrl(env, id, result) {
+  for (const key of ["url", "postUrl", "permalink", "permalink_url"]) {
+    const value = String(result?.[key] ?? "").trim();
+    if (/^https?:\/\//i.test(value)) return value;
+  }
+  try {
+    const posts = await getFacebookPosts(env, 10);
+    return String(posts.find((post) => String(post.id) === String(id))?.postUrl ?? "").trim();
+  } catch {
+    return "";
+  }
+}
+
+function hydrateFacebookPostUrl(record, recentPosts) {
+  if (!record || /^https?:\/\//i.test(String(record.url ?? record.postUrl ?? "").trim())) return record;
+  const match = [...(Array.isArray(recentPosts) ? recentPosts : [])]
+    .reverse()
+    .find((post) => String(post?.id) === String(record.id) && /^https?:\/\//i.test(String(post?.postUrl ?? "").trim()));
+  return match ? { ...record, url: String(match.postUrl).trim() } : record;
+}
+
 async function runFacebookAutomation(env, state, now = new Date()) {
   const summary = {
     startedAt: now.toISOString(),
@@ -391,7 +420,13 @@ async function runFacebookAutomation(env, state, now = new Date()) {
     const created = Date.parse(post.created);
     if (Number.isFinite(created) && created < cutoff) continue;
     summary.postsScanned += 1;
-    state.recentPosts.push({ id: post.id, post: post.post.slice(0, 500), created: post.created });
+    state.recentPosts.push({
+      platform: "facebook",
+      id: post.id,
+      post: post.post.slice(0, 500),
+      created: post.created,
+      postUrl: post.postUrl,
+    });
 
     let comments = [];
     try {
@@ -481,9 +516,11 @@ async function runFacebookAutomation(env, state, now = new Date()) {
         state.publishedKeys.push(publishKey);
         state.lastPostAt = now.toISOString();
         state.lastPostId = String(result?.id ?? publishKey);
+        const postUrl = await resolveFacebookPostUrl(env, state.lastPostId, result);
         state.lastPublishedByPlatform.facebook = {
           id: state.lastPostId,
           at: now.toISOString(),
+          ...(postUrl ? { url: postUrl } : {}),
         };
         state.counters.posts += 1;
         state.recentPosts.push({ id: state.lastPostId, post: publishedPost, created: now.toISOString() });
@@ -629,7 +666,12 @@ export class SocialAutomationState extends DirectSocialAutomationState {
         lastRunAt: state.lastRunAt,
         lastPostAt: state.lastPostAt,
         lastError: state.lastError,
-        lastPublishedByPlatform: state.lastPublishedByPlatform,
+        lastPublishedByPlatform: {
+          ...state.lastPublishedByPlatform,
+          ...(state.lastPublishedByPlatform.facebook
+            ? { facebook: hydrateFacebookPostUrl(state.lastPublishedByPlatform.facebook, state.recentPosts) }
+            : {}),
+        },
         counters: state.counters,
         lastSummary: state.lastSummary,
       });
@@ -660,12 +702,18 @@ export default {
       const directStatus = directResponse.ok ? await directResponse.json() : {};
       const facebookResponse = await stateStub(env).fetch(new Request("https://social.internal/facebook-status"));
       const facebookStatus = facebookResponse.ok ? await facebookResponse.json() : {};
+      const directPublishedByPlatform = directStatus.lastPublishedByPlatform ?? {};
+      const facebookPublishedByPlatform = facebookStatus.lastPublishedByPlatform ?? {};
       const status = {
         ...directStatus,
         automationEnabled: parseBoolean(env.SOCIAL_AUTOMATION_ENABLED, true),
         publishEnabled: parseBoolean(env.SOCIAL_PUBLISH_ENABLED, false),
         repliesEnabled: parseBoolean(env.SOCIAL_REPLY_ENABLED, true),
         configuredPlatforms: combinedConfiguredPlatforms(env),
+        lastPublishedByPlatform: {
+          ...directPublishedByPlatform,
+          ...facebookPublishedByPlatform,
+        },
         facebook: {
           configured: facebookConfigured(env),
           lastRunAt: facebookStatus.lastRunAt ?? null,

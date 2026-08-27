@@ -25,6 +25,8 @@ The AI-call caps are safety brakes, not billing guarantees. Keep the Cloudflare 
 - reports weekly promotional-post completion for Facebook, Instagram, and Threads
 - reports token/API failures and automation errors
 - exposes `/health` and `/status` without returning credentials or comment text
+- the browser status view shows each platform's latest recorded post time in Pacific time and a provider permalink when available
+- `/status?format=json` remains the machine-readable status response for monitoring
 - exposes a GET-only `/audit` endpoint for read-only health checks
 
 ## Direct platforms

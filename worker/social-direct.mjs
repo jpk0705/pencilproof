@@ -710,6 +710,37 @@ function outboundId(result) {
   return String(result?.id ?? result?.uri ?? result?.commentId ?? "").trim();
 }
 
+function outboundUrl(result) {
+  for (const key of ["url", "postUrl", "permalink", "permalink_url"]) {
+    const value = String(result?.[key] ?? "").trim();
+    if (/^https?:\/\//i.test(value)) return value;
+  }
+  return "";
+}
+
+async function resolvePublishedPostUrl(env, runtime, platform, id, result) {
+  const directUrl = outboundUrl(result);
+  if (directUrl) return directUrl;
+  try {
+    const posts = await getRecentPlatformPosts(env, runtime, platform, 10);
+    return String(posts.find((post) => String(post.id) === String(id))?.postUrl ?? "").trim();
+  } catch {
+    return "";
+  }
+}
+
+function hydratePublishedPostUrls(publishedByPlatform, recentPosts) {
+  const hydrated = { ...(publishedByPlatform && typeof publishedByPlatform === "object" ? publishedByPlatform : {}) };
+  for (const [platform, record] of Object.entries(hydrated)) {
+    if (outboundUrl(record)) continue;
+    const match = [...(Array.isArray(recentPosts) ? recentPosts : [])]
+      .reverse()
+      .find((post) => post?.platform === platform && String(post.id) === String(record?.id) && outboundUrl(post));
+    if (match) hydrated[platform] = { ...record, url: outboundUrl(match) };
+  }
+  return hydrated;
+}
+
 function canPublishPlatform(env, platform) {
   if (platform === "instagram" && !String(env.INSTAGRAM_IMAGE_URL ?? "").trim()) return false;
   return true;
@@ -782,6 +813,7 @@ async function runAutomation(env, state, now = new Date()) {
         id: post.id,
         post: String(post.post ?? "").slice(0, 500),
         created: String(post.created ?? ""),
+        postUrl: String(post.postUrl ?? ""),
       });
       let comments;
       try {
@@ -861,7 +893,12 @@ async function runAutomation(env, state, now = new Date()) {
           const result = await publishToPlatform(env, runtime, platform, routePostToPilot(generated, platform));
           const id = outboundId(result) || key;
           state.publishedKeys.push(key);
-          state.lastPublishedByPlatform[platform] = { id, at: now.toISOString() };
+          const url = await resolvePublishedPostUrl(env, runtime, platform, id, result);
+          state.lastPublishedByPlatform[platform] = {
+            id,
+            at: now.toISOString(),
+            ...(url ? { url } : {}),
+          };
           summary.postsPublished.push({ platform, id });
         } catch (error) {
           summary.warnings.push(`publish ${platform}: ${safeErrorMessage(error)}`);
@@ -932,7 +969,7 @@ export class SocialAutomationState {
         lastPostAt: state.lastPostAt,
         lastPostId: state.lastPostId,
         lastError: state.lastError,
-        lastPublishedByPlatform: state.lastPublishedByPlatform,
+        lastPublishedByPlatform: hydratePublishedPostUrls(state.lastPublishedByPlatform, state.recentPosts),
         counters: state.counters,
         lastSummary: state.lastSummary,
       });
