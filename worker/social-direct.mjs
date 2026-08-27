@@ -722,11 +722,15 @@ async function resolvePublishedPostUrl(env, runtime, platform, id, result) {
   const directUrl = outboundUrl(result);
   if (directUrl) return directUrl;
   try {
-    const posts = await getRecentPlatformPosts(env, runtime, platform, 10);
-    return String(posts.find((post) => String(post.id) === String(id))?.postUrl ?? "").trim();
+    return await resolveRecentPlatformPostUrl(env, runtime, platform, id);
   } catch {
     return "";
   }
+}
+
+export async function resolveRecentPlatformPostUrl(env, runtime, platform, id) {
+  const posts = await getRecentPlatformPosts(env, runtime, platform, 10);
+  return String(posts.find((post) => String(post.id) === String(id))?.postUrl ?? "").trim();
 }
 
 function hydratePublishedPostUrls(publishedByPlatform, recentPosts) {

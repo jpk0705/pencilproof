@@ -5,6 +5,7 @@ import directWorker, {
   isLikelyOwnComment,
   localClockParts,
   parseBoolean,
+  resolveRecentPlatformPostUrl,
   runDirectReadOnlyAudit,
   shouldPublishNow,
   trimUnique,
@@ -79,6 +80,26 @@ function wantsHtmlStatus(request) {
 function safePostUrl(value) {
   const url = String(value ?? "").trim();
   return /^https?:\/\//i.test(url) ? url : "";
+}
+
+async function hydrateStatusPostUrl(env, platform, record) {
+  if (!record || safePostUrl(record.url ?? record.postUrl) || !String(record.id ?? "").trim()) return record;
+  try {
+    const url = platform === "facebook"
+      ? await resolveFacebookPostUrl(env, record.id, record)
+      : await resolveRecentPlatformPostUrl(env, { blueskySession: null }, platform, record.id);
+    return safePostUrl(url) ? { ...record, url } : record;
+  } catch {
+    return record;
+  }
+}
+
+async function hydrateStatusPostUrls(env, publishedByPlatform) {
+  const entries = await Promise.all(
+    Object.entries(publishedByPlatform && typeof publishedByPlatform === "object" ? publishedByPlatform : {})
+      .map(async ([platform, record]) => [platform, await hydrateStatusPostUrl(env, platform, record)]),
+  );
+  return Object.fromEntries(entries);
 }
 
 function statusPageResponse(status) {
@@ -704,6 +725,10 @@ export default {
       const facebookStatus = facebookResponse.ok ? await facebookResponse.json() : {};
       const directPublishedByPlatform = directStatus.lastPublishedByPlatform ?? {};
       const facebookPublishedByPlatform = facebookStatus.lastPublishedByPlatform ?? {};
+      const [hydratedDirectPublishedByPlatform, hydratedFacebookPublishedByPlatform] = await Promise.all([
+        hydrateStatusPostUrls(env, directPublishedByPlatform),
+        hydrateStatusPostUrls(env, facebookPublishedByPlatform),
+      ]);
       const status = {
         ...directStatus,
         automationEnabled: parseBoolean(env.SOCIAL_AUTOMATION_ENABLED, true),
@@ -711,15 +736,15 @@ export default {
         repliesEnabled: parseBoolean(env.SOCIAL_REPLY_ENABLED, true),
         configuredPlatforms: combinedConfiguredPlatforms(env),
         lastPublishedByPlatform: {
-          ...directPublishedByPlatform,
-          ...facebookPublishedByPlatform,
+          ...hydratedDirectPublishedByPlatform,
+          ...hydratedFacebookPublishedByPlatform,
         },
         facebook: {
           configured: facebookConfigured(env),
           lastRunAt: facebookStatus.lastRunAt ?? null,
           lastPostAt: facebookStatus.lastPostAt ?? null,
           lastError: facebookStatus.lastError ?? null,
-          lastPublishedByPlatform: facebookStatus.lastPublishedByPlatform ?? {},
+          lastPublishedByPlatform: hydratedFacebookPublishedByPlatform,
           counters: facebookStatus.counters ?? null,
           lastSummary: facebookStatus.lastSummary
             ? {

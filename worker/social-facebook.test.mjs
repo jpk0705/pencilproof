@@ -85,3 +85,61 @@ test("browser status view is readable while JSON status remains available", asyn
   assert.equal(json.configuredPlatforms[0], "threads");
   assert.equal(json.lastSummary.postsScanned, 4);
 });
+
+test("status resolves missing post IDs to provider permalinks", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url.includes("graph.threads.net")) {
+      return Response.json({
+        data: [{ id: "thread-1", text: "Threads post", timestamp: "2026-08-27T17:00:00.000Z", permalink: "https://www.threads.net/@pencilproof/post/thread-1", is_reply: false }],
+      });
+    }
+    if (url.includes("graph.facebook.com")) {
+      return Response.json({
+        data: [{ id: "page-1", message: "Facebook post", created_time: "2026-08-27T17:00:00.000Z", permalink_url: "https://www.facebook.com/page-1", from: { id: "page" } }],
+      });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  };
+
+  try {
+    const env = {
+      THREADS_ACCESS_TOKEN: "threads-token",
+      FACEBOOK_PAGE_ID: "page",
+      FACEBOOK_PAGE_ACCESS_TOKEN: "facebook-token",
+      SOCIAL_STATE: {
+        idFromName: () => "social-state",
+        get: () => ({
+          fetch: async (request) => {
+            const path = new URL(request.url).pathname;
+            if (path === "/status") {
+              return Response.json({
+                lastPublishedByPlatform: { threads: { id: "thread-1", at: "2026-08-27T17:00:00.000Z" } },
+                counters: { posts: 1, replies: 0 },
+                lastSummary: null,
+              });
+            }
+            if (path === "/facebook-status") {
+              return Response.json({
+                lastPublishedByPlatform: { facebook: { id: "page-1", at: "2026-08-27T17:00:00.000Z" } },
+                lastSummary: null,
+              });
+            }
+            return new Response("Not found", { status: 404 });
+          },
+        }),
+      },
+    };
+
+    const response = await socialWorker.fetch(
+      new Request("https://pencilproof-social.jpkwork0705.workers.dev/status?format=json"),
+      env,
+    );
+    const json = await response.json();
+    assert.equal(json.lastPublishedByPlatform.threads.url, "https://www.threads.net/@pencilproof/post/thread-1");
+    assert.equal(json.lastPublishedByPlatform.facebook.url, "https://www.facebook.com/page-1");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
