@@ -327,6 +327,7 @@ h1 { max-width: 690px; margin: 0; font-family: Georgia, 'Times New Roman', serif
 .route-guide-intro h2 { max-width: 720px; }
 .route-guide-intro > p:last-child { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.75; }
 .route-guide-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 58px; }
+.guide-grid { grid-template-columns: repeat(3, 1fr); }
 .route-guide-card { min-height: 270px; display: flex; flex-direction: column; align-items: flex-start; padding: 25px; border: 1px solid #c8cdbd; border-radius: 8px; background: rgba(255,255,255,.56); transition: transform .2s, box-shadow .2s, border-color .2s; }
 .route-guide-card:hover { transform: translateY(-4px); border-color: var(--green); box-shadow: 7px 8px 0 #d7dccd; }
 .route-guide-card > span { color: var(--green); font-size: 10px; font-weight: 900; letter-spacing: .1em; }

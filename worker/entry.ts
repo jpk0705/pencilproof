@@ -9,11 +9,13 @@ export type { Env } from "./index.ts";
 const ANALYTICS_EVENT_NAMES = [
   "page_view",
   "scan_started",
+  "preview_ready",
   "import_success",
   "import_failed",
   "manual_fallback_opened",
   "audit_completed",
   "checkout_started",
+  "cta_clicked",
   "payment_completed",
   "feedback_submitted",
 ] as const;
@@ -57,6 +59,10 @@ type CountRow = {
 };
 type EventCountRow = CountRow & {
   event_name: string;
+};
+type DimensionCountRow = CountRow & {
+  dimension: string | null;
+  sessions: number;
 };
 type DayEventCountRow = EventCountRow & {
   day: string;
@@ -419,6 +425,33 @@ export class AnalyticsStore {
         byDay[row.day][row.event_name] = Number(row.count) || 0;
       }
 
+      const dimensionCounts = async (column: "source" | "path" | "device", eventName?: string) => {
+        const eventClause = eventName ? " AND event_name = ?" : "";
+        const bindings = eventName ? [startIso, endIso, eventName] : [startIso, endIso];
+        const rows: Array<{ name: string; sessions: number; events: number }> = [];
+        for (const row of this.sql.exec<DimensionCountRow>(`
+          SELECT COALESCE(NULLIF(${column}, ''), 'direct') AS dimension,
+            COUNT(DISTINCT session_id) AS sessions,
+            COUNT(*) AS count
+          FROM analytics_events
+          ${eventWindow}${eventClause}
+          GROUP BY COALESCE(NULLIF(${column}, ''), 'direct')
+          ORDER BY sessions DESC, count DESC
+          LIMIT 12
+        `, ...bindings)) {
+          rows.push({
+            name: String(row.dimension ?? "direct"),
+            sessions: Number(row.sessions) || 0,
+            events: Number(row.count) || 0,
+          });
+        }
+        return rows;
+      };
+
+      const sources = await dimensionCounts("source");
+      const topPages = await dimensionCounts("path", "page_view");
+      const devices = await dimensionCounts("device");
+
       const sessions = Number(this.sql.exec<CountRow>(`
         SELECT COUNT(DISTINCT session_id) AS count
         FROM analytics_events
@@ -436,6 +469,8 @@ export class AnalyticsStore {
         pageViews: eventTotal("page_view"),
         scanUsers: await distinctEventUsers("scan_started"),
         scanStarts: eventTotal("scan_started"),
+        previewUsers: await distinctEventUsers("preview_ready"),
+        previewsReady: eventTotal("preview_ready"),
         auditUsers: await distinctEventUsers("audit_completed"),
         auditsCompleted: eventTotal("audit_completed"),
         checkoutUsers: await distinctEventUsers("checkout_started"),
@@ -515,6 +550,9 @@ export class AnalyticsStore {
           label: selectedRange.label,
           start: startIso,
         },
+        sources,
+        topPages,
+        devices,
         funnel,
         sessions,
         updatedAt: lastEventAt ?? reliableFrom,
@@ -603,6 +641,8 @@ type AnalyticsDashboardSummary = {
     pageViews?: number;
     scanUsers?: number;
     scanStarts?: number;
+    previewUsers?: number;
+    previewsReady?: number;
     auditUsers?: number;
     auditsCompleted?: number;
     checkoutUsers?: number;
@@ -613,6 +653,9 @@ type AnalyticsDashboardSummary = {
   sessions?: number;
   byEvent?: Record<string, number>;
   byDay?: Record<string, Record<string, number>>;
+  sources?: Array<{ name?: string; sessions?: number; events?: number }>;
+  topPages?: Array<{ name?: string; sessions?: number; events?: number }>;
+  devices?: Array<{ name?: string; sessions?: number; events?: number }>;
   feedback?: Partial<FeedbackSummary>;
   updatedAt?: string;
 };
@@ -665,6 +708,8 @@ const analyticsDashboard = async (request: Request, env: Env) => {
     pageViews: summary.funnel?.pageViews ?? fallback.page_view ?? 0,
     scanUsers: summary.funnel?.scanUsers ?? 0,
     scanStarts: summary.funnel?.scanStarts ?? fallback.scan_started ?? 0,
+    previewUsers: summary.funnel?.previewUsers ?? 0,
+    previewsReady: summary.funnel?.previewsReady ?? fallback.preview_ready ?? 0,
     auditUsers: summary.funnel?.auditUsers ?? 0,
     auditsCompleted: summary.funnel?.auditsCompleted ?? fallback.audit_completed ?? 0,
     checkoutUsers: summary.funnel?.checkoutUsers ?? 0,
@@ -678,7 +723,8 @@ const analyticsDashboard = async (request: Request, env: Env) => {
   const funnelStep = (label: string, detail: string, count: number, denominator: number) => `<div class="funnel-step"><div><strong>${esc(label)}</strong><span>${esc(detail)}</span></div><b>${count.toLocaleString("en-US")}</b><div class="bar"><i style="width:${Math.min(100, Math.round((count / Math.max(1, denominator)) * 100))}%"></i></div></div>`;
   const funnelCards = [
     ["Visitors", "unique browsers that loaded PencilProof", funnel.visitors],
-    ["Used the scan", "unique browsers that started an upload", funnel.scanUsers],
+    ["Started a scan", "unique browsers that began an upload", funnel.scanUsers],
+    ["Preview ready", "unique browsers that reached imported values", funnel.previewUsers],
     ["Reached checkout", "unique browsers that opened checkout", funnel.checkoutUsers],
     ["Purchased", "unique browsers with a verified Stripe payment", funnel.purchasers],
   ].map(([label, detail, count]) => `<div class="card"><div class="label">${esc(label)}</div><div class="big">${Number(count).toLocaleString("en-US")}</div><p>${esc(detail)}</p></div>`).join("");
@@ -692,6 +738,8 @@ const analyticsDashboard = async (request: Request, env: Env) => {
   const trend = Array.from(trendMap.entries()).slice(monthlyTrend ? -12 : -30);
   const maxTrend = Math.max(1, ...trend.map(([, count]) => count));
   const trendBars = trend.map(([bucket, count]) => `<div class="day"><div class="day-bar" style="height:${Math.max(8, Math.round((count / maxTrend) * 100))}%"><b>${count}</b></div><span>${esc(monthlyTrend ? bucket : bucket.slice(5))}</span></div>`).join("");
+  const dimensionList = (title: string, detail: string, rows: Array<{ name?: string; sessions?: number; events?: number }>) => `<div class="dimension-list"><h3>${esc(title)}</h3><p class="subtle">${esc(detail)}</p>${rows.length ? rows.map((row) => `<div class="dimension-row"><span>${esc(row.name ?? "direct")}</span><b>${Number(row.sessions ?? 0).toLocaleString("en-US")}</b><small>${Number(row.events ?? 0).toLocaleString("en-US")} events</small></div>`).join("") : `<div class="empty">No data in this period.</div>`}</div>`;
+  const acquisitionPanel = `<section class="panel" style="margin-top:18px"><h2>Acquisition signals</h2><p class="subtle">These dimensions show where visits came from and which public pages are attracting attention. A source is carried from UTM tags or the referring site; direct means no source was available.</p><div class="dimension-grid">${dimensionList("Traffic sources", "Unique sessions", summary.sources ?? [])}${dimensionList("Top entry pages", "Page-view sessions", summary.topPages ?? [])}${dimensionList("Devices", "Unique sessions", summary.devices ?? [])}</div></section>`;
   const accountQuery = `${selectedAccountRole === "all" ? "" : `&account_role=${encodeURIComponent(selectedAccountRole)}`}${selectedAccountPaid === "all" ? "" : `&account_paid=${encodeURIComponent(selectedAccountPaid)}`}`;
   const rangeLinks = ANALYTICS_RANGES.map((range) => `<a class="range ${range.key === rangeKey ? "selected" : ""}" href="/analytics?range=${range.key}${accountQuery}">${esc(range.label)}</a>`).join("");
   const feedback = summary.feedback ?? {};
@@ -723,15 +771,16 @@ const analyticsDashboard = async (request: Request, env: Env) => {
     : "No events yet";
   return new Response(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PencilProof analytics</title>
-<style>:root{font-family:Arial,sans-serif;color:#10284b;background:#f4f1e9}*{box-sizing:border-box}body{margin:0}.shell{max-width:1180px;margin:auto;padding:30px 20px 60px}header{display:flex;justify-content:space-between;align-items:end;gap:20px;margin-bottom:22px}h1{margin:0;font:700 clamp(30px,5vw,50px)/1 Georgia,serif}p{color:#627086;line-height:1.5}.updated{font-size:12px;color:#627086;text-align:right}.range-row{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 22px}.range{border:1px solid #c9c6bb;border-radius:999px;padding:9px 13px;color:#17365f;background:#fff;text-decoration:none;font-size:13px;font-weight:700}.range.selected{background:#15365e;color:#fff;border-color:#15365e}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}.card,.panel{background:#fff;border:1px solid #d9d6ca;border-radius:16px;padding:20px;box-shadow:0 8px 24px #10284b0d}.label{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#718096}.big{font:700 38px Georgia,serif;margin-top:8px;color:#b27a22}.card p{margin:10px 0 0;font-size:13px}.grid{display:grid;grid-template-columns:1.1fr .9fr;gap:18px}.panel h2{font:700 24px Georgia,serif;margin:0 0 8px}.subtle{font-size:13px;margin:0 0 18px}.funnel-step{display:grid;grid-template-columns:1fr auto;gap:6px 14px;margin:18px 0}.funnel-step strong,.funnel-step span{display:block}.funnel-step span{color:#718096;font-size:13px;margin-top:4px}.funnel-step>b{font:700 24px Georgia,serif;color:#b27a22}.funnel-step .bar{grid-column:1/-1}.bar{height:9px;background:#edf0f3;border-radius:20px;overflow:hidden}.bar i{display:block;height:100%;background:#c5943f;border-radius:20px}.chart{height:230px;display:flex;align-items:end;gap:8px;padding:16px 4px 0;overflow-x:auto}.day{height:100%;min-width:25px;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:end;gap:7px;font-size:10px;color:#6a7789}.day-bar{width:100%;max-width:34px;background:#15365e;border-radius:7px 7px 2px 2px;min-height:8px;display:flex;justify-content:center;color:#fff;font-size:11px;padding-top:5px}.day-bar b{font-weight:700}.definitions{margin-top:18px;background:#f8f7f2;border-left:4px solid #c5943f;padding:14px 16px}.definitions p{margin:6px 0;font-size:13px}.feedback-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0 20px}.feedback-metric{background:#f8f7f2;border-radius:12px;padding:14px}.feedback-metric .big{font-size:28px;margin-top:5px}.worth-row{display:grid;grid-template-columns:64px 1fr 28px;align-items:center;gap:10px;margin:12px 0;font-size:13px}.worth-row .bar{height:8px}.worth-row b{text-align:right}.table-wrap{overflow-x:auto;margin-top:12px}table{width:100%;border-collapse:collapse;font-size:13px;min-width:720px}th,td{border-bottom:1px solid #e5e2d9;padding:10px 8px;text-align:left;vertical-align:top}th{color:#718096;font-size:11px;letter-spacing:.08em;text-transform:uppercase}.feedback-response-comment{min-width:260px;white-space:normal;line-height:1.45;color:#30445d}.feedback-actions{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-top:6px}.download{border:1px solid #c9c6bb;border-radius:999px;padding:9px 13px;color:#17365f;background:#fff;text-decoration:none;font-size:13px;font-weight:700;white-space:nowrap}.role-pill,.paid-pill{display:inline-block;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:800}.role-consumer{background:#e8f2ec;color:#22613c}.role-salesperson{background:#fff1d1;color:#8b5b00}.role-both{background:#e9e7fb;color:#4a3f91}.paid-pill.paid{background:#e8f2ec;color:#22613c}.paid-pill.unpaid{background:#f2f3f5;color:#687386}.paid-source{display:block;color:#718096;font-size:11px;margin-top:5px}.account-filter{display:flex;align-items:end;flex-wrap:wrap;gap:10px;margin:16px 0 8px;padding:14px;background:#f8f7f2;border-radius:12px}.account-filter label{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:800;color:#627086}.account-filter select{min-width:190px;border:1px solid #c9c6bb;border-radius:8px;padding:9px 10px;background:#fff;color:#17365f;font:inherit}.empty{color:#718096;font-size:14px;padding:20px 0}@media(max-width:850px){.cards{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.feedback-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:560px){header{display:block}.updated{text-align:left;margin-top:10px}.cards{grid-template-columns:1fr}.feedback-grid{grid-template-columns:1fr}.feedback-actions{display:block}.download{display:inline-block;margin-top:10px}.shell{padding:22px 14px 40px}.account-filter{align-items:stretch}.account-filter label{width:100%}.account-filter select{width:100%}}</style></head>
+ <style>:root{font-family:Arial,sans-serif;color:#10284b;background:#f4f1e9}*{box-sizing:border-box}body{margin:0}.shell{max-width:1180px;margin:auto;padding:30px 20px 60px}header{display:flex;justify-content:space-between;align-items:end;gap:20px;margin-bottom:22px}h1{margin:0;font:700 clamp(30px,5vw,50px)/1 Georgia,serif}p{color:#627086;line-height:1.5}.updated{font-size:12px;color:#627086;text-align:right}.range-row{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 22px}.range{border:1px solid #c9c6bb;border-radius:999px;padding:9px 13px;color:#17365f;background:#fff;text-decoration:none;font-size:13px;font-weight:700}.range.selected{background:#15365e;color:#fff;border-color:#15365e}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:18px}.card,.panel{background:#fff;border:1px solid #d9d6ca;border-radius:16px;padding:20px;box-shadow:0 8px 24px #10284b0d}.label{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#718096}.big{font:700 38px Georgia,serif;margin-top:8px;color:#b27a22}.card p{margin:10px 0 0;font-size:13px}.grid{display:grid;grid-template-columns:1.1fr .9fr;gap:18px}.panel h2{font:700 24px Georgia,serif;margin:0 0 8px}.subtle{font-size:13px;margin:0 0 18px}.funnel-step{display:grid;grid-template-columns:1fr auto;gap:6px 14px;margin:18px 0}.funnel-step strong,.funnel-step span{display:block}.funnel-step span{color:#718096;font-size:13px;margin-top:4px}.funnel-step>b{font:700 24px Georgia,serif;color:#b27a22}.funnel-step .bar{grid-column:1/-1}.bar{height:9px;background:#edf0f3;border-radius:20px;overflow:hidden}.bar i{display:block;height:100%;background:#c5943f;border-radius:20px}.chart{height:230px;display:flex;align-items:end;gap:8px;padding:16px 4px 0;overflow-x:auto}.day{height:100%;min-width:25px;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:end;gap:7px;font-size:10px;color:#6a7789}.day-bar{width:100%;max-width:34px;background:#15365e;border-radius:7px 7px 2px 2px;min-height:8px;display:flex;justify-content:center;color:#fff;font-size:11px;padding-top:5px}.day-bar b{font-weight:700}.definitions{margin-top:18px;background:#f8f7f2;border-left:4px solid #c5943f;padding:14px 16px}.definitions p{margin:6px 0;font-size:13px}.dimension-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.dimension-list{border:1px solid #e5e2d9;border-radius:12px;padding:14px}.dimension-list h3{margin:0 0 4px;font-size:16px}.dimension-list .subtle{margin-bottom:12px}.dimension-row{display:grid;grid-template-columns:1fr auto;gap:3px 10px;border-top:1px solid #e5e2d9;padding:10px 0;font-size:13px}.dimension-row b{color:#b27a22}.dimension-row small{grid-column:1/-1;color:#718096;font-size:11px}.feedback-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0 20px}.feedback-metric{background:#f8f7f2;border-radius:12px;padding:14px}.feedback-metric .big{font-size:28px;margin-top:5px}.worth-row{display:grid;grid-template-columns:64px 1fr 28px;align-items:center;gap:10px;margin:12px 0;font-size:13px}.worth-row .bar{height:8px}.worth-row b{text-align:right}.table-wrap{overflow-x:auto;margin-top:12px}table{width:100%;border-collapse:collapse;font-size:13px;min-width:720px}th,td{border-bottom:1px solid #e5e2d9;padding:10px 8px;text-align:left;vertical-align:top}th{color:#718096;font-size:11px;letter-spacing:.08em;text-transform:uppercase}.feedback-response-comment{min-width:260px;white-space:normal;line-height:1.45;color:#30445d}.feedback-actions{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-top:6px}.download{border:1px solid #c9c6bb;border-radius:999px;padding:9px 13px;color:#17365f;background:#fff;text-decoration:none;font-size:13px;font-weight:700;white-space:nowrap}.role-pill,.paid-pill{display:inline-block;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:800}.role-consumer{background:#e8f2ec;color:#22613c}.role-salesperson{background:#fff1d1;color:#8b5b00}.role-both{background:#e9e7fb;color:#4a3f91}.paid-pill.paid{background:#e8f2ec;color:#22613c}.paid-pill.unpaid{background:#f2f3f5;color:#687386}.paid-source{display:block;color:#718096;font-size:11px;margin-top:5px}.account-filter{display:flex;align-items:end;flex-wrap:wrap;gap:10px;margin:16px 0 8px;padding:14px;background:#f8f7f2;border-radius:12px}.account-filter label{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:800;color:#627086}.account-filter select{min-width:190px;border:1px solid #c9c6bb;border-radius:8px;padding:9px 10px;background:#fff;color:#17365f;font:inherit}.empty{color:#718096;font-size:14px;padding:20px 0}@media(max-width:850px){.dimension-grid{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.feedback-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:560px){header{display:block}.updated{text-align:left;margin-top:10px}.cards{grid-template-columns:1fr}.feedback-grid{grid-template-columns:1fr}.feedback-actions{display:block}.download{display:inline-block;margin-top:10px}.shell{padding:22px 14px 40px}.account-filter{align-items:stretch}.account-filter label{width:100%}.account-filter select{width:100%}}</style></head>
 <body><main class="shell"><header><div><div class="label">PENCILPROOF / MEASUREMENT</div><h1>Traffic and conversion</h1><p>Selected period: <strong>${esc(rangeLabel)}</strong>. This dashboard is private.</p></div><div class="updated">Updated ${esc(updated)}</div></header>
 <nav class="range-row" aria-label="Analytics date range">${rangeLinks}</nav>
 <section class="cards">${funnelCards}</section>
-<section class="grid"><div class="panel"><h2>Visitor funnel</h2><p class="subtle">Unique people are counted once per selected period. Percentages compare each step with visitors.</p>${funnelStep("Visitors", `${funnel.pageViews.toLocaleString("en-US")} total page views`, funnel.visitors, funnel.visitors)}${funnelStep("Used the scan", `${funnel.scanStarts.toLocaleString("en-US")} scan starts`, funnel.scanUsers, funnel.visitors)}${funnelStep("Reached checkout", `${funnel.checkoutStarts.toLocaleString("en-US")} checkout starts`, funnel.checkoutUsers, funnel.visitors)}${funnelStep("Purchased", `${funnel.purchases.toLocaleString("en-US")} verified payment events`, funnel.purchasers, funnel.visitors)}</div>
-<div class="panel"><h2>Activity trend</h2><p class="subtle">${monthlyTrend ? "Monthly activity" : "Daily activity"} within the selected period.</p>${trendBars ? `<div class="chart">${trendBars}</div>` : `<div class="empty">No tracked activity in this period.</div>`}<div class="definitions"><strong>What “session” means</strong><p>A session is an anonymous browser visit ID. It is not a login or a person’s name. PencilProof starts a new session after 30 minutes of inactivity, so <strong>Visitors</strong> is the clearest estimate of unique browsers that visited during this period.</p><p>Page views are total page loads. “Used the scan,” “Reached checkout,” and “Purchased” are unique browsers at each step; the smaller text shows total attempts.</p></div></div></section>
+ <section class="grid"><div class="panel"><h2>Visitor funnel</h2><p class="subtle">Unique browsers are counted once per selected period. A preview is ready only after the importer or manual entry produces reviewable values.</p>${funnelStep("Visitors", `${funnel.pageViews.toLocaleString("en-US")} total page views`, funnel.visitors, funnel.visitors)}${funnelStep("Started a scan", `${funnel.scanStarts.toLocaleString("en-US")} scan starts`, funnel.scanUsers, funnel.visitors)}${funnelStep("Preview ready", `${funnel.previewsReady.toLocaleString("en-US")} reviewable previews`, funnel.previewUsers, funnel.visitors)}${funnelStep("Reached checkout", `${funnel.checkoutStarts.toLocaleString("en-US")} checkout starts`, funnel.checkoutUsers, funnel.visitors)}${funnelStep("Purchased", `${funnel.purchases.toLocaleString("en-US")} verified payment events`, funnel.purchasers, funnel.visitors)}</div>
+ <div class="panel"><h2>Activity trend</h2><p class="subtle">${monthlyTrend ? "Monthly activity" : "Daily activity"} within the selected period.</p>${trendBars ? `<div class="chart">${trendBars}</div>` : `<div class="empty">No tracked activity in this period.</div>`}<div class="definitions"><strong>What “session” means</strong><p>A session is an anonymous browser visit ID. It is not a login or a person’s name. PencilProof starts a new session after 30 minutes of inactivity, so <strong>Visitors</strong> is the clearest estimate of unique browsers that visited during this period.</p><p>Page views, scan starts, preview-ready events, checkout starts, and purchases are separate signals. This keeps a scan from being counted as a completed audit or a sale.</p></div></div></section>
+ ${acquisitionPanel}
 <section class="panel" style="margin-top:18px"><h2>Account sign-ins</h2><p class="subtle">Email addresses from successful account setup, with the sign-in context that has been used. If the same account has entered through both paths, it is labeled <strong>Both</strong>. Paid means an active consumer audit pass or an active salesperson subscription recorded from Stripe.</p><form class="account-filter" method="get" action="/analytics"><input type="hidden" name="range" value="${esc(rangeKey)}"><label for="account-role">Filter by account type<select id="account-role" name="account_role" onchange="try{sessionStorage.setItem('pencilproof-analytics-scroll-y', String(window.scrollY))}catch{} this.form.submit()"><option value="all"${selectedAccountRole === "all" ? " selected" : ""}>All accounts</option><option value="consumer"${selectedAccountRole === "consumer" ? " selected" : ""}>Consumer</option><option value="salesperson"${selectedAccountRole === "salesperson" ? " selected" : ""}>Salesperson</option><option value="both"${selectedAccountRole === "both" ? " selected" : ""}>Both paths</option></select></label><label for="account-paid">Filter by payment status<select id="account-paid" name="account_paid" onchange="try{sessionStorage.setItem('pencilproof-analytics-scroll-y', String(window.scrollY))}catch{} this.form.submit()"><option value="all"${selectedAccountPaid === "all" ? " selected" : ""}>All payment statuses</option><option value="paid"${selectedAccountPaid === "paid" ? " selected" : ""}>Paid</option><option value="unpaid"${selectedAccountPaid === "unpaid" ? " selected" : ""}>Not paid</option></select></label><noscript><button class="download" type="submit">Apply filter</button></noscript></form><div class="feedback-grid"><div class="feedback-metric"><div class="label">Shown accounts</div><div class="big">${accounts.length.toLocaleString("en-US")}</div></div><div class="feedback-metric"><div class="label">Paid accounts</div><div class="big">${accountCounts.paid.toLocaleString("en-US")}</div></div><div class="feedback-metric"><div class="label">Consumers</div><div class="big">${accountCounts.consumer.toLocaleString("en-US")}</div></div><div class="feedback-metric"><div class="label">Salespeople</div><div class="big">${accountCounts.salesperson.toLocaleString("en-US")}</div></div><div class="feedback-metric"><div class="label">Used both paths</div><div class="big">${accountCounts.both.toLocaleString("en-US")}</div></div></div>${accountRows ? `<div class="table-wrap"><table><thead><tr><th>Email</th><th>Account type</th><th>Payment status</th><th>First seen</th><th>Last seen</th></tr></thead><tbody>${accountRows}</tbody></table></div>` : `<div class="empty">No accounts match this filter.</div>`}</section>
 <section class="panel" style="margin-top:18px"><div class="feedback-actions"><div><h2>Customer feedback</h2><p class="subtle">Anonymous responses from the quote survey, before checkout, after checkout, or during account deletion.</p></div><a class="download" href="/analytics/feedback.csv?range=${esc(rangeKey)}">Download CSV</a></div><div class="feedback-grid"><div class="feedback-metric"><div class="label">Responses</div><div class="big">${feedbackTotal.toLocaleString("en-US")}</div></div><div class="feedback-metric"><div class="label">Average UI</div><div class="big">${feedbackAverage(feedback.averages?.ui)}</div></div><div class="feedback-metric"><div class="label">Average service</div><div class="big">${feedbackAverage(feedback.averages?.service)}</div></div><div class="feedback-metric"><div class="label">Average scan quality</div><div class="big">${feedbackAverage(feedback.averages?.scanQuality)}</div></div></div><h3>What would people pay?</h3>${feedbackWorthBars}<h3 style="margin-top:24px">Account deletion reasons</h3>${deletionReasonBars}<h3 style="margin-top:24px">Recent responses with Written comments</h3>${feedbackResponseRows ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Topic</th><th>UI</th><th>Service</th><th>Scan</th><th>Worth</th><th>Written comment</th></tr></thead><tbody>${feedbackResponseRows}</tbody></table></div>` : `<div class="empty">No feedback responses in this period.</div>`}</section>
-<p class="subtle" style="margin-top:22px">Completed free audits: <strong>${funnel.auditsCompleted.toLocaleString("en-US")}</strong> from <strong>${funnel.auditUsers.toLocaleString("en-US")}</strong> unique browsers. Purchases are recorded from verified Stripe payment events.</p>
+ <p class="subtle" style="margin-top:22px">Preview-ready events: <strong>${funnel.previewsReady.toLocaleString("en-US")}</strong> from <strong>${funnel.previewUsers.toLocaleString("en-US")}</strong> unique browsers. Purchases are recorded from verified Stripe payment events; legacy audit-completed events are retained only for historical compatibility.</p>
 </main><script>try{const scrollY=Number(sessionStorage.getItem("pencilproof-analytics-scroll-y"));if(Number.isFinite(scrollY)){sessionStorage.removeItem("pencilproof-analytics-scroll-y");window.setTimeout(()=>window.scrollTo(0,scrollY),0);}}catch{}</script></body></html>`, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow, noarchive" } });
 };
 

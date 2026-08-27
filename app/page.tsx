@@ -2,6 +2,7 @@ import Link from "next/link";
 import { SiteFooter, SiteNav } from "@/app/components/SiteChrome";
 import SampleAuditDemo from "@/app/components/SampleAuditDemo";
 import SalesEntrySection from "@/app/components/SalesEntrySection";
+import TrackedLink from "@/app/components/TrackedLink";
 
 const Arrow = () => <span aria-hidden="true">→</span>;
 
@@ -20,9 +21,9 @@ export default function Home() {
             complete Full Quote Audit is worth it before you pay.
           </p>
           <div className="hero-actions">
-            <Link className="button button-primary" href="https://pencilproof.com/analyze">
+            <TrackedLink analyticsCategory="home_hero" className="button button-primary" href="/analyze">
               Review your quote free <Arrow />
-            </Link>
+            </TrackedLink>
             <Link className="text-link" href="/who-it-helps">Who it helps <Arrow /></Link>
           </div>
           <p className="hero-caution">No payment is required to see the detected values. Your document is read locally first, and you decide whether the complete audit is useful.</p>
@@ -114,6 +115,36 @@ export default function Home() {
       </section>
 
       <SalesEntrySection />
+
+      <section className="section route-guide-section" aria-labelledby="search-guide-title">
+        <div className="shell">
+          <div className="section-intro compact">
+            <p className="kicker">START WITH THE QUESTION</p>
+            <h2 id="search-guide-title">Clear answers for the quote questions people ask first.</h2>
+            <p>Learn what to check, then bring your own written quote to the free scan when you are ready.</p>
+          </div>
+          <div className="route-guide-grid guide-grid">
+            <Link className="route-guide-card" href="/guides/dealer-quote-review">
+              <span>QUOTE REVIEW</span>
+              <h3>How to review a dealer car quote.</h3>
+              <p>See which numbers to compare before a monthly payment becomes the whole conversation.</p>
+              <strong>Read the guide <Arrow /></strong>
+            </Link>
+            <Link className="route-guide-card" href="/guides/car-payment-different">
+              <span>PAYMENT CLARITY</span>
+              <h3>Why is the car payment different?</h3>
+              <p>Trace changes to price, rate, term, products, fees, trade figures, and cash down.</p>
+              <strong>See the causes <Arrow /></strong>
+            </Link>
+            <Link className="route-guide-card route-guide-card-dark" href="/guides/car-dealer-fees-add-ons">
+              <span>FEES + PRODUCTS</span>
+              <h3>What should you check in dealer add-ons?</h3>
+              <p>Understand what optional products and fees can add to the amount financed.</p>
+              <strong>See the checklist <Arrow /></strong>
+            </Link>
+          </div>
+        </div>
+      </section>
 
       <SiteFooter />
     </main>

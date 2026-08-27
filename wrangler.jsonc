@@ -19,6 +19,8 @@
       "/analyze",
       "/analyze/*",
       "/_next/static/chunks/app/analyze/*",
+      "/guides",
+      "/guides/*",
       "/robots.txt",
       "/sitemap.xml",
       "/analytics",

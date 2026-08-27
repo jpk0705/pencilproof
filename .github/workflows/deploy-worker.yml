@@ -5,8 +5,14 @@ on:
     branches: ["main"]
     paths:
       - "app/account/page.tsx"
+      - "app/components/SiteChrome.tsx"
+      - "app/components/TrackedLink.tsx"
       - "app/sales/page.tsx"
       - "app/analyze/page.tsx"
+      - "app/guides/**"
+      - "app/how-it-works/page.tsx"
+      - "app/page.tsx"
+      - "app/pricing/page.tsx"
       - "app/components/AccountNav.tsx"
       - "app/components/PhoneCameraBridge.tsx"
       - "app/components/PreCheckoutAccountGate.tsx"
@@ -19,6 +25,7 @@ on:
       - "worker/**"
       - "lib/analytics.ts"
       - "wrangler.jsonc"
+      - "public/sitemap.xml"
       - "package.json"
       - "package-lock.json"
       - "tsconfig.json"

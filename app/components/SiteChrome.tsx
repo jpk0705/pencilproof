@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { CHECKOUT_URL } from "@/lib/checkout";
 import AccountNav from "@/app/components/AccountNav";
 import FooterSalesLink from "@/app/components/FooterSalesLink";
+import TrackedLink from "@/app/components/TrackedLink";
 
 export function SiteNav() {
   return (
@@ -47,8 +47,12 @@ export function SiteFooter() {
 
 export function AuditCta({ light = false }: { light?: boolean }) {
   return (
-    <Link className={`button ${light ? "button-light" : "button-primary"}`} href={CHECKOUT_URL}>
-      Review the Full Quote Audit · $39 <span aria-hidden="true">→</span>
-    </Link>
+    <TrackedLink
+      analyticsCategory="public_audit_cta"
+      className={`button ${light ? "button-light" : "button-primary"}`}
+      href="/analyze"
+    >
+      Review your quote free <span aria-hidden="true">→</span>
+    </TrackedLink>
   );
 }

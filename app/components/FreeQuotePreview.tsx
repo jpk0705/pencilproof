@@ -250,7 +250,7 @@ export default function FreeQuotePreview() {
         sourceType: "pdf",
       },
     });
-    track({ event: "audit_completed" });
+    track({ event: "preview_ready" });
   };
 
   const handleImportedFile = async (file: File) => {
@@ -288,7 +288,7 @@ export default function FreeQuotePreview() {
       setFailedImportAttempts(0);
       setScan({ status: "ready", result, fileName: file.name });
       track({ event: "import_success" });
-      track({ event: "audit_completed" });
+      track({ event: "preview_ready" });
     } catch {
       failImport(
         "PencilProof could not read this file. Try a brighter, sharper copy before paying.",

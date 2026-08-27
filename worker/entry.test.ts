@@ -180,7 +180,9 @@ test("analytics dashboard renders the selected range and business funnel", async
   assert.equal(response.status, 200);
   assert.match(body, /1 year/);
   assert.match(body, /Visitors/);
-  assert.match(body, /Used the scan/);
+  assert.match(body, /Started a scan/);
+  assert.match(body, /Preview ready/);
+  assert.match(body, /Acquisition signals/);
   assert.match(body, /Reached checkout/);
   assert.match(body, /Purchased/);
   assert.match(body, /Customer feedback/);

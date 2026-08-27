@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { CHECKOUT_URL } from "@/lib/checkout";
 import { SiteFooter, SiteNav } from "@/app/components/SiteChrome";
+import TrackedLink from "@/app/components/TrackedLink";
 
 const Arrow = () => <span aria-hidden="true">→</span>;
 
@@ -49,7 +49,7 @@ export default function HowItWorksPage() {
           <p className="kicker">WHAT THE AUDIT REVEALS</p>
           <h2>You shouldn&apos;t need years inside a dealership to know whether your own deal adds up.</h2>
           <p>PencilProof separates the vehicle, financing, trade, fees, and optional products, then shows what changed and what to ask next.</p>
-          <Link className="text-link" href={CHECKOUT_URL}>Review the Full Quote Audit · $39 <Arrow /></Link>
+          <TrackedLink analyticsCategory="how_it_works_audit_cta" className="text-link" href="/analyze">Start with the free scan <Arrow /></TrackedLink>
         </div>
         <div className="audit-preview" aria-label="Example audit findings">
           <div className="audit-preview-head"><span>EXAMPLE FINDINGS</span><strong>What the Full Quote Audit reveals</strong></div>

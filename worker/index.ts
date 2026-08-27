@@ -3705,6 +3705,9 @@ export const handleRequest = async (request: Request, env: Env) => {
   if (url.hostname === auditHost && url.pathname === "/sitemap.xml") {
     return redirect(env.PUBLIC_SITE_ORIGIN + "/sitemap.xml");
   }
+  if (url.hostname === auditHost && (url.pathname === "/guides" || url.pathname.startsWith("/guides/"))) {
+    return publicPageRedirect(url, env);
+  }
   if (url.pathname === "/") {
     return redirect(env.PUBLIC_SITE_ORIGIN);
   }

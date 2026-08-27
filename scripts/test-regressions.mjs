@@ -36,6 +36,11 @@ import { extractVinFromText, normalizeVehicleVin } from "../lib/vehicle-vin.ts";
 
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const salesPageSource = await readFile(join(projectRoot, "app/sales/page.tsx"), "utf8");
+const homePageSource = await readFile(join(projectRoot, "app/page.tsx"), "utf8");
+const pricingPageSource = await readFile(join(projectRoot, "app/pricing/page.tsx"), "utf8");
+const freeQuotePreviewSource = await readFile(join(projectRoot, "app/components/FreeQuotePreview.tsx"), "utf8");
+const analyticsWorkerSource = await readFile(join(projectRoot, "worker/entry.ts"), "utf8");
+const deploymentConfigSource = await readFile(join(projectRoot, "wrangler.jsonc"), "utf8");
 const accountNavSource = await readFile(join(projectRoot, "app/components/AccountNav.tsx"), "utf8");
 const salesCoachSource = await readFile(join(projectRoot, "app/components/SalesCoach.tsx"), "utf8");
 const accountPageSource = await readFile(join(projectRoot, "app/account/page.tsx"), "utf8");
@@ -58,6 +63,15 @@ assert.doesNotMatch(salesPageSource, /six[- ]referral cap|six referrals/);
 assert.match(salesPageSource, /lastCreditStatus/);
 assert.match(salesPageSource, /scheduled on your next PencilProof subscription invoice/);
 assert.match(salesPageSource, /message && profile && isActive\(profile\.subscriptionStatus\)/);
+assert.match(homePageSource, /guides\/dealer-quote-review/);
+assert.match(homePageSource, /guides\/car-payment-different/);
+assert.match(homePageSource, /guides\/car-dealer-fees-add-ons/);
+assert.doesNotMatch(pricingPageSource, /href=\{CHECKOUT_URL\}/);
+assert.match(pricingPageSource, /Start with the free scan/);
+assert.match(freeQuotePreviewSource, /event: "preview_ready"/);
+assert.doesNotMatch(freeQuotePreviewSource, /event: "audit_completed"/);
+assert.match(analyticsWorkerSource, /"preview_ready"/);
+assert.match(analyticsWorkerSource, /Acquisition signals/);
 assert.match(accountNavSource, /const ACCOUNT_URL = "https:\/\/pencilproof\.com\/account"/);
 assert.match(accountNavSource, /const SALES_URL = "https:\/\/pencilproof\.com\/sales"/);
 assert.match(accountNavSource, /effectiveRole === "salesperson" \? SALES_URL : ACCOUNT_URL/);
@@ -75,6 +89,8 @@ assert.doesNotMatch(salesWorkerSource, /balance_transactions/);
 assert.match(salesWorkerSource, /const publicPagePaths = new Set\(\[\s*"\/account"/);
 assert.match(salesWorkerSource, /"\/sales\/"/);
 assert.match(salesWorkerSource, /url\.pathname\.replace/);
+assert.match(deploymentConfigSource, /"\/guides"/);
+assert.match(deploymentConfigSource, /"\/guides\/\*"/);
 
 const closeTo = (actual, expected, tolerance = 0.01) => {
   assert.ok(
