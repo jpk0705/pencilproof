@@ -83,6 +83,8 @@ assert.match(accountNavSource, /effectiveRole === "salesperson" \? SALES_URL : A
 assert.match(salesCoachSource, /Type a customer scenario/);
 assert.doesNotMatch(salesCoachSource, /FULL PLAYBOOK ·/);
 const salesWorkerSource = await readFile(join(projectRoot, "worker/index.ts"), "utf8");
+assert.match(salesWorkerSource, /utm_campaign=free_scan/);
+assert.match(salesWorkerSource, /utm_campaign=salesperson_plan/);
 assert.match(salesWorkerSource, /addSalespersonSubscriptionCredit/);
 assert.match(accountStoreSource, /profile\?\.subscriptionStatus === "active"/);
 assert.doesNotMatch(accountStoreSource, /profile\?\.subscriptionStatus === "active" \|\| profile\?\.subscriptionStatus === "past_due"/);

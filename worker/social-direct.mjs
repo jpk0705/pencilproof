@@ -1,3 +1,5 @@
+import { routePostToPilot } from "./campaign-links.mjs";
+
 const STATE_KEY = "social-direct-v1";
 const MAX_SEEN_COMMENTS = 2000;
 const MAX_OWN_COMMENT_IDS = 1000;
@@ -869,7 +871,7 @@ async function runAutomation(env, state, now = new Date()) {
         const key = `${date}:${platform}`;
         if (state.publishedKeys.includes(key)) continue;
         try {
-          const result = await publishToPlatform(env, runtime, platform, generated);
+          const result = await publishToPlatform(env, runtime, platform, routePostToPilot(generated, platform));
           const id = outboundId(result) || key;
           state.publishedKeys.push(key);
           state.lastPublishedByPlatform[platform] = { id, at: now.toISOString() };

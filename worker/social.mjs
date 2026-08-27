@@ -1,3 +1,5 @@
+import { routePostToPilot } from "./campaign-links.mjs";
+
 const AYRSHARE_BASE_URL = "https://api.ayrshare.com/api";
 const STATE_KEY = "social-automation-v1";
 const MAX_SEEN_COMMENTS = 2000;
@@ -319,7 +321,7 @@ async function generatePost(env, recentPostTexts, platforms) {
 
 async function publishPost(env, post, platforms, imageSearch, idempotencyKey) {
   const body = {
-    post,
+    post: routePostToPilot(post, platforms[0] ?? "social"),
     platforms,
     idempotencyKey,
     notes: "PencilProof unattended social automation",

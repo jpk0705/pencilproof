@@ -1232,6 +1232,7 @@ const sendMarketingEmail = async (
   candidate: MarketingCandidate,
   content: { subject: string; text: string | string[]; html: string },
   env: Env,
+  destination: "pilot" | "sales" = "pilot",
 ) => {
   const apiKey = env.RESEND_API_KEY?.trim();
   const from = env.MARKETING_FROM_EMAIL?.trim();
@@ -1241,7 +1242,10 @@ const sendMarketingEmail = async (
   const unsubscribeToken = await createEmailUnsubscribeToken(candidate.email, env.SESSION_SECRET);
   const unsubscribeUrl = `${env.SITE_ORIGIN}/api/email/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`;
   const preferencesUrl = `${env.SITE_ORIGIN}/api/email/preferences?token=${encodeURIComponent(unsubscribeToken)}`;
-  const html = `${content.html}<p><a href="${env.PUBLIC_SITE_ORIGIN}/analyze">Open PencilProof</a></p><hr><p style="color:#667085;font-size:12px">You are receiving this because you created a PencilProof account or provided your email to PencilProof. <a href="${unsubscribeUrl}">Unsubscribe</a> or <a href="${preferencesUrl}">manage email preferences</a>.</p><p style="color:#667085;font-size:12px">${htmlEscape(businessAddress)}</p>`;
+  const campaignUrl = destination === "sales"
+    ? `${env.PUBLIC_SITE_ORIGIN}/sales?utm_source=email&utm_medium=owned&utm_campaign=salesperson_plan`
+    : `${env.PUBLIC_SITE_ORIGIN}/pilot?utm_source=email&utm_medium=owned&utm_campaign=free_scan`;
+  const html = `${content.html}<p><a href="${campaignUrl}">${destination === "sales" ? "Open the PencilProof salesperson plan" : "Review your quote free"}</a></p><hr><p style="color:#667085;font-size:12px">You are receiving this because you created a PencilProof account or provided your email to PencilProof. <a href="${unsubscribeUrl}">Unsubscribe</a> or <a href="${preferencesUrl}">manage email preferences</a>.</p><p style="color:#667085;font-size:12px">${htmlEscape(businessAddress)}</p>`;
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -1257,7 +1261,7 @@ const sendMarketingEmail = async (
       },
       reply_to: env.MARKETING_REPLY_TO?.trim() || undefined,
       subject: content.subject,
-      text: `${text}\n\nOpen PencilProof: ${env.PUBLIC_SITE_ORIGIN}/analyze\n\nYou are receiving this because you created a PencilProof account or provided your email to PencilProof.\nUnsubscribe: ${unsubscribeUrl}\nManage email preferences: ${preferencesUrl}\n\n${businessAddress}`,
+      text: `${text}\n\n${destination === "sales" ? "Open the PencilProof salesperson plan" : "Review your quote free"}: ${campaignUrl}\n\nYou are receiving this because you created a PencilProof account or provided your email to PencilProof.\nUnsubscribe: ${unsubscribeUrl}\nManage email preferences: ${preferencesUrl}\n\n${businessAddress}`,
       to: [candidate.email],
     }),
   });
@@ -1324,6 +1328,7 @@ const runMarketingCampaign = async (env: Env, scheduledTime: number) => {
     candidates: T[],
     campaignKey: string,
     contentFor: (candidate: T) => MarketingEmailContent,
+    destination: "pilot" | "sales",
   ) => {
     const eligible = candidates.filter((candidate) => candidate.userId && /^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(candidate.email));
     for (let offset = 0; offset < eligible.length; offset += marketingDeliveryBatchSize) {
@@ -1345,7 +1350,7 @@ const runMarketingCampaign = async (env: Env, scheduledTime: number) => {
         if (!claimedIds.has(candidate.userId)) continue;
         let sent = false;
         try {
-          sent = await sendMarketingEmail(candidate, contentFor(candidate), env);
+          sent = await sendMarketingEmail(candidate, contentFor(candidate), env, destination);
         } catch (error) {
           console.error("Marketing email send exception", { message: error instanceof Error ? error.message : "Unknown error" });
         }
@@ -1363,11 +1368,11 @@ const runMarketingCampaign = async (env: Env, scheduledTime: number) => {
   const customerResult = await accountCall(env, "/marketing-candidates", { now });
   const customerCandidates = marketingCandidates(customerResult?.candidates)
     .filter((candidate) => !(slot.kind === "promotional" && candidate.lastPurchaseAt));
-  await deliver(customerCandidates, `customer:${slot.campaignKey}`, (candidate) => marketingEmailContent(candidate, now));
+  await deliver(customerCandidates, `customer:${slot.campaignKey}`, (candidate) => marketingEmailContent(candidate, now), "pilot");
 
   const salespersonResult = await accountCall(env, "/salesperson-marketing-candidates", { now });
   const salespersonCandidates = salespersonMarketingCandidates(salespersonResult?.candidates);
-  await deliver(salespersonCandidates, `salesperson:${slot.campaignKey}`, () => salespersonEmailContent(now, slot.kind));
+  await deliver(salespersonCandidates, `salesperson:${slot.campaignKey}`, () => salespersonEmailContent(now, slot.kind), "sales");
 
   if (failedDeliveries > 0) {
     await sendMarketingAlert(

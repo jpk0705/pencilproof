@@ -8,6 +8,7 @@ on:
       - "worker/social.test.mjs"
       - "worker/social-direct.mjs"
       - "worker/social-direct.test.mjs"
+      - "worker/campaign-links.mjs"
       - "worker/social-facebook.mjs"
       - "worker/social-facebook.test.mjs"
       - "wrangler.social.jsonc"

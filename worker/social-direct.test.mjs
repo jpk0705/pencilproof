@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { publicPilotUrl, routePostToPilot } from "./campaign-links.mjs";
 import {
   commentKey,
   detectConfiguredPlatforms,
@@ -12,6 +13,18 @@ import {
   trimUnique,
   uniquePlatforms,
 } from "./social-direct.mjs";
+
+test("campaign links send social visitors to the free pilot with attribution", () => {
+  const url = publicPilotUrl("Threads");
+  assert.match(url, /^https:\/\/pencilproof\.com\/pilot\?/);
+  assert.match(url, /utm_source=threads/);
+  assert.match(url, /utm_campaign=free_scan/);
+
+  const post = routePostToPilot("Compare APR and amount financed. https://pencilproof.com", "threads");
+  assert.match(post, /https:\/\/pencilproof\.com\/pilot\?/);
+  assert.doesNotMatch(post, /https:\/\/pencilproof\.com\s*$/);
+  assert.ok(post.length <= 500);
+});
 
 test("normalizes and deduplicates platform names", () => {
   assert.equal(normalizePlatform("X"), "twitter");

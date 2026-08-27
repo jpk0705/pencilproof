@@ -9,6 +9,7 @@ import directWorker, {
   shouldPublishNow,
   trimUnique,
 } from "./social-direct.mjs";
+import { routePostToPilot } from "./campaign-links.mjs";
 
 const FACEBOOK_STATE_KEY = "social-facebook-v1";
 const DEFAULT_TIMEZONE = "America/Los_Angeles";
@@ -424,7 +425,8 @@ async function runFacebookAutomation(env, state, now = new Date()) {
           state,
           state.recentPosts.map((item) => item.post).filter(Boolean),
         );
-        const result = await publishFacebook(env, generated);
+        const publishedPost = routePostToPilot(generated, "facebook");
+        const result = await publishFacebook(env, publishedPost);
         state.publishedKeys.push(publishKey);
         state.lastPostAt = now.toISOString();
         state.lastPostId = String(result?.id ?? publishKey);
@@ -433,7 +435,7 @@ async function runFacebookAutomation(env, state, now = new Date()) {
           at: now.toISOString(),
         };
         state.counters.posts += 1;
-        state.recentPosts.push({ id: state.lastPostId, post: generated, created: now.toISOString() });
+        state.recentPosts.push({ id: state.lastPostId, post: publishedPost, created: now.toISOString() });
         summary.postPublished = true;
       } catch (error) {
         summary.warnings.push(`facebook publish: ${safeErrorMessage(error)}`);
