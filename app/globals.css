@@ -1,4 +1,11 @@
-@import "tailwindcss";
+/*
+ * Keep Tailwind's automatic class scan inside the web app. The repository
+ * also contains a large archived mobile dependency tree whose package files
+ * are not part of this Next.js app; scanning it makes production PostCSS
+ * compilation appear to hang.
+ */
+@import "tailwindcss" source(none);
+@source "./";
 
 :root {
   --ink: #0b1c25;
