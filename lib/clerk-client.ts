@@ -18,6 +18,8 @@ const ACCOUNT_API_URL = "https://audit.pencilproof.com";
 const ACCOUNT_SESSION_CACHE_TTL_MS = 60_000;
 
 const AUTH_CONTEXT_STORAGE_KEY = "pencilproof-auth-context";
+const AUTH_INTENT_STORAGE_KEY = "pencilproof-auth-intent";
+const AUTH_INTENT_MAX_AGE_MS = 15 * 60 * 1000;
 
 const isAuthContext = (value: string | null | undefined): value is PencilProofAuthContext =>
   value === "consumer" || value === "salesperson";
@@ -180,11 +182,31 @@ export const setAuthContext = (context: PencilProofAuthContext) => {
 
 export const getAuthContext = (): PencilProofAuthContext => {
   const queryContext = new URL(window.location.href).searchParams.get("auth_context");
+  const storedContext = window.sessionStorage.getItem(AUTH_CONTEXT_STORAGE_KEY);
   if (isAuthContext(queryContext)) {
+    // A direct or stale salesperson URL must not elevate an already-known
+    // consumer session. The salesperson context is accepted only when the
+    // current tab recently initiated the salesperson sign-in flow below.
+    if (queryContext === "salesperson") {
+      const rawIntent = window.sessionStorage.getItem(AUTH_INTENT_STORAGE_KEY);
+      let salespersonIntent = false;
+      try {
+        const intent = rawIntent ? JSON.parse(rawIntent) as { context?: unknown; createdAt?: unknown } : null;
+        salespersonIntent = intent?.context === "salesperson"
+          && typeof intent.createdAt === "number"
+          && Date.now() - intent.createdAt >= 0
+          && Date.now() - intent.createdAt <= AUTH_INTENT_MAX_AGE_MS;
+      } catch {
+        salespersonIntent = false;
+      }
+      if (!salespersonIntent) {
+        setAuthContext("consumer");
+        return "consumer";
+      }
+    }
     setAuthContext(queryContext);
     return queryContext;
   }
-  const storedContext = window.sessionStorage.getItem(AUTH_CONTEXT_STORAGE_KEY);
   return isAuthContext(storedContext) ? storedContext : "consumer";
 };
 
@@ -200,6 +222,7 @@ export const clearServerAccountSession = async () => {
 
 export const authRedirectOptions = (context: PencilProofAuthContext = "consumer") => {
   setAuthContext(context);
+  window.sessionStorage.setItem(AUTH_INTENT_STORAGE_KEY, JSON.stringify({ context, createdAt: Date.now() }));
   const redirectUrl = new URL(window.location.href);
   // The shared site navigation can open consumer sign-in while the visitor is
   // viewing the salesperson marketing page. Do not send that consumer back to
