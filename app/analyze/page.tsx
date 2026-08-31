@@ -732,6 +732,7 @@ export default function AnalyzePage() {
       fields: [],
       progress: 0.02,
     });
+    track({ event: "scan_started" });
     try {
       // Keep the public scan available to guests, but carry the active Clerk
       // session into the secured vision fallback. Without this token, a
