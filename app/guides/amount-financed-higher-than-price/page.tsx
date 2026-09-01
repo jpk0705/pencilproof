@@ -1,0 +1,15 @@
+import Link from "next/link";
+import { SiteFooter, SiteNav } from "@/app/components/SiteChrome";
+import TrackedLink from "@/app/components/TrackedLink";
+
+export const metadata = { title: "Why Is Amount Financed Higher Than the Car Price? | PencilProof", description: "See why taxes, fees, products, negative equity, and other figures can make amount financed higher than a vehicle's selling price.", alternates: { canonical: "/guides/amount-financed-higher-than-price" } };
+
+export default function AmountFinancedGuide() {
+  return <main><SiteNav />
+    <section className="page-hero shell"><div className="page-hero-copy"><p className="kicker">FINANCING CLARITY GUIDE</p><h1>Why is the amount financed higher than the car price?</h1><p>The selling price is only one line in the deal. Taxes, registration, dealer fees, optional products, and unpaid trade balance can all enter the amount financed after cash and trade credits are applied.</p><div className="page-actions"><TrackedLink analyticsCategory="guide_amount_financed" className="button button-primary" href="/analyze">Check your written quote <span aria-hidden="true">→</span></TrackedLink><Link className="text-link" href="/guides/reading-car-dealer-worksheet">Learn the worksheet <span aria-hidden="true">→</span></Link></div></div></section>
+    <section className="section shell checks-grid-section" aria-labelledby="amount-financed-equation"><div className="section-intro compact"><p className="kicker">FOLLOW THE EQUATION</p><h2 id="amount-financed-equation">Rebuild the balance one line at a time.</h2><p>A simplified path is selling price, plus taxable products and fees, plus taxes and government charges, plus negative equity, minus cash down and positive trade equity. The contract controls the final figures.</p></div><div className="check-list">
+      <article><b>Start with the selling price</b><p>Confirm the vehicle price after any stated discount, but before taxes and financed items.</p></article><article><b>Add every charge</b><p>List taxes, registration, documentation fees, accessories, GAP, service contracts, and other products separately.</p></article><article><b>Trace the trade</b><p>Compare the trade allowance with the payoff. If payoff is higher, the difference may be added to the new financing.</p></article><article><b>Apply credits once</b><p>Cash down, rebates, deposits, and positive trade equity should appear clearly and should not be counted twice.</p></article>
+    </div></section>
+    <section className="section route-guide-section"><div className="shell section-intro compact"><p className="kicker">ASK BEFORE SIGNING</p><h2>“Please show me each line that takes us from selling price to amount financed.”</h2><p>That question keeps the conversation focused on written figures rather than the monthly payment alone.</p><TrackedLink analyticsCategory="guide_amount_financed_bottom" className="button button-primary" href="/analyze">Review your quote free <span aria-hidden="true">→</span></TrackedLink></div></section><SiteFooter />
+  </main>;
+}

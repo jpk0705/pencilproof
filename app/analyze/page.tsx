@@ -1324,7 +1324,7 @@ export default function AnalyzePage() {
           <p>{isPaidAuditHost
             ? "Upload the dealer's quote or enter the figures yourself. Then test the down payment, term, trade, and optional products while the dealership works on its official revision."
             : "Upload the dealer's quote or enter the figures yourself. Confirm what PencilProof found, choose an optional account or continue as a guest, then continue to secure checkout. The complete audit opens only after payment."}</p>
-          <p className="analyzer-founder">Built by an automotive professional with experience as a salesperson, sales manager, and finance manager.</p>
+          <p className="analyzer-founder">Built for clear review of written vehicle quotes before signing.</p>
           {hasReferralAttribution ? <p className="referral-disclosure">You arrived through a PencilProof salesperson link. If you purchase the Full Quote Audit, the person who shared this link may receive subscription credit.</p> : null}
         </div>
         {isPaidAuditHost ? (

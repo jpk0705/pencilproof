@@ -2,6 +2,8 @@ User-agent: *
 Allow: /
 Disallow: /analyze
 Disallow: /api/
+Disallow: /account
+Disallow: /phone
 
 Sitemap: https://pencilproof.com/sitemap.xml
 Host: https://pencilproof.com

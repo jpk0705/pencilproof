@@ -39,7 +39,7 @@ const questions = [
   },
   {
     question: "Who created PencilProof?",
-    answer: "It was founded by an automotive professional with experience as a salesperson, sales manager, and finance manager. PencilProof remains independent and is not affiliated with a dealership or lender.",
+    answer: "PencilProof is independent educational software designed to clarify written dealer-quote figures. It is not affiliated with a dealership or lender.",
   },
   {
     question: "Is this a dealership desking or lender-approval system?",

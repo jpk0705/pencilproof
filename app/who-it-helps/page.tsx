@@ -46,13 +46,13 @@ export default function WhoItHelpsPage() {
       <section className="section founder-section">
         <div className="shell founder-layout">
           <div>
-            <p className="kicker">BUILT FROM INSIDE THE BUSINESS</p>
-            <h2>Created by someone who has worked the deal from three different seats.</h2>
+            <p className="kicker">BUILT FOR WRITTEN CLARITY</p>
+            <h2>Designed around the numbers buyers actually receive.</h2>
           </div>
           <div className="founder-copy">
-            <p className="founder-lede">PencilProof was founded by an automotive professional who has worked as a salesperson, sales manager, and finance manager.</p>
-            <p>That experience exposed the same bottleneck from every side: customers wait while a change moves back to the manager, and salespeople often cannot test a cleaner structure on their own. PencilProof gives both sides a clearer starting point.</p>
-            <div className="role-row" aria-label="Founder dealership experience"><span>Salesperson</span><span>Sales manager</span><span>Finance manager</span></div>
+            <p className="founder-lede">PencilProof focuses on the written quote: price, payment, APR, term, fees, products, trade figures, and amount financed.</p>
+            <p>Instead of asking buyers to negotiate from memory, it organizes the figures into a clearer starting point for questions and comparison.</p>
+            <div className="role-row" aria-label="PencilProof review areas"><span>Quote math</span><span>Trade equity</span><span>Optional products</span></div>
             <small>Independent educational software. PencilProof is not a dealership, lender, broker, or approval system.</small>
           </div>
         </div>
