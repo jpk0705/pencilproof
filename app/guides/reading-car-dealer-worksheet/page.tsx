@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { SiteFooter, SiteNav } from "@/app/components/SiteChrome";
 import TrackedLink from "@/app/components/TrackedLink";
+import GuideWorksheetExample from "@/app/components/GuideWorksheetExample";
 
 const Arrow = () => <span aria-hidden="true">→</span>;
 
@@ -34,6 +35,8 @@ export default function ReadingDealerWorksheetGuide() {
           <article><h2>What if a line is unclear?</h2><p>Ask for an itemized version of the quote and a revised payment using the same vehicle, trade, cash down, APR, and term. The signed contract and lender terms control the final deal.</p></article>
         </div>
       </section>
+
+      <GuideWorksheetExample title="Read from price to payment—not backward from payment" explanation="A fictional worksheet becomes easier to audit when the figures are grouped into price, charges, credits, and financing terms." lines={[{label:"Selling price",value:"$31,500"},{label:"Tax + fees + products",value:"+$4,210"},{label:"Trade equity + cash",value:"−$5,000"},{label:"Amount financed",value:"$30,710"},{label:"APR / term",value:"6.90% / 60 months",emphasis:true}]} question="Can you provide this same structure on the buyer's order with every product itemized?" />
 
       <section className="section route-guide-section">
         <div className="shell section-intro compact"><p className="kicker">MAKE IT EASIER</p><h2>Let PencilProof organize the worksheet for you.</h2><p>Upload a PDF or photo for a free scan, review the detected values, and correct anything that needs attention before deciding whether a full audit is useful.</p><TrackedLink analyticsCategory="guide_reading_worksheet_bottom" className="button button-primary" href="/pilot">Start with the free scan <Arrow /></TrackedLink></div>

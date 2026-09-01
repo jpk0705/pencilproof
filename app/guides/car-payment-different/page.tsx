@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { SiteFooter, SiteNav } from "@/app/components/SiteChrome";
 import TrackedLink from "@/app/components/TrackedLink";
+import GuideWorksheetExample from "@/app/components/GuideWorksheetExample";
 
 export const metadata = {
   title: "Why Is My Car Payment Different From the Quote? | PencilProof",
@@ -32,6 +33,8 @@ export default function CarPaymentDifferentGuide() {
           <article><b>Term</b><p>A longer term can lower the monthly payment while increasing the number of payments and potentially the total interest.</p></article>
         </div>
       </section>
+
+      <GuideWorksheetExample title="The same $30,000 balance can create two different payments" explanation="At an illustrative 7.50% APR, changing only the term lowers the monthly payment but adds twelve payments and more total interest." lines={[{label:"Amount financed",value:"$30,000"},{label:"APR",value:"7.50%"},{label:"60-month payment",value:"about $601/mo"},{label:"72-month payment",value:"about $519/mo"},{label:"Difference",value:"about $82/mo lower",emphasis:true}]} question="Did the price change, or did the payment fall because the term became longer?" />
 
       <section className="section route-guide-section">
         <div className="shell section-intro compact"><p className="kicker">MAKE IT SPECIFIC</p><h2>Compare the written quote with the numbers you want to discuss.</h2><p>Upload a PDF or image for free, review the detected values, and use the result to ask what changed before you sign.</p><TrackedLink analyticsCategory="guide_payment_difference_bottom" className="button button-primary" href="/analyze">Start the free scan <span aria-hidden="true">→</span></TrackedLink></div>

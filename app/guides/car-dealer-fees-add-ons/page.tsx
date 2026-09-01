@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { SiteFooter, SiteNav } from "@/app/components/SiteChrome";
 import TrackedLink from "@/app/components/TrackedLink";
+import GuideWorksheetExample from "@/app/components/GuideWorksheetExample";
 
 export const metadata = {
   title: "Car Dealer Fees and Add-Ons: What to Check | PencilProof",
@@ -38,6 +39,8 @@ export default function CarDealerFeesAddOnsGuide() {
         <div className="section-intro compact"><p className="kicker">QUESTIONS TO ASK</p><h2 id="fee-questions">A clearer request is easier to answer.</h2></div>
         <div className="faq-grid"><article><h2>What is required?</h2><p>Ask which charges are government, lender, or dealer fees and which products are optional.</p></article><article><h2>What is the total price?</h2><p>Ask for every fee and product to be listed separately with its effect on the amount financed.</p></article><article><h2>What changes if I decline a product?</h2><p>Ask for the revised amount financed and payment using the same APR, term, trade, and cash down when possible.</p></article><article><h2>What should I verify?</h2><p>Compare the final buyer&apos;s order with the figures you reviewed. The signed contract controls.</p></article></div>
       </section>
+
+      <GuideWorksheetExample title="Itemized charges explain a $3,730 increase" explanation="This fictional worksheet keeps government charges, dealer fees, and optional products separate instead of hiding them inside a payment." lines={[{label:"Government/registration",value:"$650"},{label:"Documentation fee",value:"$85"},{label:"Service contract",value:"$2,295"},{label:"GAP",value:"$700"},{label:"Total added lines",value:"$3,730",emphasis:true}]} question="Which lines are required charges, and which products may I accept or decline separately?" />
 
       <section className="section route-guide-section">
         <div className="shell section-intro compact"><p className="kicker">SEE YOUR OWN NUMBERS</p><h2>Start with the free scan before checkout.</h2><p>PencilProof reads the quote locally first, lets you correct what needs attention, and shows the detected values before you decide whether the full audit is useful.</p><TrackedLink analyticsCategory="guide_fees_addons_bottom" className="button button-primary" href="/analyze">Upload your quote free <span aria-hidden="true">→</span></TrackedLink></div>

@@ -129,9 +129,10 @@ export const track = (event: AnalyticsEvent) => {
   const utmSource = query.get("utm_source");
   const utmMedium = query.get("utm_medium");
   const utmCampaign = query.get("utm_campaign");
+  const utmContent = query.get("utm_content");
   const existingAttribution = window.sessionStorage.getItem(ATTRIBUTION_KEY);
   const currentAttribution = utmSource
-    ? [utmSource, utmMedium, utmCampaign].filter(Boolean).join("/")
+    ? [utmSource, utmMedium, utmCampaign, utmContent].filter(Boolean).join("/")
     : null;
   // Keep the first campaign source for the whole browser session. Internal
   // links such as /pilot -> /analyze may add their own UTM tags, but they
@@ -165,3 +166,8 @@ export const track = (event: AnalyticsEvent) => {
 };
 
 export const getAnalyticsSessionId = sessionId;
+
+export const getAnalyticsAttribution = () => {
+  if (typeof window === "undefined") return "";
+  return window.sessionStorage.getItem(ATTRIBUTION_KEY) ?? "";
+};

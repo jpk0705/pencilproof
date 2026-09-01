@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { SiteFooter, SiteNav } from "@/app/components/SiteChrome";
 import TrackedLink from "@/app/components/TrackedLink";
+import GuideWorksheetExample from "@/app/components/GuideWorksheetExample";
 
 export const metadata = {
   title: "How to Review a Dealer Car Quote | PencilProof",
@@ -32,6 +33,8 @@ export default function DealerQuoteReviewGuide() {
           <article><h2>What should I ask next?</h2><p>Turn the review into a short request for an itemized buyer&apos;s order and a payment based on the exact structure you want to consider.</p></article>
         </div>
       </section>
+
+      <GuideWorksheetExample title="A lower vehicle price can still produce a higher balance" explanation="This fictional worksheet shows why every line matters. The $28,000 selling price is not the amount financed after charges, products, and credits." lines={[{label:"Selling price",value:"$28,000"},{label:"Tax + government/doc fees",value:"+$2,835"},{label:"Optional products",value:"+$2,400"},{label:"Cash down",value:"−$3,000"},{label:"Illustrative amount financed",value:"$30,235",emphasis:true}]} question="Please show me each line that takes the selling price to the amount financed." />
 
       <section className="section route-guide-section">
         <div className="shell section-intro compact"><p className="kicker">NEXT STEP</p><h2>Bring your own quote to the free scan.</h2><p>PencilProof shows what it can detect before checkout. You confirm the imported values, and the final audit remains an educational estimate—not a dealer approval or financial recommendation.</p><TrackedLink analyticsCategory="guide_dealer_quote_review_bottom" className="button button-primary" href="/analyze">Upload your quote free <span aria-hidden="true">→</span></TrackedLink></div>

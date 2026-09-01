@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { SiteFooter, SiteNav } from "@/app/components/SiteChrome";
 import TrackedLink from "@/app/components/TrackedLink";
+import GuideWorksheetExample from "@/app/components/GuideWorksheetExample";
 
 const Arrow = () => <span aria-hidden="true">→</span>;
 
@@ -34,6 +35,8 @@ export default function CompareDealerQuotesGuide() {
           <article><b>Turn differences into a request</b><p>Ask for the exact figure you want revised or explained, such as a lower price, a removed product, a different term, or an itemized fee.</p></article>
         </div>
       </section>
+
+      <GuideWorksheetExample title="Quote B has the lower payment—but the longer term" explanation="These fictional quotes use the same vehicle and down payment. Comparing payment alone would miss the term and product differences." lines={[{label:"Quote A",value:"$30,000 · 60 mo · $601/mo"},{label:"Quote B",value:"$31,500 · 72 mo · $545/mo"},{label:"Products in Quote B",value:"$1,500"},{label:"Extra payments in Quote B",value:"12"},{label:"Useful comparison",value:"Balance + APR + term + products",emphasis:true}]} question="Can both quotes be shown with the same APR, term, cash down, trade, and product choices?" />
 
       <section className="section route-guide-section">
         <div className="shell section-intro compact"><p className="kicker">COMPARE YOUR OWN NUMBERS</p><h2>Start with the quote you already have.</h2><p>Upload a PDF or photo for a free scan. Verify the import, save the review when useful, and compare a revised quote or another vehicle when the figures are available.</p><TrackedLink analyticsCategory="guide_compare_quotes_bottom" className="button button-primary" href="/pilot">Start the free scan <Arrow /></TrackedLink></div>

@@ -1911,6 +1911,8 @@ h1 { font-weight: 700; letter-spacing: -.055em; }
 .audit-output-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .audit-output-actions .print-button { margin-top: 0; }
 .audit-save-print-button { width: 100%; min-height: 43px; margin-top: 0; border: 1px solid var(--brand-gold); border-radius: 4px; color: var(--brand-navy); background: var(--brand-gold); font-size: 11px; font-weight: 900; cursor: pointer; }
+.audit-share-card{margin-top:14px;padding:20px;border:1px solid rgba(246,195,67,.4);border-radius:10px;background:#0b1b38}.audit-share-card h3{margin:6px 0 9px;color:#f5f7fb;font:500 22px/1.2 Georgia,serif}.audit-share-card>p:not(.paid-feedback-kicker){color:#b8c6d8;font-size:12px;line-height:1.6}.audit-share-card ol{display:grid;gap:7px;margin:15px 0;padding-left:22px;color:#dce5f0;font-size:12px;line-height:1.5}.audit-share-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.audit-share-actions button{min-height:42px;padding:8px;border:1px solid var(--brand-gold);border-radius:5px;color:var(--brand-navy);background:var(--brand-gold);font-size:10px;font-weight:900;cursor:pointer}.audit-share-actions button+button{color:var(--brand-text);background:transparent}.audit-share-card .audit-share-status{margin:12px 0 0;color:var(--brand-gold);font-weight:700}
+.guide-example{display:grid;grid-template-columns:.8fr 1.2fr;gap:60px 90px;align-items:start}.worksheet-example{margin:0;border:1px solid var(--brand-line);border-radius:10px;overflow:hidden;background:#10264a;box-shadow:0 16px 36px rgba(0,0,0,.16)}.worksheet-example-head{display:flex;justify-content:space-between;gap:12px;padding:14px 18px;color:var(--brand-navy);background:var(--brand-gold);font-size:10px;font-weight:900;letter-spacing:.08em}.worksheet-example dl{margin:0;padding:10px 18px}.worksheet-example dl>div{display:flex;justify-content:space-between;gap:20px;padding:11px 2px;border-bottom:1px solid var(--brand-line)}.worksheet-example dt{color:var(--brand-muted);font-size:12px}.worksheet-example dd{margin:0;color:var(--brand-text);font-weight:800}.worksheet-example .worksheet-example-total{margin-top:6px;border-top:2px solid var(--brand-gold);border-bottom:0}.worksheet-example-total dt,.worksheet-example-total dd{color:var(--brand-gold);font-size:14px}.worksheet-example figcaption{padding:16px 18px;color:var(--brand-text);background:#081a35;font-size:12px;line-height:1.55}.worksheet-example figcaption strong{color:var(--brand-gold)}
 .delete-account-prompt { margin-top: 30px; padding: 24px 26px; border: 1px solid var(--brand-line); border-radius: 16px; background: var(--brand-navy-2); box-shadow: 0 16px 40px rgba(0,0,0,.16); }
 .delete-account-prompt h2 { margin: 5px 0 9px; }
 .delete-account-prompt > p:not(.kicker) { margin: 0 0 18px; color: var(--brand-muted); }
@@ -1976,6 +1978,8 @@ h1 { font-weight: 700; letter-spacing: -.055em; }
   .audit-compare-mode-row { grid-template-columns: 1fr; align-items: start; gap: 8px; }
   .audit-compare-pickers { grid-template-columns: 1fr; }
   .audit-output-actions { grid-template-columns: 1fr; }
+  .audit-share-actions { grid-template-columns: 1fr; }
+  .guide-example { grid-template-columns: 1fr; gap: 28px; }
   .audit-compare-table-head,
   .audit-compare-row { grid-template-columns: minmax(120px, .9fr) minmax(0, 1fr) minmax(0, 1fr); }
   .audit-compare-table-head > span,

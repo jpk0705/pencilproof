@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { SiteFooter, SiteNav } from "@/app/components/SiteChrome";
 import TrackedLink from "@/app/components/TrackedLink";
+import GuideWorksheetExample from "@/app/components/GuideWorksheetExample";
 
 export const metadata = { title: "Why Is Amount Financed Higher Than the Car Price? | PencilProof", description: "See why taxes, fees, products, negative equity, and other figures can make amount financed higher than a vehicle's selling price.", alternates: { canonical: "/guides/amount-financed-higher-than-price" } };
 
@@ -10,6 +11,7 @@ export default function AmountFinancedGuide() {
     <section className="section shell checks-grid-section" aria-labelledby="amount-financed-equation"><div className="section-intro compact"><p className="kicker">FOLLOW THE EQUATION</p><h2 id="amount-financed-equation">Rebuild the balance one line at a time.</h2><p>A simplified path is selling price, plus taxable products and fees, plus taxes and government charges, plus negative equity, minus cash down and positive trade equity. The contract controls the final figures.</p></div><div className="check-list">
       <article><b>Start with the selling price</b><p>Confirm the vehicle price after any stated discount, but before taxes and financed items.</p></article><article><b>Add every charge</b><p>List taxes, registration, documentation fees, accessories, GAP, service contracts, and other products separately.</p></article><article><b>Trace the trade</b><p>Compare the trade allowance with the payoff. If payoff is higher, the difference may be added to the new financing.</p></article><article><b>Apply credits once</b><p>Cash down, rebates, deposits, and positive trade equity should appear clearly and should not be counted twice.</p></article>
     </div></section>
+    <GuideWorksheetExample title="A $27,500 car can become $30,860 financed" explanation="This fictional example adds written charges and negative equity, then subtracts cash. The exact contract may use different labels." lines={[{label:"Selling price",value:"$27,500"},{label:"Tax + fees",value:"+$2,360"},{label:"Negative equity",value:"+$3,000"},{label:"Cash down",value:"−$2,000"},{label:"Illustrative amount financed",value:"$30,860",emphasis:true}]} question="Please identify every line between selling price and amount financed." />
     <section className="section route-guide-section"><div className="shell section-intro compact"><p className="kicker">ASK BEFORE SIGNING</p><h2>“Please show me each line that takes us from selling price to amount financed.”</h2><p>That question keeps the conversation focused on written figures rather than the monthly payment alone.</p><TrackedLink analyticsCategory="guide_amount_financed_bottom" className="button button-primary" href="/analyze">Review your quote free <span aria-hidden="true">→</span></TrackedLink></div></section><SiteFooter />
   </main>;
 }

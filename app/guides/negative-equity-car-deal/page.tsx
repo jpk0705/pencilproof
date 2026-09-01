@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { SiteFooter, SiteNav } from "@/app/components/SiteChrome";
 import TrackedLink from "@/app/components/TrackedLink";
+import GuideWorksheetExample from "@/app/components/GuideWorksheetExample";
 
 export const metadata = { title: "Negative Equity in a Car Deal, Explained | PencilProof", description: "Understand how trade payoff, trade allowance, and negative equity affect a new car loan and monthly payment.", alternates: { canonical: "/guides/negative-equity-car-deal" } };
 
@@ -10,6 +11,7 @@ export default function NegativeEquityGuide() {
     <section className="section shell checks-grid-section" aria-labelledby="equity-example"><div className="section-intro compact"><p className="kicker">SIMPLE EXAMPLE</p><h2 id="equity-example">A $20,000 payoff and $16,000 allowance creates $4,000 of negative equity.</h2><p>If the lender and deal structure allow it, that $4,000 can be added to the new balance. It can raise the amount financed, payment, and interest paid even when the new vehicle price stays the same.</p></div><div className="check-list">
       <article><b>Get the current payoff</b><p>Use a current lender payoff, not only the remaining balance shown on an older statement.</p></article><article><b>Find the written allowance</b><p>The trade allowance should be visible separately from the selling price and other credits.</p></article><article><b>Calculate the difference</b><p>Payoff minus allowance equals negative equity when the result is above zero.</p></article><article><b>Verify where it went</b><p>Ask the dealer to identify the exact worksheet or contract line containing the carried balance.</p></article>
     </div></section>
+    <GuideWorksheetExample title="$4,000 from the old loan follows the new deal" explanation="The fictional trade is worth less than its payoff. If allowed and approved, the difference may be carried into the new balance." lines={[{label:"Current-loan payoff",value:"$20,000"},{label:"Trade allowance",value:"−$16,000"},{label:"Negative equity",value:"$4,000"},{label:"New deal before old balance",value:"$29,500"},{label:"Balance after carried equity",value:"$33,500",emphasis:true}]} question="Where is the $4,000 shown, and what would the new balance be without rolling it in?" />
     <section className="section route-guide-section"><div className="shell section-intro compact"><p className="kicker">ASK BEFORE SIGNING</p><h2>“What are my trade allowance, payoff, and net equity—and where is that difference shown?”</h2><p>PencilProof can help organize the written figures, but your lender and signed contract determine the final financing.</p><TrackedLink analyticsCategory="guide_negative_equity_bottom" className="button button-primary" href="/analyze">Check the written numbers <span aria-hidden="true">→</span></TrackedLink></div></section><SiteFooter />
   </main>;
 }

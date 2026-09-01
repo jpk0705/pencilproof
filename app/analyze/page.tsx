@@ -340,6 +340,7 @@ export default function AnalyzePage() {
   const [accountRoleKnown, setAccountRoleKnown] = useState(false);
   const [auditSaveRequest, setAuditSaveRequest] = useState(0);
   const [auditSaveMessage, setAuditSaveMessage] = useState("");
+  const [shareMessage, setShareMessage] = useState("");
   const [creditTier, setCreditTier] = useState<CreditTier>("good");
   const [creditVehicleType, setCreditVehicleType] = useState<CreditVehicleType>("new");
   const printAfterSaveRef = useRef(false);
@@ -1292,6 +1293,66 @@ export default function AnalyzePage() {
     window.setTimeout(() => setCopied(false), 1800);
   };
 
+  const shareUrl = "https://pencilproof.com/analyze?utm_source=customer_share&utm_medium=owned&utm_campaign=quote_checklist";
+  const shareChecklist = [
+    "Confirm the selling price and every rebate.",
+    "Separate taxes, government fees, and dealer fees.",
+    "Name and price every optional product.",
+    "Show trade allowance, payoff, equity, and cash separately.",
+    "Confirm amount financed, APR, term, and payment in writing.",
+  ];
+  const shareText = `Before signing a car deal, check these five items:\n${shareChecklist.map((item, index) => `${index + 1}. ${item}`).join("\n")}\n\nReview a written quote with PencilProof: ${shareUrl}`;
+  const shareAuditChecklist = async () => {
+    track({ event: "cta_clicked", category: "audit_share_native" });
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "Car quote checklist | PencilProof", text: shareText, url: shareUrl });
+        setShareMessage("Checklist shared.");
+        return;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(shareText);
+      setShareMessage("Checklist copied. You can paste it into a message.");
+    } catch {
+      setShareMessage("Sharing is unavailable in this browser. Use the email button instead.");
+    }
+  };
+  const downloadRedactedSummary = () => {
+    const summary = [
+      "PENCILPROOF REDACTED QUOTE SUMMARY",
+      "Educational estimate — verify every figure with the written contract.",
+      "",
+      `Selling price: ${dollarsAndCents(deal.sellingPrice)}`,
+      `Estimated amount financed: ${dollarsAndCents(analysis.amountFinanced)}`,
+      isCashDeal ? `Estimated cash total: ${dollarsAndCents(analysis.calculatedPayment)}` : `Estimated payment: ${dollarsAndCents(analysis.calculatedPayment)} per month`,
+      isCashDeal ? "Purchase type: cash" : `APR / term: ${deal.apr.toFixed(2)}% / ${deal.term} months`,
+      `Trade equity: ${dollarsAndCents(analysis.tradeEquity)}`,
+      `Optional products entered: ${dollarsAndCents(analysis.addons)}`,
+      "",
+      "QUESTIONS TO CONFIRM",
+      ...shareChecklist.map((item) => `- ${item}`),
+      "",
+      "This export intentionally omits names, contact details, dealer identity, VIN, uploaded documents, and saved-account identifiers.",
+      "https://pencilproof.com",
+    ].join("\n");
+    const blob = new Blob([summary], { type: "text/plain;charset=utf-8" });
+    const href = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = href;
+    anchor.download = "pencilproof-redacted-quote-summary.txt";
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(href), 0);
+    track({ event: "cta_clicked", category: "audit_redacted_summary_download" });
+    setShareMessage("Redacted summary downloaded.");
+  };
+  const emailChecklist = () => {
+    track({ event: "cta_clicked", category: "audit_share_email" });
+    window.location.href = `mailto:?subject=${encodeURIComponent("Car quote checklist from PencilProof")}&body=${encodeURIComponent(shareText)}`;
+  };
+
   const requestAuditSave = (printAfterSave = false) => {
     if (sampleLoaded) {
       setAuditSaveMessage("The built-in sample is for demonstration and cannot be saved.");
@@ -1754,6 +1815,14 @@ export default function AnalyzePage() {
                 <button className="print-button" type="button" onClick={() => window.print()}>Print this Full Quote Audit</button>
                 {isPaidAuditHost ? <button className="audit-save-print-button" type="button" onClick={() => requestAuditSave(true)}>Save &amp; print audit</button> : null}
               </div>
+              {showConsumerOnlyAuditSections ? <section className="audit-share-card" aria-labelledby="audit-share-title">
+                <p className="paid-feedback-kicker">HELP SOMEONE CHECK THEIR QUOTE</p>
+                <h3 id="audit-share-title">Share the checklist, not your private document.</h3>
+                <p>PencilProof never attaches your uploaded quote. Share a general five-point checklist, or download a redacted text summary that omits names, contact details, dealer identity, VIN, and the original file.</p>
+                <ol>{shareChecklist.map((item) => <li key={item}>{item}</li>)}</ol>
+                <div className="audit-share-actions"><button type="button" onClick={() => void shareAuditChecklist()}>Share checklist</button><button type="button" onClick={downloadRedactedSummary}>Download redacted summary</button><button type="button" onClick={emailChecklist}>Email the checklist</button></div>
+                {shareMessage ? <p className="audit-share-status" role="status">{shareMessage}</p> : null}
+              </section> : null}
               {!isPaidAuditHost && showConsumerOnlyAuditSections && !accountPromptDismissed ? <section className="account-save-prompt" aria-labelledby="account-save-title">
                 <div>
                   <p className="paid-feedback-kicker">OPTIONAL ACCOUNT</p>
