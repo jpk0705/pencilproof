@@ -107,8 +107,8 @@ export default function Home() {
             </Link>
             <Link className="route-guide-card route-guide-card-dark" href="/pricing">
               <span>04 · PRICING</span>
-              <h3>Know exactly what you get for $39.</h3>
-              <p>One payment. One complete audit. No subscription and no charge just to test the scan.</p>
+              <h3>Try the complete $39 audit for $1.</h3>
+              <p>Start with the free scan, then enter <strong>BETA1</strong> in secure checkout for the $1 beta offer while it remains active. One payment. No subscription.</p>
               <strong>See Full Quote Audit <Arrow /></strong>
             </Link>
           </div>

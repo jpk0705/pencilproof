@@ -17,6 +17,7 @@ export default function PricingPage() {
           <p className="kicker">PRICING</p>
           <h1>See it work first. Pay once only when you want the full audit.</h1>
           <p>Upload your quote free and review what PencilProof finds. The complete Full Quote Audit is a one-time $39 purchase, not a subscription.</p>
+          <p className="sales-promo-banner"><strong>$1 beta offer:</strong> enter <strong>BETA1</strong> in secure checkout while the promotion remains active. The regular one-time price is $39.</p>
           <div className="page-actions"><TrackedLink analyticsCategory="pricing_hero" className="button button-primary" href="/analyze">Review your quote free <span aria-hidden="true">→</span></TrackedLink><Link className="text-link" href="/how-it-works">See how checkout works <span aria-hidden="true">→</span></Link></div>
         </div>
       </section>
@@ -30,6 +31,7 @@ export default function PricingPage() {
           </div>
           <div className="price-card">
             <div className="price-line"><span>Full Quote Audit</span><strong>$39</strong></div>
+            <p className="sales-promo-banner"><strong>Pay $1 with BETA1.</strong> Enter the code in secure Stripe checkout while the beta promotion remains active.</p>
             <ul>
               <li>Private PDF and image autofill</li>
               <li>Required import confirmation before the audit</li>
@@ -42,7 +44,7 @@ export default function PricingPage() {
               <li>Print or save the finished audit</li>
             </ul>
             <TrackedLink analyticsCategory="pricing_audit_card" className="button button-light" href="/analyze">Start with the free scan <span aria-hidden="true">→</span></TrackedLink>
-            <small>One-time payment. Educational estimate. No guaranteed savings. If your quote cannot be processed, use the support options on your receipt for help or a refund review.</small>
+            <small>One-time payment. BETA1 availability is confirmed in checkout before payment. Educational estimate. No guaranteed savings. If your quote cannot be processed, use the support options on your receipt for help or a refund review.</small>
           </div>
         </div>
       </section>

@@ -1015,12 +1015,95 @@ const legacyMarketingEmailContent = (
   return tip;
 };
 
-type MarketingEmailContent = { subject: string; text: string | string[]; html: string };
+type MarketingEmailContent = { subject: string; text: string | string[]; html: string; preheader?: string };
 
 const marketingRotationIndex = (now: number, length: number) =>
   Math.floor(now / (60 * 60 * 24 * 3)) % length;
 
-const marketingEmailContent = (
+const consumerLessons = [
+  {
+    hook: "The monthly payment is the result of the deal, not the whole deal.",
+    title: "Put the four financing numbers side by side",
+    paragraphs: [
+      "A payment can move because the amount financed, APR, loan term, or cash down changed. Looking at only the payment makes it hard to tell which lever the dealership used.",
+      "Write down those four numbers from the worksheet before discussing a revised payment. Then compare the total of payments so a lower monthly number does not hide a longer or more expensive loan.",
+    ],
+    checklist: ["Amount financed", "APR", "Loan term", "Total of payments"],
+    question: "Which exact number changed to produce this payment?",
+  },
+  {
+    hook: "A fee is much easier to evaluate once it has a clear name and price.",
+    title: "Turn the bottom of the worksheet into an itemized list",
+    paragraphs: [
+      "Ask for the selling price, government fees, documentation fee, taxes, and every dealer or protection product on separate lines. A bundled total can make optional charges look required.",
+      "For each unfamiliar line, ask who charges it, what it provides, and whether it is required for this purchase. Keep the written answer with the quote you are comparing.",
+    ],
+    checklist: ["Selling price", "Government and documentation fees", "Taxes", "Optional products"],
+    question: "Can you show me which of these charges are optional and remove them from the worksheet for comparison?",
+  },
+  {
+    hook: "Optional products should earn their place one at a time.",
+    title: "Separate the vehicle from the add-ons",
+    paragraphs: [
+      "Service contracts, GAP, maintenance, tire-and-wheel coverage, and accessories solve different problems. Review the price and terms of each product separately instead of accepting one package total.",
+      "Compare the payment and amount financed with every optional product removed. Then add back only the products whose coverage, exclusions, cancellation terms, and price make sense to you.",
+    ],
+    checklist: ["Individual product price", "Coverage and exclusions", "Cancellation terms", "Financed cost"],
+    question: "What does the payment and amount financed look like with every optional product removed?",
+  },
+  {
+    hook: "Your trade and your next vehicle are two separate pieces of the same worksheet.",
+    title: "Make trade equity visible",
+    paragraphs: [
+      "A trade allowance is not the same as trade equity. Subtract the loan payoff from the allowance to see whether the trade contributes value or adds negative equity to the new amount financed.",
+      "Keep the new vehicle selling price visible while reviewing the trade. That makes it harder for movement in one number to hide movement in the other.",
+    ],
+    checklist: ["Trade allowance", "Current payoff", "Positive or negative equity", "New vehicle selling price"],
+    question: "Can you show the trade allowance and payoff as separate lines before they are applied to the new deal?",
+  },
+  {
+    hook: "A longer term can lower today's payment while raising the total cost.",
+    title: "Compare time as well as payment",
+    paragraphs: [
+      "When two offers have different terms, compare the APR, amount financed, finance charge, and total of payments—not just the monthly difference.",
+      "Ask for the same deal at two loan terms. Seeing both worksheets makes the tradeoff between monthly comfort and long-term cost much easier to understand.",
+    ],
+    checklist: ["Monthly payment", "Number of payments", "Finance charge", "Total of payments"],
+    question: "Can you show this exact deal at both terms without changing the products or cash down?",
+  },
+  {
+    hook: "A written worksheet gives you something real to compare.",
+    title: "Get the complete quote before deciding",
+    paragraphs: [
+      "A useful quote includes the vehicle, selling price, fees, taxes, trade figures, cash down, APR, term, payment, and optional products. Missing numbers make comparisons unreliable.",
+      "Take a clear photo or request a PDF before leaving. PencilProof can organize the written figures so you can review what changed between versions.",
+    ],
+    checklist: ["Complete vehicle description", "Itemized price and fees", "Trade and cash down", "APR, term, and payment"],
+    question: "May I have the complete itemized worksheet or buyer's order to review before I decide?",
+  },
+] as const;
+
+const enrichConsumerEmail = (content: MarketingEmailContent, now: number): MarketingEmailContent => {
+  const lesson = consumerLessons[marketingRotationIndex(now, consumerLessons.length)];
+  const baseText = Array.isArray(content.text) ? content.text : [content.text];
+  return {
+    ...content,
+    preheader: lesson.hook,
+    text: [
+      lesson.hook,
+      ...baseText,
+      lesson.title,
+      ...lesson.paragraphs,
+      "Quick quote checklist:",
+      ...lesson.checklist.map((item) => `- ${item}`),
+      `Ask this before you sign: ${lesson.question}`,
+      "Beta offer: enter BETA1 in secure checkout to unlock the complete $39 Full Quote Audit for $1 while the promotion remains active. It is a one-time purchase, not a subscription.",
+    ],
+    html: `<p style="font-size:20px;line-height:1.45;font-weight:700;color:#0b1b34">${htmlEscape(lesson.hook)}</p>${content.html}<h2 style="font-size:22px;line-height:1.3;color:#0b1b34">${htmlEscape(lesson.title)}</h2>${lesson.paragraphs.map((paragraph) => `<p>${htmlEscape(paragraph)}</p>`).join("")}<h3 style="font-size:17px;color:#0b1b34">Quick quote checklist</h3><ul>${lesson.checklist.map((item) => `<li>${htmlEscape(item)}</li>`).join("")}</ul><div style="margin:22px 0;padding:18px;border-left:4px solid #f7c548;background:#f5f7fb"><strong>Ask this before you sign</strong><p style="margin:8px 0 0">${htmlEscape(lesson.question)}</p></div><div style="margin:22px 0;padding:18px;border-radius:10px;background:#0b1b34;color:#ffffff"><strong style="color:#f7c548">$1 beta offer</strong><p style="margin:8px 0 0">Enter <strong>BETA1</strong> in secure checkout to unlock the complete $39 Full Quote Audit for $1 while the promotion remains active. One-time purchase; no subscription.</p></div>`,
+  };
+};
+
+export const marketingEmailContent = (
   candidate: MarketingCandidate,
   now: number,
 ): MarketingEmailContent => {
@@ -1131,9 +1214,9 @@ const marketingEmailContent = (
     },
   ];
 
-  if (hasRecentUnpaidActivity) return unfinishedAuditMessages[marketingRotationIndex(now, unfinishedAuditMessages.length)];
-  if (candidate.lastPurchaseAt && !hasActivePass) return expiredPassMessages[marketingRotationIndex(now, expiredPassMessages.length)];
-  return generalMessages[marketingRotationIndex(now, generalMessages.length)];
+  if (hasRecentUnpaidActivity) return enrichConsumerEmail(unfinishedAuditMessages[marketingRotationIndex(now, unfinishedAuditMessages.length)], now);
+  if (candidate.lastPurchaseAt && !hasActivePass) return enrichConsumerEmail(expiredPassMessages[marketingRotationIndex(now, expiredPassMessages.length)], now);
+  return enrichConsumerEmail(generalMessages[marketingRotationIndex(now, generalMessages.length)], now);
 };
 
 type MarketingCampaignKind = "educational" | "promotional";
@@ -1205,8 +1288,9 @@ export const salespersonEmailContent = (now: number, kind: MarketingCampaignKind
   if (kind === "promotional") {
     return {
       subject: "Salesperson Plan: use ALPHA1 for your first month at $1",
+      preheader: "A clearer buyer conversation can become a repeatable referral process.",
       text: [
-        "PROMOTIONAL EMAIL",
+        "A clearer buyer conversation can become a repeatable referral process.",
         "If you are building a referral business around car buyers, the PencilProof Salesperson Plan gives you practical sales guidance and referral tracking in one place.",
         "Use code ALPHA1 at checkout to reduce the first month to $1. The discount applies once; later months renew at the regular plan price unless you cancel through the billing portal.",
         "A useful workflow is simple: learn the buyer's priorities, explain the worksheet clearly, separate price from payment, and follow up with one useful next step.",
@@ -1217,15 +1301,33 @@ export const salespersonEmailContent = (now: number, kind: MarketingCampaignKind
     };
   }
 
-  const topic = salespersonTopics[marketingRotationIndex(now, salespersonTopics.length)];
+  const topicIndex = marketingRotationIndex(now, salespersonTopics.length);
+  const topic = salespersonTopics[topicIndex];
+  const conversationMoves = [
+    "Before I show you a vehicle, what would make the next one feel like a meaningful improvement over what you drive now?",
+    "Which part feels least comfortable right now: the vehicle, the numbers, the timing, or something else?",
+    "When you say the price feels high, is the concern the selling price, the monthly payment, or the total cost?",
+    "Let me show you which number changed so the payment is easier to evaluate.",
+    "What is the smallest useful next step: compare two worksheets, appraise the trade, or answer one remaining question?",
+    "I pulled together the exact information you asked about. What question would be most useful to answer next?",
+  ];
+  const hook = [
+    "Trust grows when the buyer feels understood before the presentation begins.",
+    "The first objection is often only the headline; the useful conversation starts underneath it.",
+    "Price, payment, and total cost sound similar in conversation but require different answers.",
+    "A buyer does not need more finance jargon; they need to see which number moved and why.",
+    "Momentum is easier to keep when the next step feels useful instead of pressured.",
+    "The strongest follow-up gives the buyer a reason to reopen the conversation.",
+  ][topicIndex];
   const text = [
-    topic.subject,
+    hook,
     ...topic.paragraphs,
     "Use this checklist in your next conversation:",
     ...topic.checklist.map((item) => `- ${item}`),
+    `Try this line: ${conversationMoves[topicIndex]}`,
   ];
-  const html = `<h2>${htmlEscape(topic.subject)}</h2>${topic.paragraphs.map((paragraph, index) => `<h3>${["Set the context", "Make the explanation useful", "Earn the next step"][index]}</h3><p>${htmlEscape(paragraph)}</p>`).join("")}<h3>Use this in your next conversation</h3><ul>${topic.checklist.map((item) => `<li>${htmlEscape(item)}</li>`).join("")}</ul>`;
-  return { subject: `PencilProof salesperson guide: ${topic.subject}`, text, html };
+  const html = `<p style="font-size:20px;line-height:1.45;font-weight:700;color:#0b1b34">${htmlEscape(hook)}</p><h2>${htmlEscape(topic.subject)}</h2>${topic.paragraphs.map((paragraph, index) => `<h3>${["Set the context", "Make the explanation useful", "Earn the next step"][index]}</h3><p>${htmlEscape(paragraph)}</p>`).join("")}<h3>Use this in your next conversation</h3><ul>${topic.checklist.map((item) => `<li>${htmlEscape(item)}</li>`).join("")}</ul><div style="margin:22px 0;padding:18px;border-left:4px solid #f7c548;background:#f5f7fb"><strong>Try this line</strong><p style="margin:8px 0 0">${htmlEscape(conversationMoves[topicIndex])}</p></div>`;
+  return { subject: `PencilProof salesperson guide: ${topic.subject}`, preheader: hook, text, html };
 };
 
 const sendMarketingEmail = async (
@@ -1233,6 +1335,7 @@ const sendMarketingEmail = async (
   content: { subject: string; text: string | string[]; html: string },
   env: Env,
   destination: "pilot" | "sales" = "pilot",
+  idempotencyKey = "",
 ) => {
   const apiKey = env.RESEND_API_KEY?.trim();
   const from = env.MARKETING_FROM_EMAIL?.trim();
@@ -1245,31 +1348,43 @@ const sendMarketingEmail = async (
   const campaignUrl = destination === "sales"
     ? `${env.PUBLIC_SITE_ORIGIN}/sales?utm_source=email&utm_medium=owned&utm_campaign=salesperson_plan`
     : `${env.PUBLIC_SITE_ORIGIN}/pilot?utm_source=email&utm_medium=owned&utm_campaign=free_scan`;
-  const html = `${content.html}<p><a href="${campaignUrl}">${destination === "sales" ? "Open the PencilProof salesperson plan" : "Review your quote free"}</a></p><hr><p style="color:#667085;font-size:12px">You are receiving this because you created a PencilProof account or provided your email to PencilProof. <a href="${unsubscribeUrl}">Unsubscribe</a> or <a href="${preferencesUrl}">manage email preferences</a>.</p><p style="color:#667085;font-size:12px">${htmlEscape(businessAddress)}</p>`;
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
+  const imageUrl = `${env.PUBLIC_SITE_ORIGIN}/${destination === "sales" ? "pencilproof-profile-mark.png" : "pencilproof-cover.png"}`;
+  const imageAlt = destination === "sales" ? "PencilProof salesperson tools" : "Know the deal before you sign with PencilProof";
+  const preheader = htmlEscape(content.preheader ?? (Array.isArray(content.text) ? content.text[0] : content.text));
+  const html = `<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">${preheader}</div><div style="margin:0 auto;max-width:640px;font-family:Arial,sans-serif;color:#26364d;line-height:1.65"><img src="${htmlEscape(imageUrl)}" width="640" alt="${htmlEscape(imageAlt)}" style="display:block;width:100%;max-width:640px;height:auto;border:0;border-radius:12px"><div style="padding:26px 22px">${content.html}<p style="margin:26px 0"><a href="${campaignUrl}" style="display:inline-block;padding:13px 18px;border-radius:8px;background:#0b1b34;color:#ffffff;text-decoration:none;font-weight:700">${destination === "sales" ? "Open the PencilProof salesperson plan" : "Review your quote free"}</a></p><hr style="border:0;border-top:1px solid #d9e0e8"><p style="color:#667085;font-size:12px">You are receiving this because you created a PencilProof account or provided your email to PencilProof. <a href="${unsubscribeUrl}">Unsubscribe</a> or <a href="${preferencesUrl}">manage email preferences</a>.</p><p style="color:#667085;font-size:12px">${htmlEscape(businessAddress)}</p></div></div>`;
+  const requestBody = JSON.stringify({
+    from,
+    html,
     headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
+      "List-Unsubscribe": `<${unsubscribeUrl}>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
     },
-    body: JSON.stringify({
-      from,
-      html,
+    reply_to: env.MARKETING_REPLY_TO?.trim() || undefined,
+    subject: content.subject,
+    text: `${text}\n\n${destination === "sales" ? "Open the PencilProof salesperson plan" : "Review your quote free"}: ${campaignUrl}\n\nYou are receiving this because you created a PencilProof account or provided your email to PencilProof.\nUnsubscribe: ${unsubscribeUrl}\nManage email preferences: ${preferencesUrl}\n\n${businessAddress}`,
+    to: [candidate.email],
+  });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
       headers: {
-        "List-Unsubscribe": `<${unsubscribeUrl}>`,
-        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey.slice(0, 256) } : {}),
       },
-      reply_to: env.MARKETING_REPLY_TO?.trim() || undefined,
-      subject: content.subject,
-      text: `${text}\n\n${destination === "sales" ? "Open the PencilProof salesperson plan" : "Review your quote free"}: ${campaignUrl}\n\nYou are receiving this because you created a PencilProof account or provided your email to PencilProof.\nUnsubscribe: ${unsubscribeUrl}\nManage email preferences: ${preferencesUrl}\n\n${businessAddress}`,
-      to: [candidate.email],
-    }),
-  });
-  if (response.ok) return true;
-  console.error("Marketing email send failed", {
-    status: response.status,
-    userId: candidate.userId,
-  });
+      body: requestBody,
+    });
+    if (response.ok) return true;
+    const retryable = response.status === 429 || response.status >= 500;
+    console.error("Marketing email send failed", {
+      attempt: attempt + 1,
+      retryable,
+      status: response.status,
+      userId: candidate.userId,
+    });
+    if (!retryable || attempt === 1) return false;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
   return false;
 };
 
@@ -1311,6 +1426,25 @@ export const marketingCampaignSlot = (scheduledTime: number): { kind: MarketingC
 const runMarketingCampaign = async (env: Env, scheduledTime: number) => {
   const slot = marketingCampaignSlot(scheduledTime);
   if (!slot) return;
+  const startedAt = Math.floor(Date.now() / 1000);
+  const runDetails = {
+    campaignKey: slot.campaignKey,
+    kind: slot.kind,
+    candidates: 0,
+    claimed: 0,
+    sent: 0,
+    failed: 0,
+    automaticRepair: "One retry for Resend rate limits and server errors; failed claims are released safely.",
+  };
+  const recordRun = async (status: "healthy" | "degraded" | "failed" | "skipped", error: string | null = null) => {
+    await accountCall(env, "/automation-run", {
+      automationKey: "marketing-email",
+      startedAt,
+      finishedAt: Math.floor(Date.now() / 1000),
+      status,
+      details: { ...runDetails, ...(error ? { error: error.slice(0, 500) } : {}) },
+    });
+  };
   if (!env.RESEND_API_KEY || !env.MARKETING_FROM_EMAIL || !env.MARKETING_BUSINESS_ADDRESS) {
     console.warn("Marketing campaign skipped: email configuration is incomplete");
     await sendMarketingAlert(
@@ -1318,6 +1452,7 @@ const runMarketingCampaign = async (env: Env, scheduledTime: number) => {
       "Configuration incomplete",
       "A scheduled campaign was skipped because RESEND_API_KEY, MARKETING_FROM_EMAIL, or MARKETING_BUSINESS_ADDRESS is missing.",
     );
+    await recordRun("failed", "Email configuration is incomplete.");
     return;
   }
   const now = Math.floor(scheduledTime / 1000);
@@ -1331,6 +1466,7 @@ const runMarketingCampaign = async (env: Env, scheduledTime: number) => {
     destination: "pilot" | "sales",
   ) => {
     const eligible = candidates.filter((candidate) => candidate.userId && /^[^\s@]+@[^\s@]+\.[^\s@]{2,254}$/.test(candidate.email));
+    runDetails.candidates += eligible.length;
     for (let offset = 0; offset < eligible.length; offset += marketingDeliveryBatchSize) {
       const batch = eligible.slice(offset, offset + marketingDeliveryBatchSize);
       const claim = await accountCall(env, "/marketing-delivery-batch", {
@@ -1343,6 +1479,7 @@ const runMarketingCampaign = async (env: Env, scheduledTime: number) => {
           ? claim.claimed.filter((userId): userId is string => typeof userId === "string")
           : [],
       );
+      runDetails.claimed += claimedIds.size;
       if (!claimedIds.size) continue;
       const completedIds: string[] = [];
       const releasedIds: string[] = [];
@@ -1350,14 +1487,18 @@ const runMarketingCampaign = async (env: Env, scheduledTime: number) => {
         if (!claimedIds.has(candidate.userId)) continue;
         let sent = false;
         try {
-          sent = await sendMarketingEmail(candidate, contentFor(candidate), env, destination);
+          sent = await sendMarketingEmail(candidate, contentFor(candidate), env, destination, `pencilproof/${campaignKey}/${candidate.userId}`);
         } catch (error) {
           console.error("Marketing email send exception", { message: error instanceof Error ? error.message : "Unknown error" });
         }
-        if (sent) completedIds.push(candidate.userId);
+        if (sent) {
+          completedIds.push(candidate.userId);
+          runDetails.sent += 1;
+        }
         else {
           releasedIds.push(candidate.userId);
           failedDeliveries += 1;
+          runDetails.failed += 1;
         }
       }
       if (completedIds.length) await accountCall(env, "/marketing-delivery-batch", { action: "complete", campaignKey, userIds: completedIds });
@@ -1381,6 +1522,7 @@ const runMarketingCampaign = async (env: Env, scheduledTime: number) => {
       `${failedDeliveries} campaign email${failedDeliveries === 1 ? "" : "s"} failed during the ${slot.campaignKey} run. Failed deliveries were released for a later retry.`,
     );
   }
+  await recordRun(failedDeliveries > 0 ? "degraded" : "healthy");
 };
 
 const createEmailUnsubscribeToken = async (email: string, secret: string) => {
@@ -2737,6 +2879,7 @@ const handoffPage = () =>
             credentials: "same-origin",
             body: JSON.stringify({
               analyticsSessionId: localStorage.getItem("pencilproof:analytics-session"),
+              analyticsSource: sessionStorage.getItem("pencilproof:analytics-attribution"),
               referralCode
             })
           })
@@ -2864,6 +3007,7 @@ const createCheckoutSession = async (
   env: Env,
   deviceHash: string,
   analyticsSessionId = "",
+  analyticsSource = "",
   userId: string | null = null,
   referralCode = "",
 ) => {
@@ -2894,6 +3038,9 @@ const createCheckoutSession = async (
     "managed_payments[enabled]": "true",
     ...( /^[A-Za-z0-9_-]{20,80}$/.test(analyticsSessionId)
       ? { "metadata[pencilproof_analytics_session]": analyticsSessionId }
+      : {}),
+    ...( /^[A-Za-z0-9._/-]{1,160}$/.test(analyticsSource)
+      ? { "metadata[pencilproof_analytics_source]": analyticsSource }
       : {}),
     ...(userId ? { "metadata[pencilproof_user_id]": userId } : {}),
     ...(referralCode ? { "metadata[pencilproof_referral_code]": referralCode } : {}),
@@ -3224,6 +3371,11 @@ const verifyAndStorePaidOrder = async (
       await recordAnalyticsEvent({
         event: "payment_completed",
         sessionId: analyticsSessionId,
+        source: /^[A-Za-z0-9._/-]{1,160}$/.test(session?.metadata?.pencilproof_analytics_source ?? "")
+          ? session?.metadata?.pencilproof_analytics_source
+          : undefined,
+        value: Math.max(0, Number(session?.amount_total ?? 0)),
+        currency: String(session?.currency ?? "").toLowerCase(),
       }, env);
     }
   }
@@ -3462,6 +3614,7 @@ const handleCheckout = async (request: Request, env: Env) => {
   try {
     const body = await request.json().catch(() => ({})) as {
       analyticsSessionId?: string;
+      analyticsSource?: string;
       referralCode?: string;
     };
     // Webhook provisioning is best effort. It must not prevent a customer
@@ -3483,6 +3636,7 @@ const handleCheckout = async (request: Request, env: Env) => {
       env,
       deviceHash,
       body.analyticsSessionId ?? "",
+      body.analyticsSource ?? "",
       userId,
       /^[A-Za-z0-9]{8,32}$/.test(body.referralCode ?? "") ? body.referralCode!.toUpperCase() : "",
     );

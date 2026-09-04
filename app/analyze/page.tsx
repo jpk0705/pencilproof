@@ -1395,6 +1395,7 @@ export default function AnalyzePage() {
             ? "Upload the dealer's quote or enter the figures yourself. Then test the down payment, term, trade, and optional products while the dealership works on its official revision."
             : "Upload the written quote you already have. See the detected price, payment, APR, fees, products, and trade details free before checkout. Continue as a guest—no account required."}</p>
           <p className="analyzer-founder">Built for clear review of written vehicle quotes before signing.</p>
+          {!isPaidAuditHost ? <p className="sales-promo-banner"><strong>Beta offer:</strong> scan free, then enter <strong>BETA1</strong> in secure checkout to unlock the complete $39 audit for $1 while the promotion remains active.</p> : null}
           {hasReferralAttribution ? <p className="referral-disclosure">You arrived through a PencilProof salesperson link. If you purchase the Full Quote Audit, the person who shared this link may receive subscription credit.</p> : null}
         </div>
         {isPaidAuditHost ? (
@@ -1605,6 +1606,7 @@ export default function AnalyzePage() {
             <div className="verification-actions">
               <button className="button button-primary" type="button" onClick={confirmPendingImport}>{isPaidAuditHost ? "Confirm values and see audits" : "Confirm values and continue to checkout"} <Arrow /></button>
             </div>
+            {!isPaidAuditHost ? <p className="sales-promo-banner"><strong>Ready for the complete audit?</strong> Enter <strong>BETA1</strong> in secure checkout for the $1 beta offer while it remains active.</p> : null}
             {!isPaidAuditHost && auditHostResolved && preCheckoutFeedbackCompleted === false ? <PreCheckoutFeedback onCompleted={completePreCheckoutFeedback} /> : null}
             {pendingCheckout !== null ? <div ref={checkoutGateRef} className="checkout-gate-anchor"><PreCheckoutAccountGate onContinue={continueCheckout} onPaidAccess={continueToPaidAudit} /></div> : null}
           </section>
@@ -1683,6 +1685,7 @@ export default function AnalyzePage() {
                 <span>FREE SCAN COMPLETE</span>
                 <strong>Ready to continue?</strong>
                 <p>Your entered figures stay in this browser. Continue to secure checkout to unlock the complete Full Quote Audit after payment.</p>
+                <p><strong>BETA1:</strong> enter this code in secure checkout for the $1 beta offer while it remains active.</p>
               </div>
               <button
                 className="button button-primary"
