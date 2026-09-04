@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920" role="img" aria-labelledby="title desc">
+  <title id="title">Dealer fees and add-ons worksheet</title>
+  <desc id="desc">Anonymous educational graphic itemizing an 85 dollar documentation fee, 2295 dollar service contract, and 700 dollar GAP product for a total of 3080 dollars before interest.</desc>
+  <rect width="1080" height="1920" fill="#f5f1e8"/>
+  <rect x="72" y="96" width="936" height="1728" rx="44" fill="#fff" stroke="#1f2937" stroke-width="8"/>
+  <text x="120" y="210" font-family="Arial,sans-serif" font-size="44" font-weight="700" fill="#a1452d">PENCILPROOF</text>
+  <text x="120" y="330" font-family="Arial,sans-serif" font-size="76" font-weight="800" fill="#172033">The payment rose $38.</text>
+  <text x="120" y="420" font-family="Arial,sans-serif" font-size="76" font-weight="800" fill="#172033">The add-ons cost $3,080.</text>
+  <text x="120" y="520" font-family="Arial,sans-serif" font-size="36" fill="#4b5563">Fictional worksheet example</text>
+  <line x1="120" y1="590" x2="960" y2="590" stroke="#d1d5db" stroke-width="4"/>
+  <g font-family="Arial,sans-serif" font-size="48" fill="#172033">
+    <text x="120" y="710">Documentation fee</text><text x="900" y="710" text-anchor="end">$85</text>
+    <text x="120" y="830">Service contract</text><text x="900" y="830" text-anchor="end">$2,295</text>
+    <text x="120" y="950">GAP</text><text x="900" y="950" text-anchor="end">$700</text>
+  </g>
+  <line x1="120" y1="1020" x2="960" y2="1020" stroke="#172033" stroke-width="6"/>
+  <text x="120" y="1145" font-family="Arial,sans-serif" font-size="52" font-weight="700" fill="#172033">Added before interest</text>
+  <text x="900" y="1145" text-anchor="end" font-family="Arial,sans-serif" font-size="64" font-weight="800" fill="#a1452d">$3,080</text>
+  <rect x="120" y="1260" width="840" height="360" rx="28" fill="#eef2f7"/>
+  <text x="165" y="1360" font-family="Arial,sans-serif" font-size="42" font-weight="700" fill="#172033">Ask three questions:</text>
+  <text x="165" y="1445" font-family="Arial,sans-serif" font-size="38" fill="#172033">1. Required or optional?</text>
+  <text x="165" y="1520" font-family="Arial,sans-serif" font-size="38" fill="#172033">2. Full cash price?</text>
+  <text x="165" y="1595" font-family="Arial,sans-serif" font-size="38" fill="#172033">3. Revised quote without it?</text>
+  <text x="540" y="1740" text-anchor="middle" font-family="Arial,sans-serif" font-size="38" font-weight="700" fill="#a1452d">pencilproof.com</text>
+</svg>
