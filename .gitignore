@@ -15,3 +15,6 @@ next-env.d.ts
 /public/ocr/
 /tmp/
 /eng.traineddata
+
+# Locally rendered organic video intermediates and uploads
+/media/organic/
