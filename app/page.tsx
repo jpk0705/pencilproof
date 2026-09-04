@@ -143,7 +143,26 @@ export default function Home() {
               <p>Understand what optional products and fees can add to the amount financed.</p>
               <strong>See the checklist <Arrow /></strong>
             </Link>
+            <Link className="route-guide-card" href="/guides/can-i-afford-this-car-payment">
+              <span>AFFORDABILITY</span>
+              <h3>Can I afford this car payment?</h3>
+              <p>Test the payment against the rest of the ownership costs before the monthly number becomes the decision.</p>
+              <strong>Check affordability <Arrow /></strong>
+            </Link>
+            <Link className="route-guide-card" href="/guides/amount-financed-vs-total-of-payments">
+              <span>LOAN TOTALS</span>
+              <h3>Amount financed vs. total of payments.</h3>
+              <p>See why these two totals are different and what each one says about the cost of the loan.</p>
+              <strong>Compare the totals <Arrow /></strong>
+            </Link>
+            <Link className="route-guide-card route-guide-card-dark" href="/guides/longer-car-loan-term-total-cost">
+              <span>LOAN TERM</span>
+              <h3>What does a longer car loan really cost?</h3>
+              <p>See how a lower monthly payment can produce a larger total repayment over time.</p>
+              <strong>See the term tradeoff <Arrow /></strong>
+            </Link>
           </div>
+          <Link className="text-link" href="/guides">Read all quote guides <Arrow /></Link>
         </div>
       </section>
 
