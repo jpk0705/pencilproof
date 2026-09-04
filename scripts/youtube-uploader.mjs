@@ -134,7 +134,6 @@ export function normalizeVideoMetadata(input = {}) {
     status: {
       privacyStatus,
       selfDeclaredMadeForKids: input.selfDeclaredMadeForKids === true,
-      notifySubscribers: input.notifySubscribers === true,
     },
   };
 }
@@ -431,7 +430,7 @@ async function createResumableSession({ accessToken, metadata, size, contentType
   };
   let response;
   try {
-    response = await fetchImpl(`${YOUTUBE_UPLOAD_ROOT}?part=snippet,status`, {
+    response = await fetchImpl(`${YOUTUBE_UPLOAD_ROOT}?part=snippet,status&uploadType=resumable`, {
       method: "POST",
       headers,
       body: JSON.stringify(metadata),
@@ -636,7 +635,9 @@ if (isMain) {
   runCli().then((output) => {
     process.stdout.write(`${output}\n`);
   }).catch((error) => {
-    process.stderr.write(`${error instanceof YouTubeUploadError ? error.code : "YOUTUBE_UPLOADER_FAILED"}\n`);
+    const code = error instanceof YouTubeUploadError ? error.code : "YOUTUBE_UPLOADER_FAILED";
+    const status = error instanceof YouTubeUploadError && Number.isFinite(error.status) ? `_HTTP_${error.status}` : "";
+    process.stderr.write(`${code}${status}\n`);
     process.exitCode = 1;
   });
 }
