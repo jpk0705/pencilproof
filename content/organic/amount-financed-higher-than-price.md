@@ -71,6 +71,8 @@ In a fictional example, $2,360 in taxes and fees plus $3,000 in negative equity,
 
 Review the full example: https://pencilproof.com/guides/amount-financed-higher-than-price?utm_source=facebook&utm_medium=organic_social&utm_campaign=amount_financed_explained&utm_content=worksheet_v1
 
+Beta offer: scan your written quote free, then enter BETA1 in secure checkout to unlock the complete $39 audit for $1 while the promotion remains active.
+
 ## Threads post
 
 The vehicle price and amount financed are not the same line.
@@ -85,6 +87,8 @@ Selling price
 Before signing, ask for that bridge in writing.
 
 https://pencilproof.com/guides/amount-financed-higher-than-price?utm_source=threads&utm_medium=organic_social&utm_campaign=amount_financed_explained&utm_content=qa_v1
+
+BETA1 may unlock the complete audit for $1 while the beta promotion remains active; checkout confirms availability.
 
 ## Email module
 

@@ -1,0 +1,13 @@
+{
+  "sourceImage": "content/organic/assets/amount-financed-equation-short-v2.png",
+  "scenes": [
+    {"text":"WHY IS THE BALANCE HIGHER?","caption":"Vehicle price is only one line","duration":4,"crop":{"x":0,"y":0,"width":341,"height":768}},
+    {"text":"START: $27,500","caption":"Fictional selling price","duration":5,"crop":{"x":341,"y":0,"width":341,"height":768}},
+    {"text":"+ $2,360","caption":"Taxes and fees","duration":5,"crop":{"x":341,"y":0,"width":341,"height":768}},
+    {"text":"+ $3,000","caption":"Negative trade equity","duration":5,"crop":{"x":682,"y":0,"width":342,"height":768}},
+    {"text":"− $2,000","caption":"Cash down","duration":5,"crop":{"x":0,"y":768,"width":341,"height":768}},
+    {"text":"= $30,860 FINANCED","caption":"Illustrative amount financed","duration":5,"crop":{"x":341,"y":768,"width":341,"height":768}},
+    {"text":"ASK FOR EVERY LINE","caption":"Price · fees · trade · cash · products","duration":6,"crop":{"x":341,"y":768,"width":341,"height":768}},
+    {"text":"CHECK YOUR QUOTE FREE","caption":"BETA1 may unlock the full audit for $1*","duration":5,"crop":{"x":682,"y":768,"width":342,"height":768}}
+  ]
+}
