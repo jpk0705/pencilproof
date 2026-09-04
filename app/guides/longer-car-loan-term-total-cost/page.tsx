@@ -1,0 +1,19 @@
+import Link from "next/link";
+import { SiteFooter, SiteNav } from "@/app/components/SiteChrome";
+import TrackedLink from "@/app/components/TrackedLink";
+import GuideWorksheetExample from "@/app/components/GuideWorksheetExample";
+
+export const metadata = {
+  title: "Why Does a Longer Car Loan Cost More? | PencilProof",
+  description: "See how changing only a car-loan term can lower the payment while increasing total payments and estimated interest.",
+  alternates: { canonical: "/guides/longer-car-loan-term-total-cost" },
+};
+
+export default function LongerCarLoanTermGuide() {
+  return (<main><SiteNav />
+    <section className="page-hero shell"><div className="page-hero-copy"><p className="kicker">LOAN TERM CLARITY GUIDE</p><h1>Why can a longer car loan lower the payment but cost more?</h1><p>A longer term spreads the same balance across more payments. That can reduce the monthly amount while increasing the total paid and estimated interest.</p><div className="page-actions"><TrackedLink analyticsCategory="guide_longer_term_cost" className="button button-primary" href="/analyze">Review your quote free <span aria-hidden="true">→</span></TrackedLink><Link className="text-link" href="/guides/compare-car-dealer-quotes">Compare quotes fairly <span aria-hidden="true">→</span></Link></div></div></section>
+    <section className="section shell checks-grid-section" aria-labelledby="term-effects"><div className="section-intro compact"><p className="kicker">FOLLOW THE MATH</p><h2 id="term-effects">Changing the term changes more than the payment.</h2><p>Use the written amount financed and APR to compare terms on the same baseline. These are estimates for education, not a lender offer or financial advice.</p></div><div className="check-list"><article><b>Same balance</b><p>Start with the same amount financed so the term is the variable you are comparing.</p></article><article><b>Same APR</b><p>Hold the annual percentage rate constant in the comparison; the final lender rate controls the contract.</p></article><article><b>More payments</b><p>A longer term creates additional scheduled payments, even when each payment is smaller.</p></article><article><b>More interest</b><p>Interest accrues over the repayment schedule. Compare total payments, not only the monthly figure.</p></article><article><b>Check the quote</b><p>Confirm whether price, fees, products, trade figures, or cash also changed between versions.</p></article><article><b>Ask for choices</b><p>Request the amount financed, APR, term, payment, and total of payments in writing for each option.</p></article></div></section>
+    <GuideWorksheetExample title="Illustrative $30,000 comparison at 7.50% APR" explanation="Using a standard monthly installment estimate and changing only the term: the 72-month option lowers the payment but adds about $1,278 in estimated interest." lines={[{label:"Amount financed",value:"$30,000"},{label:"APR",value:"7.50%"},{label:"60 months",value:"about $601.14/mo · $36,068 total"},{label:"72 months",value:"about $518.70/mo · $37,347 total"},{label:"Longer-term difference",value:"about $82.44 lower/mo; $1,278 more interest",emphasis:true}]} question="Is the lower payment worth the additional estimated total cost, and did any other written deal figure change?" />
+    <section className="section route-guide-section"><div className="shell section-intro compact"><p className="kicker">MAKE IT SPECIFIC</p><h2>Compare the written options before you sign.</h2><p>Upload a PDF or image for free, review the detected figures, and ask focused questions about the balance, APR, term, and payment.</p><TrackedLink analyticsCategory="guide_longer_term_cost_bottom" className="button button-primary" href="/analyze">Start the free scan <span aria-hidden="true">→</span></TrackedLink></div></section><SiteFooter />
+  </main>);
+}

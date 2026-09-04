@@ -6,6 +6,7 @@ export const metadata = { title: "Car Dealer Quote Guides | PencilProof", descri
 const guides = [
   ["QUOTE REVIEW", "How to review a car dealer quote", "Check the written price, financing, trade, fees, products, and payment.", "/guides/dealer-quote-review"],
   ["PAYMENT", "Why is my car payment different?", "Trace changes in price, APR, term, fees, products, cash, and trade.", "/guides/car-payment-different"],
+  ["TERM", "Why can a longer term cost more?", "See how a smaller payment can mean more estimated total interest.", "/guides/longer-car-loan-term-total-cost"],
   ["FINANCING", "Why is amount financed higher than price?", "Rebuild the balance from selling price to the final amount financed.", "/guides/amount-financed-higher-than-price"],
   ["TRADE", "Negative equity explained", "See how payoff and trade allowance can affect the new financing.", "/guides/negative-equity-car-deal"],
   ["PRODUCTS", "GAP, service contracts, and add-ons", "Review each optional product separately before deciding.", "/guides/gap-service-contract-add-ons"],
