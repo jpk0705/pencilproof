@@ -14,19 +14,20 @@ export default function Home() {
       <section className="hero shell">
         <div className="hero-copy">
           <div className="eyebrow"><span /> PRIVACY-FIRST FULL QUOTE AUDIT FOR CAR BUYERS</div>
-          <h1>See the real cost before you sign.</h1>
+          <h1>See what your dealer quote is really charging before you sign.</h1>
           <p className="hero-lede">
-            Upload your dealer quote and get a free scan of the payment, APR, fees,
-            optional products, trade, and vehicle details. Then decide whether the
-            complete Full Quote Audit is worth it before you pay.
+            Upload the written quote you already have. PencilProof checks the payment,
+            APR, fees, optional products, trade, and amount financed so you can spot
+            the numbers worth questioning. See the detected values free before deciding
+            whether the complete Full Quote Audit is worth it.
           </p>
           <div className="hero-actions">
             <TrackedLink analyticsCategory="home_hero" className="button button-primary" href="/analyze">
-              Review your quote free <Arrow />
+              Scan my dealer quote free <Arrow />
             </TrackedLink>
             <Link className="text-link" href="/who-it-helps">Who it helps <Arrow /></Link>
           </div>
-          <p className="hero-caution">No payment is required to see the detected values. Your document is read locally first, and you decide whether the complete audit is useful.</p>
+          <p className="hero-caution">No payment or account is required for the free scan. Your document is read locally first, and you decide whether the complete audit is useful.</p>
           <div className="proof-row" aria-label="Product highlights">
             <span><b>Free scan first</b> before checkout</span>
             <span><b>Top issues in one view</b> clear next questions</span>
