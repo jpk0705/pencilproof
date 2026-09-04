@@ -1,0 +1,13 @@
+{
+  "sourceImage": "content/organic/assets/before-sign-short-storyboard-v2.png",
+  "scenes": [
+    { "text": "DON'T SIGN YET.", "caption": "Check these six lines first", "duration": 2, "crop": { "x": 0, "y": 0, "width": 341, "height": 768 } },
+    { "text": "1. MATCH THE VEHICLE", "caption": "Year · trim · VIN · mileage", "duration": 5, "crop": { "x": 341, "y": 0, "width": 341, "height": 768 } },
+    { "text": "2. VERIFY THE PRICE", "caption": "Price first—not just payment", "duration": 5, "crop": { "x": 682, "y": 0, "width": 342, "height": 768 } },
+    { "text": "3. SPLIT THE CHARGES", "caption": "Taxes · government · dealer fees", "duration": 5, "crop": { "x": 0, "y": 768, "width": 341, "height": 768 } },
+    { "text": "4. NAME EVERY PRODUCT", "caption": "Name · price · coverage", "duration": 5, "crop": { "x": 341, "y": 768, "width": 341, "height": 768 } },
+    { "text": "5. CHECK TRADE + CASH", "caption": "Allowance − payoff = equity", "duration": 7, "crop": { "x": 341, "y": 768, "width": 341, "height": 768 } },
+    { "text": "6. COMPARE FINANCE TERMS", "caption": "APR · term · financed · total", "duration": 7, "crop": { "x": 682, "y": 768, "width": 342, "height": 768 } },
+    { "text": "CHECK THE WRITTEN QUOTE", "caption": "Free scan first · PencilProof.com", "duration": 4, "crop": { "x": 682, "y": 768, "width": 342, "height": 768 } }
+  ]
+}
