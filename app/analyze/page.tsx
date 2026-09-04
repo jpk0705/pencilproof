@@ -710,10 +710,12 @@ export default function AnalyzePage() {
     setSampleLoaded(false);
     const isPdf = isDealImportPdf(file);
     if (!isDealImportFile(file)) {
+      track({ event: "import_failed", category: "invalid_file_type" });
       setDealImport({ status: "error", message: "Choose a PDF or image file from the dealership.", fields: [] });
       return;
     }
     if (file.size > 15 * 1024 * 1024) {
+      track({ event: "import_failed", category: "file_too_large" });
       setDealImport({ status: "error", message: "That file is larger than 15 MB. Use a smaller copy or enter the figures manually.", fields: [] });
       return;
     }
@@ -753,6 +755,7 @@ export default function AnalyzePage() {
         });
       }, authToken);
       if (!isPreviewImportUsable(result)) {
+        track({ event: "import_failed", category: "insufficient_deal_data" });
         setDealImport({
           status: "error",
           message: "The file contains readable text, but PencilProof did not find enough recognizable deal information for a reliable import. Try a clearer or more complete copy, or enter the figures manually and double-check the worksheet.",
@@ -795,9 +798,12 @@ export default function AnalyzePage() {
         fields: result.fieldNames,
         progress: 1,
       });
+      track({ event: "import_success", category: result.sourceType === "pdf" ? "pdf" : "image" });
     } catch (error) {
       console.error("PencilProof document import failed", error);
       const unreadableImage = error instanceof Error && error.message === "UNREADABLE_IMAGE";
+      const failureCategory = unreadableImage ? "unreadable_document" : error instanceof Error && error.message.startsWith("AI_IMPORT_PROVIDER_QUOTA") ? "provider_quota" : error instanceof Error && error.message.startsWith("AI_IMPORT_PROVIDER_AUTHENTICATION") ? "provider_authentication" : error instanceof Error && error.message.startsWith("AI_IMPORT_PROVIDER_PERMISSION") ? "provider_permission" : error instanceof Error && error.message.startsWith("AI_IMPORT_PROVIDER_BAD_REQUEST") ? "provider_bad_request" : "import_error";
+      track({ event: "import_failed", category: failureCategory });
       setDealImport({
         status: "error",
         message: unreadableImage
