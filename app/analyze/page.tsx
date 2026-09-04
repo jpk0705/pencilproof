@@ -1390,10 +1390,10 @@ export default function AnalyzePage() {
       <header className="analyzer-header shell">
         <div>
           <p className="kicker">{isPaidAuditHost ? "PRIVACY-FIRST FULL QUOTE AUDIT FOR CAR BUYERS" : "FREE QUOTE SCAN FOR CAR BUYERS"}</p>
-          <h1>Review the quote before you sign.</h1>
+          <h1>{isPaidAuditHost ? "Review the quote before you sign." : "Scan the written deal before you sign."}</h1>
           <p>{isPaidAuditHost
             ? "Upload the dealer's quote or enter the figures yourself. Then test the down payment, term, trade, and optional products while the dealership works on its official revision."
-            : "Upload the dealer's quote or enter the figures yourself. Confirm what PencilProof found, choose an optional account or continue as a guest, then continue to secure checkout. The complete audit opens only after payment."}</p>
+            : "Upload the written quote you already have. See the detected price, payment, APR, fees, products, and trade details free before checkout. Continue as a guest—no account required."}</p>
           <p className="analyzer-founder">Built for clear review of written vehicle quotes before signing.</p>
           {hasReferralAttribution ? <p className="referral-disclosure">You arrived through a PencilProof salesperson link. If you purchase the Full Quote Audit, the person who shared this link may receive subscription credit.</p> : null}
         </div>
