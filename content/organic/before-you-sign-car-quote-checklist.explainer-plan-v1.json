@@ -1,0 +1,17 @@
+{
+  "sourceImage": "content/organic/assets/before-sign-explainer-storyboard-v1.png",
+  "scenes": [
+    {"text":"DON'T SIGN YET","caption":"The monthly payment is not the whole deal","duration":10,"crop":{"x":0,"y":0,"width":512,"height":512}},
+    {"text":"1. MATCH THE VEHICLE","caption":"Year · model · trim · VIN · mileage","duration":12,"crop":{"x":0,"y":0,"width":512,"height":512}},
+    {"text":"2. FIND THE SELLING PRICE","caption":"Keep discounts, rebates and deposits separate","duration":13,"crop":{"x":512,"y":0,"width":512,"height":512}},
+    {"text":"3. SEPARATE THE CHARGES","caption":"Taxes · government charges · dealer fees","duration":13,"crop":{"x":1024,"y":0,"width":512,"height":512}},
+    {"text":"4. NAME EVERY PRODUCT","caption":"GAP · service contract · maintenance · accessories","duration":13,"crop":{"x":0,"y":512,"width":512,"height":512}},
+    {"text":"REVIEW ONE AT A TIME","caption":"A few dollars monthly can hide a larger price","duration":12,"crop":{"x":0,"y":512,"width":512,"height":512}},
+    {"text":"5. CHECK TRADE + CASH","caption":"Trade allowance − payoff = trade equity","duration":13,"crop":{"x":512,"y":512,"width":512,"height":512}},
+    {"text":"APPLY EVERY CREDIT ONCE","caption":"Cash down · deposit · rebate","duration":12,"crop":{"x":512,"y":512,"width":512,"height":512}},
+    {"text":"6. READ THE FINANCE TERMS","caption":"APR · term · amount financed · total of payments","duration":14,"crop":{"x":1024,"y":512,"width":512,"height":512}},
+    {"text":"LOWER PAYMENT ≠ LOWER TOTAL","caption":"Compare the same balance and rate · fictional example","duration":15,"crop":{"x":1024,"y":512,"width":512,"height":512}},
+    {"text":"COMPARE THE ORIGINAL QUOTE","caption":"Mark what changed and write down every question","duration":15,"crop":{"x":512,"y":0,"width":512,"height":512}},
+    {"text":"START WITH THE FREE SCAN","caption":"PencilProof.com · verify every detected value","duration":10,"crop":{"x":0,"y":0,"width":512,"height":512}}
+  ]
+}
