@@ -775,6 +775,9 @@ export default function AnalyzePage() {
         sourceUrl,
         sourceType: result.sourceType,
       });
+      // Record only the anonymous transition to a usable preview. Do not attach
+      // filenames, extracted values, document contents, or account metadata.
+      track({ event: "preview_ready" });
       setOfferMatrix(result.offerMatrix ?? null);
       setSelectedOfferId("");
       setSelectedOfferType(null);
