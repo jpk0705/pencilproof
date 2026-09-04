@@ -9,6 +9,7 @@ const guides = [
   ["TERM", "Why can a longer term cost more?", "See how a smaller payment can mean more estimated total interest.", "/guides/longer-car-loan-term-total-cost"],
   ["CONTRACT", "Amount financed vs. total of payments", "Understand the balance borrowed and the scheduled repayment total.", "/guides/amount-financed-vs-total-of-payments"],
   ["BUDGET", "Can I afford this car payment?", "Build a full ownership-cost checklist around the written payment.", "/guides/can-i-afford-this-car-payment"],
+  ["CHECKLIST", "Before you sign a car quote", "Print a line-by-line worksheet for the written deal.", "/guides/before-you-sign-car-quote-checklist"],
   ["FINANCING", "Why is amount financed higher than price?", "Rebuild the balance from selling price to the final amount financed.", "/guides/amount-financed-higher-than-price"],
   ["TRADE", "Negative equity explained", "See how payoff and trade allowance can affect the new financing.", "/guides/negative-equity-car-deal"],
   ["PRODUCTS", "GAP, service contracts, and add-ons", "Review each optional product separately before deciding.", "/guides/gap-service-contract-add-ons"],
