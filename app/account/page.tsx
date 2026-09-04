@@ -132,6 +132,7 @@ export default function AccountPage() {
     window.location.assign("/");
   };
 
+
   const confirmDeleteAccount = async () => {
     setDeleteBusy(true);
     track({

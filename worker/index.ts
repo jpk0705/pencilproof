@@ -24,6 +24,7 @@ const PHONE_SESSION_CHUNK_LIMIT = 1024 * 1024;
 const ANALYTICS_EVENT_NAMES = [
   "page_view",
   "scan_started",
+  "scan_completed",
   "import_success",
   "import_failed",
   "manual_fallback_opened",
@@ -35,6 +36,8 @@ const ANALYTICS_EVENT_NAMES = [
 const GEMINI_MAX_ATTEMPTS = 3;
 const GEMINI_RETRY_BASE_DELAY_MS = 350;
 const GEMINI_RETRY_MAX_DELAY_MS = 2500;
+const AI_IMPORT_TIMEOUT_MILLISECONDS = 20_000;
+const AI_IMPORT_MODEL_BUDGET = 2;
 const STRIPE_WEBHOOK_EVENTS = [
   "checkout.session.completed",
   "checkout.session.async_payment_succeeded",
@@ -47,6 +50,10 @@ const STRIPE_WEBHOOK_EVENTS = [
 ] as const;
 
 type DurableObjectIdLike = unknown;
+
+type RateLimitLike = {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
+};
 
 type DurableObjectStubLike = {
   fetch(request: Request): Promise<Response>;
@@ -90,6 +97,8 @@ export interface Env {
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET?: string;
   GEMINI_API_KEY?: string;
+  AI_IMPORT_CLIENT_RATE_LIMITER?: RateLimitLike;
+  AI_IMPORT_GLOBAL_RATE_LIMITER?: RateLimitLike;
   CLERK_ISSUER?: string;
   CLERK_JWKS_URL?: string;
   CLERK_AUDIENCE?: string;
@@ -134,19 +143,31 @@ const AI_IMPORT_MODELS = [
   "gemini-2.0-flash",
 ] as const;
 
-const discoverGeminiModels = async (apiKey: string) => {
+const discoverGeminiModels = async (apiKey: string, signal?: AbortSignal) => {
+  const cacheKey = new Request("https://pencilproof.internal/gemini-models-v1");
   try {
+    if (typeof caches !== "undefined") {
+      const cached = await caches.default.match(cacheKey);
+      if (cached) return await cached.json<string[]>();
+    }
     const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models", {
       headers: { "x-goog-api-key": apiKey },
+      signal,
     });
     if (!response.ok) return [];
     const payload = await response.json() as {
       models?: Array<{ name?: string; supportedGenerationMethods?: string[] }>;
     };
-    return (payload.models ?? [])
+    const models = (payload.models ?? [])
       .filter((model) => model.supportedGenerationMethods?.includes("generateContent"))
       .map((model) => model.name?.replace(/^models\//, ""))
       .filter((model): model is string => Boolean(model));
+    if (typeof caches !== "undefined") {
+      await caches.default.put(cacheKey, Response.json(models, {
+        headers: { "Cache-Control": "public, max-age=3600" },
+      }));
+    }
+    return models;
   } catch {
     return [];
   }
@@ -222,7 +243,7 @@ const aiImportCorsHeaders = (env: Env) => ({
   ...noStoreHeaders,
   "Access-Control-Allow-Origin": env.PUBLIC_SITE_ORIGIN,
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-PencilProof-Scan-Session",
   "Vary": "Origin",
 });
 
@@ -324,6 +345,18 @@ const handleAiImport = async (request: Request, env: Env) => {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers });
   if (request.method !== "POST") return new Response("Method not allowed", { status: 405, headers: { ...headers, Allow: "POST, OPTIONS" } });
   if (!env.GEMINI_API_KEY) return Response.json({ error: "AI_IMPORT_NOT_CONFIGURED" }, { status: 503, headers });
+  const scanSession = request.headers.get("X-PencilProof-Scan-Session")?.trim() ?? "";
+  const clientKey = /^[0-9a-f-]{20,64}$/i.test(scanSession) ? scanSession : "missing-session";
+  const [clientLimit, globalLimit] = await Promise.all([
+    env.AI_IMPORT_CLIENT_RATE_LIMITER?.limit({ key: `ai-import:${clientKey}` }),
+    env.AI_IMPORT_GLOBAL_RATE_LIMITER?.limit({ key: "ai-import:global" }),
+  ]);
+  if (clientLimit?.success === false || globalLimit?.success === false) {
+    return Response.json({ error: "AI_IMPORT_RATE_LIMITED" }, {
+      status: 429,
+      headers: { ...headers, "Retry-After": "60" },
+    });
+  }
   let body: { base64?: string; mimeType?: string };
   try { body = await request.json() as { base64?: string; mimeType?: string }; } catch { return Response.json({ error: "AI_IMPORT_BAD_REQUEST" }, { status: 400, headers }); }
   const mimeType = body.mimeType?.toLowerCase() ?? "";
@@ -340,17 +373,19 @@ const handleAiImport = async (request: Request, env: Env) => {
   let response: Response | undefined;
   let lastProviderBody = "";
   let parsedProviderResponse: Record<string, unknown> | undefined;
-  const availableModels = await discoverGeminiModels(env.GEMINI_API_KEY);
+  const providerSignal = AbortSignal.timeout(AI_IMPORT_TIMEOUT_MILLISECONDS);
+  const availableModels = await discoverGeminiModels(env.GEMINI_API_KEY, providerSignal);
   const discoveredFlashModels = availableModels.filter((model) => /flash/i.test(model));
   const models = [
     ...AI_IMPORT_MODELS.filter((model) => availableModels.includes(model)),
     ...discoveredFlashModels.filter((model) => !AI_IMPORT_MODELS.includes(model as typeof AI_IMPORT_MODELS[number])),
     ...AI_IMPORT_MODELS.filter((model) => !availableModels.length || !discoveredFlashModels.length),
-  ];
+  ].slice(0, AI_IMPORT_MODEL_BUDGET);
   for (const model of models) {
     response = await fetchGeminiWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
+      signal: providerSignal,
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: AI_IMPORT_PROMPT }, { inline_data: { mime_type: mimeType, data: body.base64 } }] }],
         generationConfig: { temperature: 0, maxOutputTokens: 2048, responseMimeType: "application/json" },

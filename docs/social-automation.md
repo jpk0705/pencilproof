@@ -10,7 +10,7 @@ The target is $0/month at normal PencilProof launch volume.
 - A SQLite-backed Durable Object stores dedupe/rate-limit state.
 - Workers AI uses `@cf/meta/llama-3.2-1b-instruct`, a small low-cost model.
 - `SOCIAL_AI_MAX_CALLS_PER_DAY=12` caps the direct-network AI loop.
-- `SOCIAL_FACEBOOK_AI_MAX_CALLS_PER_DAY=6` separately caps Facebook AI calls.
+- `SOCIAL_FACEBOOK_AI_MAX_CALLS_PER_DAY=200` separately caps Facebook AI calls.
 - X/Twitter is intentionally disabled because its API is pay-per-use.
 - No paid social aggregator is required.
 
@@ -21,10 +21,12 @@ The AI-call caps are safety brakes, not billing guarantees. Keep the Cloudflare 
 - wakes every 30 minutes with a Cloudflare Cron Trigger
 - detects which direct social credentials are configured
 - checks provider APIs and publishes only when the configured schedule and platform credentials allow it
-- reports API reachability, recent post visibility, and last successful publish telemetry
+- rotates strong, topic-specific hooks across dealership stories, finance lessons, objection handling, quote comparisons, and buyer Q&A sessions on every enabled platform
+- ends posts with a useful reader question and a low-pressure invitation to try the free review; campaign links include platform and content-format attribution so visits can be measured
+- reports API reachability, correct-account verification, recent post visibility, the latest post timestamp and permalink, and available provider metrics
 - reports weekly promotional-post completion for Facebook, Instagram, and Threads
 - reports token/API failures and automation errors
-- exposes `/health` and `/status` without returning credentials or comment text
+- exposes `/health` and a fresh `/status` operations dashboard without returning credentials, recipient addresses, message IDs, or comment text
 - the browser status view shows each platform's latest recorded post time in Pacific time and a provider permalink when available
 - `/status?format=json` remains the machine-readable status response for monitoring
 - exposes a GET-only `/audit` endpoint for read-only health checks
@@ -56,11 +58,12 @@ Supported now:
 - publish text posts
 - reply to a specific Threads reply
 
-Required secret:
+Required:
 
 - `THREADS_ACCESS_TOKEN`
+- either `THREADS_USER_ID` or `THREADS_EXPECTED_USERNAME` (the production default is `pencilproof`)
 
-The Meta app/token needs the Threads permissions necessary to read replies, manage replies, and publish content.
+The Meta app/token needs the Threads permissions necessary to read replies, manage replies, and publish content. When no numeric ID is stored, the verifier reads the token's `/me` identity and requires the returned username to match `THREADS_EXPECTED_USERNAME`. A responding token for a different account is reported as an account mismatch.
 
 ### Instagram
 
@@ -135,7 +138,7 @@ Never paste social passwords or access tokens into source code, GitHub issues, P
 
 ## Publishing boundary
 
-Scheduled publishing and replies are enabled only when the corresponding variables are true, the platform is configured, and the interval, active-hour, daily, and AI limits allow the action. All generated posts use the PencilProof brand context and route campaign traffic through the public free-pilot entry point.
+Scheduled publishing and replies are enabled only when the corresponding variables are true, the platform is configured, and the interval, active-hour, daily, and AI limits allow the action. All generated posts use the PencilProof brand context, rotate platform-specific content structures, and route campaign traffic through the public free-pilot entry point with `utm_source`, `utm_medium`, `utm_campaign`, and `utm_content` attribution.
 
 ## Safety defaults
 
@@ -143,17 +146,30 @@ The AI prompts prohibit requests for sensitive personal information, guarantees,
 
 Default limits:
 
-- scheduled actions are limited by active hours, a 48-hour post interval, daily reply caps, and AI-call caps
+- scheduled actions are limited by active hours, the configured post interval, a two-post daily cap per publishing loop, daily reply caps, and AI-call caps
 - platform credentials remain encrypted Cloudflare secrets
 - `/audit` is read-only and does not publish, reply, or mutate provider content
 
-## Status endpoints
+## Operations status
 
 - `GET /health` reports automation mode, publish/reply flags, and which platforms have complete credentials.
-- `GET /status` shows a branded browser status page, while `GET /status?format=json` reports the latest direct-network status plus a separate Facebook status block for monitoring tools.
-- `GET /audit` performs read-only provider checks for Facebook, Instagram, and Threads, reports recent successful publish IDs/timestamps, weekly promotional-post completion, API/token failures, and automation errors. It has no publishing or reply code path.
+- `GET /status` and `GET /status.json` render and return the same stored operations snapshot. Normal status loads make zero Facebook, Instagram, Threads, Resend, or audit-service requests.
+- The dashboard reports social automation heartbeat, connection verification, latest post timestamp and permalink, available post metrics, seven-day Resend activity, the local email-automation heartbeat, the seven-day traffic funnel, traffic sources, incidents, and recommended next actions.
+- A separate operations cron (`7 * * * *`) runs hourly. It is not part of the 30-minute publishing/reply cron. It first checks both social automation heartbeats and reruns only a configured branch that is more than 75 minutes stale. Social-provider and business snapshot collection remains internally limited to once every six hours, with at most two read-only social-provider requests per collection. At that collection rate, all three Meta platforms are revisited about every 18 hours.
+- The audit Worker snapshot uses the existing analytics and account stores and reads up to five 100-message Resend pages for the last seven days. It returns aggregate counts only; it does not return recipients, subjects, or message IDs.
+- The existing on-demand sampler remains available for a deliberate read-only refresh. It uses at most two provider requests and a 30-minute cooldown, and never publishes, replies, sends email, changes credentials, or changes limits.
+- The performance table preserves provider field names such as views, impressions, reach, likes, comments, replies, shares, and reposts. A numeric `0` is shown as `0`; a dash means the provider did not return that field; derived interactions identify their formula and source; provider or connection failures are shown as errors rather than blank or healthy metrics.
+- Stored records are merged by platform and post ID, and the newest `fetchedAt` record wins. Older cached snapshots cannot replace a fresher scheduled measurement. Weekly promotion completion is evaluated using the `America/Los_Angeles` calendar week.
 
-Neither endpoint returns access tokens, passwords, comment bodies, or other credentials.
+## Automatic repair boundary
+
+- Transient Resend rate limits and server errors retry once with the same idempotency key, preventing a retry from intentionally creating a second email.
+- Failed marketing-delivery claims are released so a later scheduled run can safely try again.
+- Expired social verification leases are replaced automatically, and provider failures are retried by the next bounded collection cycle.
+- If the primary 30-minute social cron misses a run while the independent operations cron still works, the watchdog invokes the existing guarded automation once. Normal cadence, active-hour, daily-post, reply, and AI limits still apply.
+- Missing or invalid credentials, revoked permissions, and wrong-account bindings are reported as owner-action incidents. The Worker never guesses or overwrites credentials.
+
+These endpoints return no access tokens, passwords, comment bodies, or other credentials.
 
 ## Configuration
 
@@ -165,12 +181,13 @@ Defaults live in `wrangler.social.jsonc`:
 - `SOCIAL_TIMEZONE=America/Los_Angeles`
 - `SOCIAL_ACTIVE_START_HOUR=8`
 - `SOCIAL_ACTIVE_END_HOUR=19`
-- `SOCIAL_POST_INTERVAL_HOURS=48`
+- `SOCIAL_POST_INTERVAL_HOURS=36` (the active window then permits the next post no later than 48 hours)
+- `SOCIAL_MAX_POSTS_PER_DAY=2`
 - `SOCIAL_REPLY_LOOKBACK_DAYS=14`
 - `SOCIAL_MAX_REPLIES_PER_RUN=4`
 - `SOCIAL_MAX_REPLIES_PER_DAY=12`
 - `SOCIAL_AI_MAX_CALLS_PER_DAY=12`
-- `SOCIAL_FACEBOOK_AI_MAX_CALLS_PER_DAY=6`
+- `SOCIAL_FACEBOOK_AI_MAX_CALLS_PER_DAY=200`
 - `SOCIAL_AI_MODEL=@cf/meta/llama-3.2-1b-instruct`
 - `META_API_VERSION=v24.0`
 - `LINKEDIN_API_VERSION=202604`

@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
+import worker, {
   createAccessToken,
   handleRequest,
+  marketingEmailContent,
   marketingCampaignSlot,
   normalizeImportedVehicle,
   OrderStore,
@@ -13,16 +14,61 @@ import {
   verifyStripeSignature,
 } from "./index.ts";
 import { createAccountRoleSession, createUserSession, verifyAccountRoleSession } from "./accounts.ts";
+import { AccountStore } from "./accounts.ts";
+import { DatabaseSync } from "node:sqlite";
 
 const originalFetch = globalThis.fetch;
 const TEST_DEVICE_ID = "A".repeat(43);
 const TEST_WEBHOOK_SECRET = "whsec_TestWebhookSecret123";
 
+class SqliteAccountState {
+  readonly database = new DatabaseSync(":memory:");
+  readonly storage = {
+    sql: {
+      exec: <T extends Record<string, string | number | null> = Record<string, string | number | null>>(query: string, ...values: Array<string | number | null>) => {
+        const statement = this.database.prepare(query);
+        const rows = /^\s*(SELECT|WITH|PRAGMA)/i.test(query)
+          ? statement.all(...values) as T[]
+          : (statement.run(...values), [] as T[]);
+        return { toArray: () => rows };
+      },
+    },
+    deleteAll: async () => {},
+  };
+}
+
+test("salesperson session resolves an existing subscription by email across provider identities", () => {
+  const state = new SqliteAccountState();
+  const store = new AccountStore(state as never);
+  const original = store.user("google|old-subject");
+  store.salesperson({ action: "ensure", userId: original.id, email: "jpk0705@gmail.com", displayName: "JPK" });
+  store.salespersonSubscription({ action: "activate", userId: original.id, status: "active" });
+
+  const salespersonSession = store.sessionBootstrap({
+    providerSubject: "google|new-subject",
+    email: "JPK0705@GMAIL.COM",
+    requestedRole: "auto",
+  });
+  assert.equal(salespersonSession.user.id, original.id);
+  assert.equal(salespersonSession.role, "salesperson");
+  assert.equal(salespersonSession.salespersonProfile?.subscriptionStatus, "active");
+
+  const consumerSession = store.sessionBootstrap({
+    providerSubject: "google|consumer-subject",
+    email: "JPK0705@GMAIL.COM",
+    requestedRole: "consumer",
+  });
+  assert.notEqual(consumerSession.user.id, original.id);
+  assert.equal(consumerSession.role, "consumer");
+});
+
 test("marketing campaigns use separate salesperson slots and promotion copy", () => {
   const monday = marketingCampaignSlot(Date.UTC(2026, 7, 17, 17, 0, 0));
+  const mondayRetry = marketingCampaignSlot(Date.UTC(2026, 7, 17, 17, 10, 0));
   const friday = marketingCampaignSlot(Date.UTC(2026, 7, 21, 17, 0, 0));
   const thursday = marketingCampaignSlot(Date.UTC(2026, 7, 20, 17, 0, 0));
   assert.deepEqual(monday, { kind: "educational", campaignKey: "2026-08-17:educational" });
+  assert.deepEqual(mondayRetry, monday);
   assert.deepEqual(friday, { kind: "promotional", campaignKey: "2026-08-21:promotional" });
   assert.equal(thursday, null);
 
@@ -30,6 +76,90 @@ test("marketing campaigns use separate salesperson slots and promotion copy", ()
   assert.match(content.subject, /ALPHA1/);
   assert.match(Array.isArray(content.text) ? content.text.join("\n") : content.text, /first month to \$1/);
   assert.match(content.html, /ALPHA1/);
+});
+
+test("consumer campaigns contain a useful lesson, checklist, and question", () => {
+  const content = marketingEmailContent({
+    email: "buyer@example.com",
+    lastCheckoutAt: null,
+    lastPurchaseAt: null,
+    lastScanAt: null,
+    lastSentAt: null,
+    passExpiresAt: null,
+    userId: "buyer-marketing-test",
+  }, Math.floor(Date.UTC(2026, 7, 31, 17, 0, 0) / 1000));
+  const text = Array.isArray(content.text) ? content.text.join("\n") : content.text;
+  assert.ok(text.split("\n").filter(Boolean).length >= 10);
+  assert.match(text, /Quick quote checklist/);
+  assert.match(text, /Ask this before you sign/);
+  assert.match(content.html, /Quick quote checklist/);
+  assert.match(content.html, /Ask this before you sign/);
+  assert.ok((content.preheader ?? "").length >= 30);
+});
+
+test("salesperson educational campaigns include a hook and usable conversation line", () => {
+  const content = salespersonEmailContent(Math.floor(Date.UTC(2026, 7, 31, 17, 0, 0) / 1000), "educational");
+  const text = Array.isArray(content.text) ? content.text.join("\n") : content.text;
+  assert.match(text, /Try this line/);
+  assert.match(content.html, /Try this line/);
+  assert.ok((content.preheader ?? "").length >= 30);
+});
+
+test("marketing delivery claims make the ten-minute cron retry idempotent", () => {
+  const state = new SqliteAccountState();
+  const store = new AccountStore(state as never);
+  const user = store.user("google|marketing-retry-user");
+  const campaignKey = "customer:2026-08-17:educational";
+  assert.equal(store.claimMarketingDelivery(user.id, campaignKey), true);
+  store.completeMarketingDelivery(user.id, campaignKey);
+  assert.equal(store.claimMarketingDelivery(user.id, campaignKey), false);
+});
+
+test("scheduled marketing runs record a healthy heartbeat with zero eligible recipients", async () => {
+  const automationRuns: Array<Record<string, unknown>> = [];
+  const env = {
+    ACCOUNTS: {
+      idFromName: (name: string) => name,
+      get: () => ({
+        fetch: async (request: Request) => {
+          const path = new URL(request.url).pathname;
+          if (path === "/marketing-candidates" || path === "/salesperson-marketing-candidates") {
+            return Response.json({ candidates: [] });
+          }
+          if (path === "/automation-run") {
+            automationRuns.push(await request.json() as Record<string, unknown>);
+            return Response.json({ stored: true });
+          }
+          return Response.json({ error: "unexpected_path" }, { status: 404 });
+        },
+      }),
+    },
+    MARKETING_BUSINESS_ADDRESS: "145 Tyee Dr #58173, Point Roberts, WA 98281",
+    MARKETING_FROM_EMAIL: "PencilProof <support@pencilproof.com>",
+    PUBLIC_SITE_ORIGIN: "https://pencilproof.com",
+    RESEND_API_KEY: "re_test",
+    SESSION_SECRET: "test-session-secret-with-enough-entropy",
+    SITE_ORIGIN: "https://audit.pencilproof.com",
+  } as unknown as Env;
+  const pending: Promise<unknown>[] = [];
+  worker.scheduled(
+    { scheduledTime: Date.UTC(2026, 7, 17, 17, 0, 0) },
+    env,
+    { waitUntil: (promise) => pending.push(promise) },
+  );
+  await Promise.all(pending);
+  assert.equal(automationRuns.length, 1);
+  assert.equal(automationRuns[0]?.automationKey, "marketing-email");
+  assert.equal(automationRuns[0]?.status, "healthy");
+  assert.deepEqual(automationRuns[0]?.details, {
+    campaignKey: "2026-08-17:educational",
+    kind: "educational",
+    candidates: 0,
+    claimed: 0,
+    sent: 0,
+    failed: 0,
+    automaticRepair: "One retry for Resend rate limits and server errors; failed claims are released safely.",
+  });
 });
 
 class MemoryStorage {
@@ -504,6 +634,37 @@ test("phone camera sessions are short-lived and origin restricted", async () => 
 
 test.afterEach(() => {
   globalThis.fetch = originalFetch;
+});
+
+test("AI import rejects a rate-limited scan before calling Gemini", async () => {
+  const env = makeEnv();
+  env.GEMINI_API_KEY = "test-gemini-key";
+  env.AI_IMPORT_CLIENT_RATE_LIMITER = {
+    limit: async () => ({ success: false }),
+  };
+  let providerCalls = 0;
+  globalThis.fetch = async () => {
+    providerCalls += 1;
+    return Response.json({});
+  };
+
+  const response = await handleRequest(
+    new Request("https://audit.pencilproof.com/api/ai-import", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "https://pencilproof.com",
+        "X-PencilProof-Scan-Session": "12345678-1234-1234-1234-123456789abc",
+      },
+      body: JSON.stringify({ base64: "aGVsbG8=", mimeType: "image/jpeg" }),
+    }),
+    env,
+  );
+
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get("Retry-After"), "60");
+  assert.deepEqual(await response.json(), { error: "AI_IMPORT_RATE_LIMITED" });
+  assert.equal(providerCalls, 0);
 });
 
 test("AI import reports a stable Gemini quota diagnostic", async () => {

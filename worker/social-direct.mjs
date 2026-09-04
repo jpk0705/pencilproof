@@ -1,19 +1,38 @@
-import { routePostToPilot } from "./campaign-links.mjs";
+import { publicPilotUrl, routePostToPilot } from "./campaign-links.mjs";
+import {
+  mergePostMetrics,
+  parseMetricPayloadDetails,
+  postMetricsRecord,
+} from "./social-metrics.mjs";
+import {
+  buildFallbackPost,
+  contentHistoryEntry,
+  contentHistoryForPlatform,
+  contentPrompt,
+  formatSocialPost,
+  selectContentPlan,
+  validateSocialPost,
+} from "./social-content.mjs";
 
 const STATE_KEY = "social-direct-v1";
 const MAX_SEEN_COMMENTS = 2000;
 const MAX_OWN_COMMENT_IDS = 1000;
 const MAX_RECENT_POSTS = 100;
+const MAX_POST_METRICS = 120;
+const MAX_METRIC_POSTS_PER_RUN = 2;
 const MAX_PUBLISHED_KEYS = 200;
 const DEFAULT_LOOKBACK_DAYS = 14;
 const DEFAULT_MAX_REPLIES_PER_RUN = 4;
 const DEFAULT_MAX_REPLIES_PER_DAY = 12;
-const DEFAULT_POST_INTERVAL_HOURS = 48;
+const DEFAULT_POST_INTERVAL_HOURS = 36;
+const DEFAULT_MAX_POSTS_PER_DAY = 1;
 const DEFAULT_ACTIVE_START_HOUR = 8;
 const DEFAULT_ACTIVE_END_HOUR = 19;
 const DEFAULT_TIMEZONE = "America/Los_Angeles";
 const DEFAULT_MODEL = "@cf/meta/llama-3.2-1b-instruct";
 const DEFAULT_AI_CALLS_PER_DAY = 12;
+const DEFAULT_THREADS_AI_CALLS_PER_DAY = 200;
+const DEFAULT_INSTAGRAM_AI_CALLS_PER_DAY = 400;
 const DEFAULT_META_API_VERSION = "v24.0";
 const DEFAULT_LINKEDIN_API_VERSION = "202604";
 
@@ -105,8 +124,9 @@ export function shouldPublishNow({
   activeStartHour,
   activeEndHour,
   postsToday,
+  maxPostsPerDay = DEFAULT_MAX_POSTS_PER_DAY,
 }) {
-  if (postsToday >= 1) return false;
+  if (postsToday >= maxPostsPerDay) return false;
   if (!isWithinActiveHours(now, timeZone, activeStartHour, activeEndHour)) return false;
   if (!lastPostAt) return true;
   const last = Date.parse(lastPostAt);
@@ -146,35 +166,70 @@ function emptyState() {
     lastPostAt: null,
     lastPostId: null,
     lastError: null,
-    counters: { date: null, posts: 0, replies: 0, aiCalls: 0 },
+    counters: { date: null, posts: 0, postsByPlatform: {}, replies: 0, aiCalls: 0, aiCallsByPlatform: {} },
     seenComments: [],
     repliedComments: [],
     ownCommentIds: [],
     recentPosts: [],
+    postMetrics: [],
     publishedKeys: [],
     lastPublishedByPlatform: {},
+    lastPostAtByPlatform: {},
+    contentHistoryByPlatform: { threads: [], instagram: [] },
     lastSummary: null,
   };
 }
 
 function normalizeState(value) {
   const state = value && typeof value === "object" ? value : {};
-  return {
+  const normalized = {
     ...emptyState(),
     ...state,
     counters: {
       ...emptyState().counters,
       ...(state.counters && typeof state.counters === "object" ? state.counters : {}),
+      postsByPlatform: state.counters?.postsByPlatform && typeof state.counters.postsByPlatform === "object"
+        ? state.counters.postsByPlatform
+        : {},
+      aiCallsByPlatform: state.counters?.aiCallsByPlatform && typeof state.counters.aiCallsByPlatform === "object"
+        ? state.counters.aiCallsByPlatform
+        : {},
     },
     seenComments: Array.isArray(state.seenComments) ? state.seenComments : [],
     repliedComments: Array.isArray(state.repliedComments) ? state.repliedComments : [],
     ownCommentIds: Array.isArray(state.ownCommentIds) ? state.ownCommentIds : [],
     recentPosts: Array.isArray(state.recentPosts) ? state.recentPosts : [],
+    postMetrics: Array.isArray(state.postMetrics) ? state.postMetrics : [],
     publishedKeys: Array.isArray(state.publishedKeys) ? state.publishedKeys : [],
     lastPublishedByPlatform: state.lastPublishedByPlatform && typeof state.lastPublishedByPlatform === "object"
       ? state.lastPublishedByPlatform
       : {},
+    lastPostAtByPlatform: state.lastPostAtByPlatform && typeof state.lastPostAtByPlatform === "object"
+      ? state.lastPostAtByPlatform
+      : {},
+    contentHistoryByPlatform: {
+      ...emptyState().contentHistoryByPlatform,
+      ...(state.contentHistoryByPlatform && typeof state.contentHistoryByPlatform === "object" ? state.contentHistoryByPlatform : {}),
+      threads: Array.isArray(state.contentHistoryByPlatform?.threads) ? state.contentHistoryByPlatform.threads : [],
+      instagram: Array.isArray(state.contentHistoryByPlatform?.instagram) ? state.contentHistoryByPlatform.instagram : [],
+    },
   };
+  for (const platform of ["threads", "instagram"]) {
+    if (!normalized.lastPostAtByPlatform[platform] && normalized.lastPublishedByPlatform[platform]?.at) {
+      normalized.lastPostAtByPlatform[platform] = normalized.lastPublishedByPlatform[platform].at;
+    }
+    if (!normalized.contentHistoryByPlatform[platform].length) {
+      normalized.contentHistoryByPlatform[platform] = normalized.recentPosts
+        .filter((item) => item?.platform === platform || item?.platform === "multi")
+        .map((item) => ({ platform, post: String(item.post ?? ""), created: item.created ?? null }));
+    }
+    if (normalized.counters.postsByPlatform[platform] == null && normalized.counters.date) {
+      const prefix = `${normalized.counters.date}:${platform}:`;
+      const migratedCount = normalized.publishedKeys.filter((key) => String(key).startsWith(prefix)).length;
+      if (migratedCount > 0) normalized.counters.postsByPlatform[platform] = migratedCount;
+    }
+  }
+  return normalized;
 }
 
 function responseJson(body, status = 200) {
@@ -183,6 +238,12 @@ function responseJson(body, status = 200) {
 
 function safeErrorMessage(error) {
   return error instanceof Error ? error.message.slice(0, 500) : String(error ?? "Unknown error").slice(0, 500);
+}
+
+function numericMetric(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) return Number(value);
+  return null;
 }
 
 function errorDetail(payload, fallback) {
@@ -230,38 +291,109 @@ function ownHandles(env) {
 function resetDailyCounters(state, now, timeZone) {
   const { date } = localClockParts(now, timeZone);
   if (state.counters.date !== date) {
-    state.counters = { date, posts: 0, replies: 0, aiCalls: 0 };
+    state.counters = { date, posts: 0, postsByPlatform: {}, replies: 0, aiCalls: 0, aiCallsByPlatform: {} };
+  } else if (Object.keys(state.counters.aiCallsByPlatform ?? {}).length === 0 && state.counters.aiCalls > 0) {
+    // Preserve today's legacy aggregate usage conservatively during migration.
+    const legacyCalls = clampInteger(state.counters.aiCalls, 0, 0, 100000);
+    state.counters.aiCallsByPlatform = { threads: legacyCalls, instagram: legacyCalls };
   }
 }
 
-function reserveAiCall(env, state) {
-  const max = clampInteger(env.SOCIAL_AI_MAX_CALLS_PER_DAY, DEFAULT_AI_CALLS_PER_DAY, 0, 100);
-  if (state.counters.aiCalls >= max) {
-    throw new Error("Free-tier AI daily cap reached; skipping until the next local day");
+function aiCallLimit(env, platform) {
+  if (platform === "threads") {
+    return clampInteger(env.SOCIAL_THREADS_AI_MAX_CALLS_PER_DAY, DEFAULT_THREADS_AI_CALLS_PER_DAY, 0, 200);
   }
+  if (platform === "instagram") {
+    return clampInteger(env.SOCIAL_INSTAGRAM_AI_MAX_CALLS_PER_DAY, DEFAULT_INSTAGRAM_AI_CALLS_PER_DAY, 0, 400);
+  }
+  return clampInteger(env.SOCIAL_AI_MAX_CALLS_PER_DAY, DEFAULT_AI_CALLS_PER_DAY, 0, 400);
+}
+
+function reserveAiCall(env, state, platform = "") {
+  const key = normalizePlatform(platform) || "direct";
+  const used = Number.isFinite(Number(state.counters.aiCallsByPlatform?.[key]))
+    ? Number(state.counters.aiCallsByPlatform[key])
+    : Number(state.counters.aiCalls ?? 0);
+  const max = aiCallLimit(env, key);
+  if (used >= max) {
+    throw new Error(`${key} AI daily cap reached; skipping until the next local day`);
+  }
+  state.counters.aiCallsByPlatform[key] = used + 1;
   state.counters.aiCalls += 1;
 }
 
 function extractAiText(result) {
+  if (typeof result === "string") return result;
   if (typeof result?.response === "string") return result.response;
+  if (result?.response && typeof result.response === "object") return result.response;
   const choices = Array.isArray(result?.choices) ? result.choices : [];
   const content = choices[0]?.message?.content;
   if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content.map((part) => {
+      if (typeof part === "string") return part;
+      if (typeof part?.text === "string") return part.text;
+      if (typeof part?.content === "string") return part.content;
+      return "";
+    }).join("");
+  }
   return "";
 }
 
-function parseAiJson(text) {
+export function parseAiJson(text) {
+  if (text && typeof text === "object") return text;
   const raw = String(text ?? "").trim();
   const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim() ?? raw;
-  const start = fenced.indexOf("{");
-  const end = fenced.lastIndexOf("}");
-  if (start < 0 || end <= start) throw new Error("AI returned invalid JSON");
-  return JSON.parse(fenced.slice(start, end + 1));
+  const candidates = new Set([fenced]);
+  for (const source of [raw, fenced]) {
+    for (let start = 0; start < source.length; start += 1) {
+      if (source[start] !== "{" && source[start] !== "[") continue;
+      const stack = [];
+      let inString = false;
+      let escaped = false;
+      for (let index = start; index < source.length; index += 1) {
+        const character = source[index];
+        if (inString) {
+          if (escaped) escaped = false;
+          else if (character === "\\") escaped = true;
+          else if (character === '"') inString = false;
+          continue;
+        }
+        if (character === '"') {
+          inString = true;
+          continue;
+        }
+        if (character === "{" || character === "[") {
+          stack.push(character);
+          continue;
+        }
+        if (character === "}" || character === "]") {
+          const opening = stack.at(-1);
+          if ((character === "}" && opening !== "{") || (character === "]" && opening !== "[")) break;
+          stack.pop();
+          if (stack.length === 0) {
+            candidates.add(source.slice(start, index + 1));
+            break;
+          }
+        }
+      }
+    }
+  }
+  for (const candidate of candidates) {
+    for (const value of [candidate, candidate.replace(/[“”]/g, '"')]) {
+      try {
+        return JSON.parse(value);
+      } catch {
+        // Try the next balanced candidate. The content validator remains the final gate.
+      }
+    }
+  }
+  throw new Error("AI returned invalid JSON");
 }
 
-async function aiJson(env, state, system, user, maxTokens = 320) {
+async function aiJson(env, state, system, user, maxTokens = 320, platform = "") {
   if (!env.AI?.run) throw new Error("Workers AI binding is not configured");
-  reserveAiCall(env, state);
+  reserveAiCall(env, state, platform);
   const model = String(env.SOCIAL_AI_MODEL ?? DEFAULT_MODEL).trim() || DEFAULT_MODEL;
   const result = await env.AI.run(model, {
     messages: [
@@ -276,9 +408,9 @@ async function aiJson(env, state, system, user, maxTokens = 320) {
 }
 
 async function decideReply(env, state, comment) {
-  const system = `You write concise social replies for PencilProof. ${BRAND_CONTEXT}\n\nReturn JSON only: {"action":"reply"|"ignore","reply":"...","reason":"..."}. Reply only when the person is genuinely engaging with a PencilProof post or asking a relevant car-finance/dealer-quote question. Ignore spam, bait, harassment, politics, unrelated comments, legal disputes, credit-repair requests, requests for individualized legal/financial advice, and anything that would require seeing private paperwork. Never ask for SSNs, account numbers, DOB, addresses, or other sensitive personal data. Never claim PencilProof can negotiate, contact the dealer, guarantee savings, or give legal/financial advice. If replying, be useful and conversational, under 350 characters, no hashtags, no hard sell.`;
-  const user = `Platform: ${comment.platform}\nParent post: ${String(comment.postText ?? "").slice(0, 800)}\nComment by ${comment.username || "unknown"}: ${String(comment.text ?? "").slice(0, 1200)}\nPencilProof URL: https://pencilproof.com`;
-  const parsed = await aiJson(env, state, system, user, 240);
+  const system = `You write concise social replies for PencilProof. ${BRAND_CONTEXT}\n\nReturn JSON only: {"action":"reply"|"ignore","reply":"...","reason":"..."}. Reply only when the person is genuinely engaging with a PencilProof post or asking a relevant car-finance/dealer-quote question. Ignore spam, bait, harassment, politics, unrelated comments, legal disputes, credit-repair requests, requests for individualized legal/financial advice, and anything that would require seeing private paperwork. Never ask for SSNs, account numbers, DOB, addresses, or other sensitive personal data. Never claim PencilProof can negotiate, contact the dealer, guarantee savings, or give legal/financial advice. If replying, answer the question directly, invite one useful follow-up question, and include the tracked free-review link only when it naturally helps. Keep the reply under 350 characters, use no hashtags, and avoid hard selling.`;
+  const user = `Platform: ${comment.platform}\nParent post: ${String(comment.postText ?? "").slice(0, 800)}\nComment by ${comment.username || "unknown"}: ${String(comment.text ?? "").slice(0, 1200)}\nTracked free-review link: ${publicPilotUrl(comment.platform, "reply-qa")}`;
+  const parsed = await aiJson(env, state, system, user, 240, comment.platform);
   const action = parsed?.action === "reply" ? "reply" : "ignore";
   const reply = typeof parsed?.reply === "string" ? parsed.reply.trim().slice(0, 500) : "";
   return {
@@ -288,16 +420,50 @@ async function decideReply(env, state, comment) {
   };
 }
 
-async function generatePost(env, state, recentPostTexts, platforms) {
-  const system = `You create educational social posts for PencilProof. ${BRAND_CONTEXT}\n\nReturn JSON only: {"post":"..."}. Write one concrete, useful tip for a car buyer reviewing a dealer finance quote. Rotate among APR, amount financed, add-ons, VSC, GAP, prepaid maintenance, tire/wheel, trade equity, negative equity, cash down, rebates, term, and monthly-payment math. Avoid fearmongering, accusations against dealers, guaranteed savings, individualized advice, and legal claims. Keep the post under 260 characters. Include https://pencilproof.com only when natural; use no more than 2 hashtags.`;
-  const recent = recentPostTexts.length
-    ? recentPostTexts.slice(-8).map((text, index) => `${index + 1}. ${text.slice(0, 320)}`).join("\n")
-    : "No prior automated posts recorded.";
-  const user = `Publishing to: ${platforms.join(", ")}\nAvoid repeating these recent posts:\n${recent}`;
-  const parsed = await aiJson(env, state, system, user, 220);
-  const post = typeof parsed?.post === "string" ? parsed.post.trim().slice(0, 320) : "";
-  if (!post) throw new Error("AI did not generate a post");
-  return post;
+async function generatePost(env, state, platform, now = new Date()) {
+  const history = contentHistoryForPlatform(state, platform);
+  const primaryPlan = selectContentPlan(now, platform, history);
+  const attempt = async (plan, promptHistory = history) => {
+    const parsed = await aiJson(
+      env,
+      state,
+      `You are the content engine for PencilProof. ${BRAND_CONTEXT}\n\n${contentPrompt(platform, plan, promptHistory)}`,
+      `Assigned platform: ${platform}\nAssigned content plan: ${JSON.stringify(plan)}\nCreate the post now.`,
+      platform === "threads" ? 800 : 1400,
+      platform,
+    );
+    return formatSocialPost(typeof parsed?.post === "string" ? parsed.post : "");
+  };
+
+  let firstDraft = "";
+  let firstError = null;
+  try {
+    firstDraft = await attempt(primaryPlan);
+  } catch (error) {
+    firstError = error;
+    if (!safeErrorMessage(error).includes("AI returned invalid JSON")) throw error;
+  }
+  const firstValidation = validateSocialPost(firstDraft, primaryPlan, history, platform);
+  if (!firstError && firstValidation.ok) {
+    return { post: firstDraft, plan: primaryPlan, validation: firstValidation, rewritten: false, fallback: false };
+  }
+
+  const rewriteHistory = [...history, { ...primaryPlan, post: firstDraft }];
+  const rewritePlan = selectContentPlan(new Date(new Date(now).getTime() + 86400000), platform, rewriteHistory);
+  try {
+    const rewrittenDraft = await attempt(rewritePlan, rewriteHistory);
+    const rewrittenValidation = validateSocialPost(rewrittenDraft, rewritePlan, history, platform);
+    if (rewrittenValidation.ok) {
+      return { post: rewrittenDraft, plan: rewritePlan, validation: rewrittenValidation, rewritten: true, fallback: false };
+    }
+  } catch (error) {
+    if (!safeErrorMessage(error).includes("AI returned invalid JSON")) throw error;
+  }
+
+  const fallback = buildFallbackPost(rewritePlan, platform, history);
+  const fallbackValidation = validateSocialPost(fallback, rewritePlan, history, platform);
+  if (!fallbackValidation.ok) throw new Error(`Content fallback failed validation: ${fallbackValidation.reasons.join(", ")}`);
+  return { post: fallback, plan: rewritePlan, validation: fallbackValidation, rewritten: true, fallback: true };
 }
 
 // Bluesky -------------------------------------------------------------------
@@ -335,6 +501,10 @@ async function getBlueskyRecentPosts(env, runtime, limit = 10) {
       post: String(post.record?.text ?? ""),
       created: String(post.record?.createdAt ?? post.indexedAt ?? ""),
       postUrl: post.author?.handle && post.uri ? `https://bsky.app/profile/${post.author.handle}/post/${post.uri.split("/").pop()}` : "",
+      likeCount: numericMetric(post.likeCount),
+      replyCount: numericMetric(post.replyCount),
+      repostCount: numericMetric(post.repostCount),
+      quoteCount: numericMetric(post.quoteCount),
     }));
 }
 
@@ -483,7 +653,7 @@ function instagramToken(env) {
 
 async function getInstagramRecentPosts(env, _runtime, limit = 10) {
   const userId = String(env.INSTAGRAM_USER_ID ?? "").trim();
-  const params = new URLSearchParams({ fields: "id,caption,timestamp,permalink", limit: String(limit) });
+  const params = new URLSearchParams({ fields: "id,caption,timestamp,permalink,media_type,media_product_type", limit: String(limit) });
   const { payload } = await fetchJson(`${instagramHost(env)}/${metaApiVersion(env)}/${encodeURIComponent(userId)}/media?${params}`, {
     headers: bearerHeaders(instagramToken(env)),
   }, "Instagram media");
@@ -493,6 +663,8 @@ async function getInstagramRecentPosts(env, _runtime, limit = 10) {
     post: String(item.caption ?? ""),
     created: String(item.timestamp ?? ""),
     postUrl: String(item.permalink ?? ""),
+    mediaType: String(item.media_type ?? ""),
+    mediaProductType: String(item.media_product_type ?? ""),
   }));
 }
 
@@ -527,6 +699,22 @@ async function publishInstagram(env, _runtime, text) {
     headers: bearerHeaders(instagramToken(env)),
   }, "Instagram media container");
   if (!container.id) throw new Error("Instagram did not return a media container ID");
+  const statusParams = new URLSearchParams({ fields: "status_code,status" });
+  let mediaStatus = "";
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const { payload: status } = await fetchJson(`${instagramHost(env)}/${metaApiVersion(env)}/${encodeURIComponent(container.id)}?${statusParams}`, {
+      headers: bearerHeaders(instagramToken(env)),
+    }, "Instagram media container status");
+    mediaStatus = String(status?.status_code ?? status?.status ?? "").trim().toUpperCase();
+    if (!mediaStatus || mediaStatus === "FINISHED") break;
+    if (["ERROR", "EXPIRED"].includes(mediaStatus)) {
+      throw new Error(`Instagram media container ${mediaStatus.toLowerCase()}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
+  if (mediaStatus && mediaStatus !== "FINISHED") {
+    throw new Error(`Instagram media container was not ready after polling: ${mediaStatus}`);
+  }
   const publishParams = new URLSearchParams({ creation_id: String(container.id) });
   const { payload } = await fetchJson(`${instagramHost(env)}/${metaApiVersion(env)}/${encodeURIComponent(userId)}/media_publish?${publishParams}`, {
     method: "POST",
@@ -653,12 +841,125 @@ async function getRecentPlatformPosts(env, runtime, platform, limit) {
   return [];
 }
 
-export async function runDirectReadOnlyAudit(env, now = new Date()) {
+async function getDirectPostMetrics(env, platform, post, now = new Date()) {
+  try {
+    if (platform === "threads") {
+      const params = new URLSearchParams({ metric: "views,likes,replies,reposts,quotes" });
+      const source = `${threadsHost(env)}/${encodeURIComponent(post.id)}/insights`;
+      const { payload } = await fetchJson(`${source}?${params}`, {
+        headers: bearerHeaders(threadsToken(env)),
+      }, "Threads post insights");
+      const details = parseMetricPayloadDetails(payload, source);
+      const interactionParts = [details.metrics.likes, details.metrics.replies, details.metrics.reposts, details.metrics.quotes]
+        .filter((value) => typeof value === "number" && Number.isFinite(value));
+      const metrics = {
+        ...details.metrics,
+        engagement: interactionParts.length ? interactionParts.reduce((sum, value) => sum + value, 0) : details.metrics.engagement,
+      };
+      const observations = { ...details.observations };
+      if (metrics.engagement !== null && metrics.engagement !== undefined && !details.observations.engagement) {
+        observations.engagement = {
+          kind: "derived",
+          formula: "likes + replies + reposts + quotes",
+          source,
+        };
+      }
+      return postMetricsRecord({ platform, post, metrics, rawMetrics: details.rawMetrics, observations, source, fetchedAt: now.toISOString() });
+    }
+
+    if (platform === "instagram") {
+      const source = `${instagramHost(env)}/${metaApiVersion(env)}/${encodeURIComponent(post.id)}`;
+      const summaryParams = new URLSearchParams({ fields: "like_count,comments_count" });
+      const { payload } = await fetchJson(`${source}?${summaryParams}`, {
+        headers: bearerHeaders(instagramToken(env)),
+      }, "Instagram post summary");
+      const likes = numericMetric(payload?.like_count);
+      const comments = numericMetric(payload?.comments_count);
+      const interactionParts = [likes, comments].filter((value) => value !== null);
+      const engagement = interactionParts.length ? interactionParts.reduce((sum, value) => sum + value, 0) : null;
+      return postMetricsRecord({
+        platform,
+        post,
+        metrics: { likes, comments, engagement },
+        rawMetrics: { like_count: likes, comments_count: comments },
+        observations: {
+          likes: { providerMetric: "like_count", source },
+          comments: { providerMetric: "comments_count", source },
+          engagement: { kind: "derived", formula: "like_count + comments_count", source },
+        },
+        source,
+        fetchedAt: now.toISOString(),
+      });
+    }
+
+    if (platform === "bluesky") {
+      const source = "Bluesky author feed";
+      const interactionParts = [post.likeCount, post.replyCount, post.repostCount, post.quoteCount]
+        .filter((value) => typeof value === "number" && Number.isFinite(value));
+      return postMetricsRecord({
+        platform,
+        post,
+        metrics: {
+          likes: post.likeCount,
+          replies: post.replyCount,
+          reposts: post.repostCount,
+          quotes: post.quoteCount,
+          engagement: interactionParts.length ? interactionParts.reduce((sum, value) => sum + value, 0) : null,
+        },
+        rawMetrics: {
+          likeCount: post.likeCount,
+          replyCount: post.replyCount,
+          repostCount: post.repostCount,
+          quoteCount: post.quoteCount,
+        },
+        observations: {
+          likes: { providerMetric: "likeCount", source },
+          replies: { providerMetric: "replyCount", source },
+          reposts: { providerMetric: "repostCount", source },
+          quotes: { providerMetric: "quoteCount", source },
+          engagement: { kind: "derived", formula: "likeCount + replyCount + repostCount + quoteCount", source },
+        },
+        source,
+        fetchedAt: now.toISOString(),
+      });
+    }
+
+    if (platform === "linkedin") {
+      return postMetricsRecord({
+        platform,
+        post,
+        fetchedAt: now.toISOString(),
+        error: "LinkedIn post insights are not enabled in this integration.",
+      });
+    }
+
+    return postMetricsRecord({ platform, post, fetchedAt: now.toISOString(), error: "No metrics adapter is configured." });
+  } catch (error) {
+    return postMetricsRecord({ platform, post, fetchedAt: now.toISOString(), error: safeErrorMessage(error) });
+  }
+}
+
+export async function runDirectReadOnlyAudit(env, now = new Date(), options = {}) {
   const runtime = { blueskySession: null };
   const results = {};
-  for (const platform of detectConfiguredPlatforms(env)) {
+  const configuredPlatforms = detectConfiguredPlatforms(env);
+  const requestedPlatforms = Array.isArray(options.platforms) && options.platforms.length
+    ? options.platforms
+      .map((platform) => normalizePlatform(platform))
+      .filter((platform, index, list) => platform && list.indexOf(platform) === index)
+    : configuredPlatforms;
+  let requestsUsed = 0;
+  for (const platform of requestedPlatforms) {
+    if (!configuredPlatforms.includes(platform)) {
+      results[platform] = { configured: false, apiReachable: false, recentPostCount: 0, latestRemotePostAt: null, postMetrics: [] };
+      continue;
+    }
     try {
-      const posts = await getRecentPlatformPosts(env, runtime, platform, 5);
+      const posts = await getRecentPlatformPosts(env, runtime, platform, 1);
+      requestsUsed += 1;
+      const latestPost = posts[0] ?? null;
+      const postMetrics = latestPost ? [await getDirectPostMetrics(env, platform, latestPost, now)] : [];
+      if (latestPost) requestsUsed += 1;
       results[platform] = {
         configured: true,
         apiReachable: true,
@@ -668,6 +969,7 @@ export async function runDirectReadOnlyAudit(env, now = new Date()) {
           .filter(Boolean)
           .sort()
           .at(-1) ?? null,
+        postMetrics,
       };
     } catch (error) {
       results[platform] = {
@@ -679,7 +981,7 @@ export async function runDirectReadOnlyAudit(env, now = new Date()) {
       };
     }
   }
-  return { checkedAt: now.toISOString(), platforms: results };
+  return { checkedAt: now.toISOString(), platforms: results, requestsUsed, requestBudget: 2 };
 }
 
 async function getPostComments(env, runtime, platform, post) {
@@ -761,6 +1063,8 @@ async function runAutomation(env, state, now = new Date()) {
     repliesPosted: 0,
     commentsIgnored: 0,
     postsPublished: [],
+    contentPlans: [],
+    contentFallbacks: 0,
     aiCalls: 0,
     warnings: [],
   };
@@ -774,7 +1078,7 @@ async function runAutomation(env, state, now = new Date()) {
   const requestedPublish = configuredRequestedPublishPlatforms(env);
   let publishPlatforms = pickPublishPlatforms(activePlatforms, requestedPublish);
 
-  const unsupportedRequested = requestedPublish.filter((platform) => !AUTO_PUBLISH_SUPPORTED.has(platform));
+  const unsupportedRequested = requestedPublish.filter((platform) => platform !== "facebook" && !AUTO_PUBLISH_SUPPORTED.has(platform));
   for (const platform of unsupportedRequested) {
     summary.warnings.push(`${platform} is intentionally disabled in zero-cost mode.`);
   }
@@ -806,6 +1110,17 @@ async function runAutomation(env, state, now = new Date()) {
     } catch (error) {
       summary.warnings.push(`${platform} history: ${safeErrorMessage(error)}`);
       continue;
+    }
+      const recentForMetrics = posts.slice(0, MAX_METRIC_POSTS_PER_RUN);
+    const refreshedAt = now.getTime() - (6 * 60 * 60 * 1000);
+    const staleForMetrics = recentForMetrics.filter((post) => {
+      const previous = state.postMetrics.find((item) => item.platform === platform && String(item.id) === String(post.id));
+      const previousAt = Date.parse(String(previous?.fetchedAt ?? ""));
+      return !previous || !Number.isFinite(previousAt) || previousAt < refreshedAt;
+    });
+    if (staleForMetrics.length > 0) {
+      const refreshedMetrics = await Promise.all(staleForMetrics.map((post) => getDirectPostMetrics(env, platform, post, now)));
+      state.postMetrics = mergePostMetrics(state.postMetrics, refreshedMetrics, MAX_POST_METRICS);
     }
     for (const post of posts) {
       const created = Date.parse(String(post.created ?? ""));
@@ -872,57 +1187,80 @@ async function runAutomation(env, state, now = new Date()) {
   }
 
   const publishEnabled = parseBoolean(env.SOCIAL_PUBLISH_ENABLED, false);
-  const intervalHours = clampInteger(env.SOCIAL_POST_INTERVAL_HOURS, DEFAULT_POST_INTERVAL_HOURS, 6, 720);
+  const intervalHours = clampInteger(env.SOCIAL_POST_INTERVAL_HOURS, DEFAULT_POST_INTERVAL_HOURS, 36, 720);
+  const maxPostsPerDay = clampInteger(env.SOCIAL_MAX_POSTS_PER_DAY, DEFAULT_MAX_POSTS_PER_DAY, 1, 10);
   const activeStartHour = clampInteger(env.SOCIAL_ACTIVE_START_HOUR, DEFAULT_ACTIVE_START_HOUR, 0, 23);
   const activeEndHour = clampInteger(env.SOCIAL_ACTIVE_END_HOUR, DEFAULT_ACTIVE_END_HOUR, 0, 23);
-  const eligibleToPublish = publishEnabled && publishPlatforms.length > 0 && shouldPublishNow({
-    now,
-    lastPostAt: state.lastPostAt,
-    intervalHours,
-    timeZone,
-    activeStartHour,
-    activeEndHour,
-    postsToday: state.counters.posts,
-  });
+  const duePlatforms = publishEnabled
+    ? publishPlatforms.filter((platform) => shouldPublishNow({
+      now,
+      lastPostAt: state.lastPostAtByPlatform[platform] ?? state.lastPublishedByPlatform[platform]?.at ?? null,
+      intervalHours,
+      timeZone,
+      activeStartHour,
+      activeEndHour,
+      postsToday: Number(state.counters.postsByPlatform?.[platform] ?? 0),
+      maxPostsPerDay,
+    }))
+    : [];
 
-  if (eligibleToPublish) {
+  for (const platform of duePlatforms) {
+    const { date } = localClockParts(now, timeZone);
+    const platformPostsToday = Number(state.counters.postsByPlatform?.[platform] ?? 0);
+    const publishKey = `${date}:${platform}:${platformPostsToday + 1}`;
+    if (state.publishedKeys.includes(publishKey)) continue;
     try {
-      const recentTexts = state.recentPosts.map((item) => String(item.post ?? "")).filter(Boolean);
-      const generated = await generatePost(env, state, recentTexts, publishPlatforms);
-      const { date } = localClockParts(now, timeZone);
-      for (const platform of publishPlatforms) {
-        const key = `${date}:${platform}`;
-        if (state.publishedKeys.includes(key)) continue;
-        try {
-          const result = await publishToPlatform(env, runtime, platform, routePostToPilot(generated, platform));
-          const id = outboundId(result) || key;
-          state.publishedKeys.push(key);
-          const url = await resolvePublishedPostUrl(env, runtime, platform, id, result);
-          state.lastPublishedByPlatform[platform] = {
-            id,
-            at: now.toISOString(),
-            ...(url ? { url } : {}),
-          };
-          summary.postsPublished.push({ platform, id });
-        } catch (error) {
-          summary.warnings.push(`publish ${platform}: ${safeErrorMessage(error)}`);
-        }
-      }
-      if (summary.postsPublished.length > 0) {
-        state.lastPostAt = now.toISOString();
-        state.lastPostId = summary.postsPublished.map((item) => `${item.platform}:${item.id}`).join(",").slice(0, 500);
-        state.counters.posts += 1;
-        state.recentPosts.push({
-          platform: "multi",
-          id: state.lastPostId,
-          post: generated,
-          created: now.toISOString(),
-        });
-      }
+      const generated = await generatePost(env, state, platform, now);
+      summary.contentPlans.push({
+        platform,
+        context: generated.plan.context,
+        angle: generated.plan.angle,
+        takeaway: generated.plan.takeaway,
+        structure: generated.plan.structure,
+        openingStyle: generated.plan.openingStyle,
+        hook: generated.plan.hook,
+        contentFormat: generated.plan.contentFormat,
+        callToAction: generated.plan.callToAction,
+        rewritten: generated.rewritten,
+        fallback: generated.fallback,
+        validation: generated.validation,
+      });
+      if (generated.fallback) summary.contentFallbacks += 1;
+      const publishedPost = routePostToPilot(generated.post, platform, generated.plan.structure);
+      const result = await publishToPlatform(env, runtime, platform, publishedPost);
+      const id = outboundId(result) || publishKey;
+      state.publishedKeys.push(publishKey);
+      const url = await resolvePublishedPostUrl(env, runtime, platform, id, result);
+      state.lastPublishedByPlatform[platform] = {
+        id,
+        at: now.toISOString(),
+        ...(url ? { url } : {}),
+      };
+      state.lastPostAtByPlatform[platform] = now.toISOString();
+      state.counters.postsByPlatform[platform] = platformPostsToday + 1;
+      state.counters.posts += 1;
+      state.lastPostAt = now.toISOString();
+      state.lastPostId = `${platform}:${id}`.slice(0, 500);
+      if (!Array.isArray(state.contentHistoryByPlatform[platform])) state.contentHistoryByPlatform[platform] = [];
+      state.contentHistoryByPlatform[platform].push(contentHistoryEntry(platform, generated.plan, generated.post, now, {
+        id,
+        url: url || null,
+        rewritten: generated.rewritten,
+        fallback: generated.fallback,
+      }));
+      state.recentPosts.push({
+        platform,
+        id,
+        post: generated.post,
+        created: now.toISOString(),
+        postUrl: url || "",
+      });
+      summary.postsPublished.push({ platform, id, ...(url ? { url } : {}) });
     } catch (error) {
-      summary.warnings.push(`publish generation: ${safeErrorMessage(error)}`);
+      summary.warnings.push(`publish ${platform}: ${safeErrorMessage(error)}`);
     }
-  } else if (publishEnabled && activePlatforms.length === 0) {
+  }
+  if (publishEnabled && activePlatforms.length === 0) {
     summary.warnings.push("No direct social account credentials are configured yet.");
   }
 
@@ -930,6 +1268,9 @@ async function runAutomation(env, state, now = new Date()) {
   state.repliedComments = trimUnique(state.repliedComments, MAX_SEEN_COMMENTS);
   state.ownCommentIds = trimUnique([...ownCommentIds], MAX_OWN_COMMENT_IDS);
   state.recentPosts = state.recentPosts.slice(-MAX_RECENT_POSTS);
+  for (const platform of ["threads", "instagram"]) {
+    state.contentHistoryByPlatform[platform] = state.contentHistoryByPlatform[platform].slice(-40);
+  }
   state.publishedKeys = trimUnique(state.publishedKeys, MAX_PUBLISHED_KEYS);
   state.lastRunAt = new Date().toISOString();
   state.lastError = summary.warnings.length ? summary.warnings.slice(-5).join(" | ") : null;
@@ -974,6 +1315,9 @@ export class SocialAutomationState {
         lastPostId: state.lastPostId,
         lastError: state.lastError,
         lastPublishedByPlatform: hydratePublishedPostUrls(state.lastPublishedByPlatform, state.recentPosts),
+        lastPostAtByPlatform: state.lastPostAtByPlatform,
+        contentHistoryByPlatform: state.contentHistoryByPlatform,
+        postMetrics: state.postMetrics,
         counters: state.counters,
         lastSummary: state.lastSummary,
       });
@@ -1012,6 +1356,9 @@ export default {
         lastPostAt: status.lastPostAt ?? null,
         lastError: status.lastError ?? null,
         lastPublishedByPlatform: status.lastPublishedByPlatform ?? {},
+        lastPostAtByPlatform: status.lastPostAtByPlatform ?? {},
+        contentHistoryByPlatform: status.contentHistoryByPlatform ?? {},
+        postMetrics: status.postMetrics ?? [],
         counters: status.counters ?? null,
         lastSummary: status.lastSummary
           ? {
@@ -1022,6 +1369,8 @@ export default {
               repliesPosted: status.lastSummary.repliesPosted ?? 0,
               commentsIgnored: status.lastSummary.commentsIgnored ?? 0,
               postsPublished: status.lastSummary.postsPublished ?? [],
+              contentPlans: status.lastSummary.contentPlans ?? [],
+              contentFallbacks: status.lastSummary.contentFallbacks ?? 0,
               aiCalls: status.lastSummary.aiCalls ?? 0,
               warningCount: Array.isArray(status.lastSummary.warnings) ? status.lastSummary.warnings.length : 0,
             }

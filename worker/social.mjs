@@ -8,7 +8,7 @@ const MAX_RECENT_POSTS = 100;
 const DEFAULT_LOOKBACK_DAYS = 14;
 const DEFAULT_MAX_REPLIES_PER_RUN = 4;
 const DEFAULT_MAX_REPLIES_PER_DAY = 12;
-const DEFAULT_POST_INTERVAL_HOURS = 48;
+const DEFAULT_POST_INTERVAL_HOURS = 36;
 const DEFAULT_ACTIVE_START_HOUR = 8;
 const DEFAULT_ACTIVE_END_HOUR = 19;
 const DEFAULT_TIMEZONE = "America/Los_Angeles";
@@ -258,20 +258,72 @@ async function getPostComments(env, platform, postId) {
 }
 
 function extractAiText(result) {
+  if (typeof result === "string") return result;
   if (typeof result?.response === "string") return result.response;
+  if (result?.response && typeof result.response === "object") return result.response;
   const choices = Array.isArray(result?.choices) ? result.choices : [];
   const content = choices[0]?.message?.content;
   if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content.map((part) => {
+      if (typeof part === "string") return part;
+      if (typeof part?.text === "string") return part.text;
+      if (typeof part?.content === "string") return part.content;
+      return "";
+    }).join("");
+  }
   return "";
 }
 
-function parseAiJson(text) {
+export function parseAiJson(text) {
+  if (text && typeof text === "object") return text;
   const raw = String(text ?? "").trim();
   const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim() ?? raw;
-  const start = fenced.indexOf("{");
-  const end = fenced.lastIndexOf("}");
-  if (start < 0 || end <= start) throw new Error("AI returned invalid JSON");
-  return JSON.parse(fenced.slice(start, end + 1));
+  const candidates = new Set([fenced]);
+  for (const source of [raw, fenced]) {
+    for (let start = 0; start < source.length; start += 1) {
+      if (source[start] !== "{" && source[start] !== "[") continue;
+      const stack = [];
+      let inString = false;
+      let escaped = false;
+      for (let index = start; index < source.length; index += 1) {
+        const character = source[index];
+        if (inString) {
+          if (escaped) escaped = false;
+          else if (character === "\\") escaped = true;
+          else if (character === '"') inString = false;
+          continue;
+        }
+        if (character === '"') {
+          inString = true;
+          continue;
+        }
+        if (character === "{" || character === "[") {
+          stack.push(character);
+          continue;
+        }
+        if (character === "}" || character === "]") {
+          const opening = stack.at(-1);
+          if ((character === "}" && opening !== "{") || (character === "]" && opening !== "[")) break;
+          stack.pop();
+          if (stack.length === 0) {
+            candidates.add(source.slice(start, index + 1));
+            break;
+          }
+        }
+      }
+    }
+  }
+  for (const candidate of candidates) {
+    for (const value of [candidate, candidate.replace(/[“”]/g, '"')]) {
+      try {
+        return JSON.parse(value);
+      } catch {
+        // Try the next balanced candidate.
+      }
+    }
+  }
+  throw new Error("AI returned invalid JSON");
 }
 
 async function aiJson(env, system, user, maxTokens = 500) {
@@ -513,7 +565,7 @@ async function runAutomation(env, state, now = new Date()) {
   }
 
   const publishEnabled = parseBoolean(env.SOCIAL_PUBLISH_ENABLED, false);
-  const intervalHours = clampInteger(env.SOCIAL_POST_INTERVAL_HOURS, DEFAULT_POST_INTERVAL_HOURS, 6, 720);
+  const intervalHours = clampInteger(env.SOCIAL_POST_INTERVAL_HOURS, DEFAULT_POST_INTERVAL_HOURS, 36, 720);
   const activeStartHour = clampInteger(env.SOCIAL_ACTIVE_START_HOUR, DEFAULT_ACTIVE_START_HOUR, 0, 23);
   const activeEndHour = clampInteger(env.SOCIAL_ACTIVE_END_HOUR, DEFAULT_ACTIVE_END_HOUR, 0, 23);
   const eligibleToPublish = publishEnabled && publishPlatforms.length > 0 && shouldPublishNow({

@@ -90,6 +90,107 @@ test("analytics summary requires credentials while event ingestion remains publi
   assert.deepEqual(paths, []);
 });
 
+test("internal operations status reports seven-day Resend activity without exposing message PII", async () => {
+  const originalFetch = globalThis.fetch;
+  const env = makeEnv([]);
+  env.RESEND_API_KEY = "re_test";
+  env.MARKETING_FROM_EMAIL = "support@example.com";
+  env.MARKETING_BUSINESS_ADDRESS = "123 Example Street";
+  env.ACCOUNTS = {
+    idFromName: (name: string) => name,
+    get: () => ({
+      fetch: async (request: Request) => {
+        assert.equal(new URL(request.url).pathname, "/operations-status");
+        return Response.json({
+          emailDeliveries: {
+            sent: 2,
+            byDay: { "2026-08-30": 2 },
+            byCampaign: { consumer_followup: 2 },
+            pendingClaims: 0,
+          },
+          marketingAutomation: {
+            automationKey: "marketing-email",
+            startedAt: new Date().toISOString(),
+            finishedAt: new Date().toISOString(),
+            status: "healthy",
+            details: { sent: 2, failed: 0 },
+          },
+        });
+      },
+    }),
+  } as Env["ACCOUNTS"];
+  const createdAt = new Date(Date.now() - 60_000).toISOString();
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    assert.match(url, /^https:\/\/api\.resend\.com\/emails\?limit=100$/);
+    return Response.json({
+      data: [
+        { id: "email-1", created_at: createdAt, last_event: "delivered", to: ["private@example.com"] },
+        { id: "email-2", created_at: createdAt, last_event: "opened", to: ["other@example.com"] },
+      ],
+      has_more: false,
+    });
+  };
+  try {
+    const response = await worker.fetch(
+      new Request("https://pencilproof-audit.internal/api/internal/operations-status"),
+      env,
+    );
+    assert.equal(response.status, 200);
+    const body = await response.json() as Record<string, any>;
+    assert.equal(body.email.provider.status, "verified");
+    assert.equal(body.email.provider.messages, 2);
+    assert.equal(body.email.provider.recipients, 2);
+    assert.deepEqual(body.email.provider.byLastEvent, { delivered: 1, opened: 1 });
+    assert.equal(body.email.provider.byDay[createdAt.slice(0, 10)], 2);
+    assert.equal(body.traffic.status, "verified");
+    const serialized = JSON.stringify(body);
+    assert.doesNotMatch(serialized, /private@example\.com|other@example\.com|email-1|email-2/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("internal automation status reads the local run ledger without calling Resend", async () => {
+  const originalFetch = globalThis.fetch;
+  const env = makeEnv([]);
+  env.RESEND_API_KEY = "re_test";
+  env.MARKETING_FROM_EMAIL = "support@example.com";
+  env.MARKETING_BUSINESS_ADDRESS = "123 Example Street";
+  env.ACCOUNTS = {
+    idFromName: (name: string) => name,
+    get: () => ({
+      fetch: async (request: Request) => {
+        assert.equal(new URL(request.url).pathname, "/operations-status");
+        return Response.json({
+          emailDeliveries: { sent: 0, byDay: {}, byCampaign: {}, pendingClaims: 0 },
+          marketingAutomation: {
+            startedAt: new Date().toISOString(),
+            finishedAt: new Date().toISOString(),
+            status: "healthy",
+            details: { candidates: 0, claimed: 0, sent: 0, failed: 0 },
+          },
+        });
+      },
+    }),
+  } as Env["ACCOUNTS"];
+  globalThis.fetch = async () => { throw new Error("Resend must not be called by the lightweight endpoint"); };
+  try {
+    const response = await worker.fetch(
+      new Request("https://pencilproof-audit.internal/api/internal/automation-status"),
+      env,
+    );
+    assert.equal(response.status, 200);
+    const body = await response.json() as Record<string, any>;
+    assert.equal(body.email.automation.lastRun.status, "healthy");
+    assert.equal(body.email.automation.lastRun.details.sent, 0);
+    assert.equal(body.email.localDeliveries.sent, 0);
+    assert.equal(body.email.provider, undefined);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("analytics fails closed when dashboard credentials are not configured", async () => {
   const env = makeEnv([]);
   delete env.ANALYTICS_DASHBOARD_USERNAME;

@@ -9,6 +9,7 @@ export type { Env } from "./index.ts";
 const ANALYTICS_EVENT_NAMES = [
   "page_view",
   "scan_started",
+  "scan_completed",
   "preview_ready",
   "import_success",
   "import_failed",
@@ -52,6 +53,7 @@ type AnalyticsEvent = {
   sessionId: string;
   source?: string;
   value?: number;
+  currency?: string;
 };
 
 type CountRow = {
@@ -59,6 +61,10 @@ type CountRow = {
 };
 type EventCountRow = CountRow & {
   event_name: string;
+};
+type ScanDurationRow = CountRow & {
+  average_ms: number | null;
+  category: string;
 };
 type DimensionCountRow = CountRow & {
   dimension: string | null;
@@ -71,6 +77,7 @@ type SourceFunnelRow = {
   purchasers: number;
   scan_users: number;
   visitors: number;
+  revenue_cents: number;
 };
 type DayEventCountRow = EventCountRow & {
   day: string;
@@ -299,7 +306,10 @@ export class AnalyticsStore {
         comment TEXT,
         device TEXT,
         path TEXT,
-        source TEXT
+        source TEXT,
+        value_cents INTEGER,
+        currency TEXT,
+        duration_ms INTEGER
       );
       CREATE INDEX IF NOT EXISTS idx_analytics_events_day_name
         ON analytics_events(day, event_name);
@@ -312,6 +322,10 @@ export class AnalyticsStore {
         value TEXT NOT NULL
       );
     `);
+    const analyticsColumns = new Set(Array.from(this.sql.exec<{ name: string }>("PRAGMA table_info(analytics_events)")).map((row) => row.name));
+    if (!analyticsColumns.has("value_cents")) this.sql.exec("ALTER TABLE analytics_events ADD COLUMN value_cents INTEGER");
+    if (!analyticsColumns.has("currency")) this.sql.exec("ALTER TABLE analytics_events ADD COLUMN currency TEXT");
+    if (!analyticsColumns.has("duration_ms")) this.sql.exec("ALTER TABLE analytics_events ADD COLUMN duration_ms INTEGER");
     const startedAt = new Date().toISOString();
     this.sql.exec(
       "INSERT OR IGNORE INTO analytics_meta(key, value) VALUES ('ledger_started_at', ?)",
@@ -366,12 +380,27 @@ export class AnalyticsStore {
         || normalized.device === "desktop"
         ? normalized.device
         : null;
+      const inheritedSource = this.sql.exec<{ source: string | null }>(`
+        SELECT source FROM analytics_events
+        WHERE session_id = ? AND source IS NOT NULL AND source <> ''
+        ORDER BY received_at ASC LIMIT 1
+      `, normalized.sessionId).toArray()[0]?.source ?? null;
+      const source = limitedText(normalized.source, 160) ?? inheritedSource;
+      const eventValueCents = normalized.event === "payment_completed" && Number.isInteger(normalized.value)
+        ? Math.max(0, Number(normalized.value))
+        : null;
+      const eventCurrency = normalized.event === "payment_completed" && /^[a-z]{3}$/i.test(normalized.currency ?? "")
+        ? String(normalized.currency).toLowerCase()
+        : null;
+      const durationMilliseconds = normalized.event === "scan_completed" && Number.isFinite(normalized.value)
+        ? Math.max(0, Math.min(120_000, Math.round(Number(normalized.value))))
+        : null;
 
       this.sql.exec(
         `INSERT OR IGNORE INTO analytics_events (
           event_id, event_name, session_id, received_at, occurred_at, day,
-          category, rating, comment, device, path, source
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          category, rating, comment, device, path, source, value_cents, currency, duration_ms
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         eventId,
         normalized.event,
         normalized.sessionId,
@@ -383,7 +412,10 @@ export class AnalyticsStore {
         comment,
         device,
         limitedText(normalized.path, 240),
-        limitedText(normalized.source, 160),
+        source,
+        eventValueCents,
+        eventCurrency,
+        durationMilliseconds,
       );
       const inserted = this.sql.exec<CountRow>(
         "SELECT changes() AS count",
@@ -466,6 +498,7 @@ export class AnalyticsStore {
         purchasers: number;
         scanUsers: number;
         visitors: number;
+        revenueCents: number;
       }> = [];
       for (const row of this.sql.exec<SourceFunnelRow>(`
         SELECT COALESCE(NULLIF(source, ''), 'direct') AS dimension,
@@ -474,6 +507,7 @@ export class AnalyticsStore {
           COUNT(DISTINCT CASE WHEN event_name = 'preview_ready' THEN session_id END) AS preview_users,
           COUNT(DISTINCT CASE WHEN event_name = 'checkout_started' THEN session_id END) AS checkout_users,
           COUNT(DISTINCT CASE WHEN event_name = 'payment_completed' THEN session_id END) AS purchasers
+          , COALESCE(SUM(CASE WHEN event_name = 'payment_completed' THEN value_cents ELSE 0 END), 0) AS revenue_cents
         FROM analytics_events
         ${eventWindow}
         GROUP BY COALESCE(NULLIF(source, ''), 'direct')
@@ -488,6 +522,7 @@ export class AnalyticsStore {
           purchasers: Number(row.purchasers) || 0,
           scanUsers: Number(row.scan_users) || 0,
           visitors: Number(row.visitors) || 0,
+          revenueCents: Number(row.revenue_cents) || 0,
         });
       }
 
@@ -518,6 +553,21 @@ export class AnalyticsStore {
         purchases: eventTotal("payment_completed"),
       };
 
+      const scanDurations: Record<string, { averageMilliseconds: number; completed: number }> = {};
+      for (const row of this.sql.exec<ScanDurationRow>(`
+        SELECT COALESCE(category, 'other') AS category,
+          COUNT(*) AS count,
+          AVG(duration_ms) AS average_ms
+        FROM analytics_events
+        ${eventWindow} AND event_name = 'scan_completed' AND duration_ms IS NOT NULL
+        GROUP BY COALESCE(category, 'other')
+      `, startIso, endIso)) {
+        scanDurations[row.category] = {
+          averageMilliseconds: Math.round(Number(row.average_ms) || 0),
+          completed: Number(row.count) || 0,
+        };
+      }
+
       const byCategory: Record<string, number> = {};
       for (const row of this.sql.exec<CategoryCountRow>(`
         SELECT COALESCE(category, 'other') AS category, COUNT(*) AS count
@@ -537,6 +587,9 @@ export class AnalyticsStore {
       `, startIso, endIso)) {
         byRating[String(row.rating)] = Number(row.count) || 0;
       }
+
+      const importFailuresByCategory: Record<string, number> = {};
+      for (const row of this.sql.exec<CategoryCountRow>(`SELECT COALESCE(category, 'other') AS category, COUNT(*) AS count FROM analytics_events ${eventWindow} AND event_name = 'import_failed' GROUP BY COALESCE(category, 'other')`, startIso, endIso)) importFailuresByCategory[row.category] = Number(row.count) || 0;
 
       const feedbackRows = this.sql.exec<FeedbackEventRow>(`
         SELECT category, comment, received_at, rating
@@ -573,6 +626,8 @@ export class AnalyticsStore {
           byRating: Object.keys(feedback.byRating).length ? feedback.byRating : byRating,
           total: byEvent.feedback_submitted ?? feedback.total,
         },
+        importFailuresByCategory,
+        scanDurations,
         ledger: {
           duplicateEventsRejected:
             Number(meta.duplicate_events_rejected ?? 0) || 0,
@@ -701,9 +756,12 @@ type AnalyticsDashboardSummary = {
     purchasers?: number;
     scanUsers?: number;
     visitors?: number;
+    revenueCents?: number;
   }>;
   topPages?: Array<{ name?: string; sessions?: number; events?: number }>;
   devices?: Array<{ name?: string; sessions?: number; events?: number }>;
+  importFailuresByCategory?: Record<string, number>;
+  scanDurations?: Record<string, { averageMilliseconds?: number; completed?: number }>;
   feedback?: Partial<FeedbackSummary>;
   updatedAt?: string;
 };
@@ -714,6 +772,209 @@ const analyticsSummary = async (request: Request, env: Env) => {
   const response = await stub.fetch(new Request(`https://analytics.internal/summary?range=${selectedRange.key}`));
   if (!response.ok) return null;
   return await response.json() as AnalyticsDashboardSummary;
+};
+
+const latestExpectedMarketingRun = (now = new Date()) => {
+  for (let daysBack = 0; daysBack <= 7; daysBack += 1) {
+    const candidate = new Date(Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate() - daysBack,
+      17,
+      0,
+      0,
+    ));
+    if ([1, 3, 5].includes(candidate.getUTCDay()) && candidate.getTime() <= now.getTime()) return candidate;
+  }
+  return null;
+};
+
+type ResendListItem = {
+  created_at?: string;
+  id?: string;
+  last_event?: string;
+  to?: unknown;
+};
+
+const resendSevenDayActivity = async (env: Env, now = new Date()) => {
+  const apiKey = env.RESEND_API_KEY?.trim();
+  if (!apiKey) return {
+    connected: false,
+    checkedAt: now.toISOString(),
+    status: "not_configured",
+    messages: 0,
+    recipients: 0,
+    byLastEvent: {},
+    byDay: {},
+    complete: false,
+    error: "RESEND_API_KEY is not configured.",
+  };
+  const cutoff = now.getTime() - (7 * 24 * 60 * 60 * 1000);
+  const byLastEvent: Record<string, number> = {};
+  const byDay: Record<string, number> = {};
+  let after = "";
+  let messages = 0;
+  let recipients = 0;
+  let newestAt: string | null = null;
+  let reachedCutoff = false;
+  let hasMore = false;
+  const maxPages = 5;
+  let pages = 0;
+  try {
+    for (; pages < maxPages; pages += 1) {
+      const url = new URL("https://api.resend.com/emails");
+      url.searchParams.set("limit", "100");
+      if (after) url.searchParams.set("after", after);
+      let response: Response | null = null;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        response = await fetch(url, { headers: { Accept: "application/json", Authorization: `Bearer ${apiKey}` } });
+        if (response.ok || (response.status !== 429 && response.status < 500) || attempt === 1) break;
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+      if (!response?.ok) throw new Error(`Resend list request failed with HTTP ${response?.status ?? 0}.`);
+      const payload = await response.json() as { data?: unknown; has_more?: unknown };
+      const items = Array.isArray(payload.data) ? payload.data as ResendListItem[] : [];
+      hasMore = payload.has_more === true;
+      if (!items.length) {
+        reachedCutoff = true;
+        break;
+      }
+      for (const item of items) {
+        const created = Date.parse(String(item.created_at ?? ""));
+        if (!Number.isFinite(created)) continue;
+        if (created < cutoff) {
+          reachedCutoff = true;
+          continue;
+        }
+        const createdAt = new Date(created).toISOString();
+        const day = createdAt.slice(0, 10);
+        byDay[day] = (byDay[day] ?? 0) + 1;
+        if (!newestAt || createdAt > newestAt) newestAt = createdAt;
+        messages += 1;
+        recipients += Array.isArray(item.to) ? item.to.length : 0;
+        const event = String(item.last_event ?? "unknown").trim().toLowerCase() || "unknown";
+        byLastEvent[event] = (byLastEvent[event] ?? 0) + 1;
+      }
+      const lastItem = items.at(-1);
+      if (reachedCutoff || !hasMore || !lastItem?.id) break;
+      after = String(lastItem.id);
+    }
+    const complete = reachedCutoff || !hasMore;
+    return {
+      connected: true,
+      checkedAt: now.toISOString(),
+      status: complete ? "verified" : "partial",
+      messages,
+      recipients,
+      byLastEvent,
+      byDay,
+      complete,
+      newestAt,
+      pagesRead: pages + 1,
+      error: complete ? null : `More than ${maxPages * 100} sent messages exist in the seven-day window; the displayed count is a lower bound.`,
+    };
+  } catch (error) {
+    return {
+      connected: false,
+      checkedAt: now.toISOString(),
+      status: "needs_attention",
+      messages: 0,
+      recipients: 0,
+      byLastEvent: {},
+      byDay: {},
+      complete: false,
+      newestAt: null,
+      pagesRead: pages,
+      error: error instanceof Error ? error.message.slice(0, 300) : "Resend activity could not be read.",
+    };
+  }
+};
+
+const emailAutomationSnapshot = (env: Env, account: Record<string, any>, now: Date) => {
+  const expectedRun = latestExpectedMarketingRun(now);
+  const automation = account.marketingAutomation && typeof account.marketingAutomation === "object"
+    ? account.marketingAutomation as Record<string, any>
+    : null;
+  const finishedAt = Date.parse(String(automation?.finishedAt ?? ""));
+  const heartbeatCurrent = Boolean(expectedRun && Number.isFinite(finishedAt) && finishedAt >= expectedRun.getTime() - (10 * 60 * 1000));
+  const configured = Boolean(env.RESEND_API_KEY && env.MARKETING_FROM_EMAIL && env.MARKETING_BUSINESS_ADDRESS);
+  const automationState = !configured
+    ? "needs_attention"
+    : !expectedRun
+      ? "waiting"
+      : !automation
+        ? "waiting_for_first_monitored_run"
+        : !heartbeatCurrent
+          ? "missed_schedule"
+          : automation.status === "healthy"
+            ? "healthy"
+            : "degraded";
+  return {
+    automation: {
+      state: automationState,
+      configured,
+      expectedSchedule: "Monday, Wednesday, and Friday at 17:00 UTC (10 AM PDT / 9 AM PST), with an idempotent retry 10 minutes later",
+      lastExpectedRunAt: expectedRun?.toISOString() ?? null,
+      lastRun: automation,
+      automaticRepair: "The scheduler retries the same campaign 10 minutes later without duplicating completed deliveries. Transient Resend rate limits and server errors are retried once with an idempotency key, and failed delivery claims are released safely.",
+    },
+    localDeliveries: account.emailDeliveries ?? { sent: 0, byDay: {}, byCampaign: {}, pendingClaims: 0 },
+  };
+};
+
+const accountOperationsStatus = async (env: Env, now: Date) => {
+  const response = await accountStub(env).fetch(new Request("https://accounts.internal/operations-status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ now: Math.floor(now.getTime() / 1000) }),
+    }));
+  return response.ok ? await response.json() as Record<string, any> : {};
+};
+
+const automationStatusSnapshot = async (env: Env) => {
+  const now = new Date();
+  const account = await accountOperationsStatus(env, now);
+  return {
+    schemaVersion: 1,
+    generatedAt: now.toISOString(),
+    email: emailAutomationSnapshot(env, account, now),
+  };
+};
+
+const operationsStatusSnapshot = async (env: Env) => {
+  const now = new Date();
+  const [analytics, account, resend] = await Promise.all([
+    analyticsSummary(new Request("https://pencilproof-audit.internal/operations?range=7d"), env),
+    accountOperationsStatus(env, now),
+    resendSevenDayActivity(env, now),
+  ]);
+  const email = emailAutomationSnapshot(env, account, now);
+  return {
+    schemaVersion: 1,
+    generatedAt: now.toISOString(),
+    email: {
+      ...email,
+      provider: resend,
+    },
+    traffic: analytics ? {
+      status: analytics.ledger?.verified === true ? "verified" : "needs_attention",
+      checkedAt: now.toISOString(),
+      range: analytics.range ?? null,
+      ledger: analytics.ledger ?? null,
+      funnel: analytics.funnel ?? {},
+      byDay: analytics.byDay ?? {},
+      sources: analytics.sources ?? [],
+      sourceFunnel: analytics.sourceFunnel ?? [],
+      topPages: analytics.topPages ?? [],
+      devices: analytics.devices ?? [],
+      importFailuresByCategory: analytics.importFailuresByCategory ?? {},
+      scanDurations: analytics.scanDurations ?? {},
+    } : {
+      status: "needs_attention",
+      checkedAt: now.toISOString(),
+      error: "The PencilProof analytics ledger did not respond.",
+    },
+  };
 };
 
 const analyticsAccounts = async (env: Env): Promise<AccountIdentity[]> => {
@@ -790,9 +1051,9 @@ const analyticsDashboard = async (request: Request, env: Env) => {
   const sourceFunnelCell = (count: number, visitors: number) => `<span class="source-funnel-count">${count.toLocaleString("en-US")}</span><small>${percent(count, visitors)}</small>`;
   const sourceFunnelRows = (summary.sourceFunnel ?? []).map((row) => {
     const visitors = Number(row.visitors ?? 0);
-    return `<tr><th scope="row">${esc(row.name ?? "direct")}</th><td>${visitors.toLocaleString("en-US")}</td><td>${sourceFunnelCell(Number(row.scanUsers ?? 0), visitors)}</td><td>${sourceFunnelCell(Number(row.previewUsers ?? 0), visitors)}</td><td>${sourceFunnelCell(Number(row.checkoutUsers ?? 0), visitors)}</td><td>${sourceFunnelCell(Number(row.purchasers ?? 0), visitors)}</td></tr>`;
+    return `<tr><th scope="row">${esc(row.name ?? "direct")}</th><td>${visitors.toLocaleString("en-US")}</td><td>${sourceFunnelCell(Number(row.scanUsers ?? 0), visitors)}</td><td>${sourceFunnelCell(Number(row.previewUsers ?? 0), visitors)}</td><td>${sourceFunnelCell(Number(row.checkoutUsers ?? 0), visitors)}</td><td>${sourceFunnelCell(Number(row.purchasers ?? 0), visitors)}</td><td>$${(Number(row.revenueCents ?? 0) / 100).toFixed(2)}</td></tr>`;
   }).join("");
-  const sourceFunnelPanel = `<section class="panel" style="margin-top:18px"><h2>Funnel by source</h2><p class="subtle">Each row follows one source from visitor to purchase. Counts are unique browsers in the selected period; percentages show the share of that source’s visitors reaching each stage.</p>${sourceFunnelRows ? `<div class="table-wrap"><table class="source-funnel-table"><thead><tr><th>Source</th><th>Visitors</th><th>Started scan</th><th>Preview ready</th><th>Checkout</th><th>Purchased</th></tr></thead><tbody>${sourceFunnelRows}</tbody></table></div>` : `<div class="empty">No source-level funnel data in this period yet.</div>`}</section>`;
+  const sourceFunnelPanel = `<section class="panel" style="margin-top:18px"><h2>Funnel by source</h2><p class="subtle">Each row follows one source from visitor to purchase. Counts are unique browsers in the selected period; percentages show the share of that source’s visitors reaching each stage.</p>${sourceFunnelRows ? `<div class="table-wrap"><table class="source-funnel-table"><thead><tr><th>Source</th><th>Visitors</th><th>Started scan</th><th>Preview ready</th><th>Checkout</th><th>Purchased</th><th>Revenue</th></tr></thead><tbody>${sourceFunnelRows}</tbody></table></div>` : `<div class="empty">No source-level funnel data in this period yet.</div>`}</section>`;
   const acquisitionPanel = `<section class="panel" style="margin-top:18px"><h2>Acquisition signals</h2><p class="subtle">These dimensions show where visits came from and which public pages are attracting attention. A source is carried from UTM tags or the referring site; direct means no source was available.</p><div class="dimension-grid">${dimensionList("Traffic sources", "Unique sessions", summary.sources ?? [])}${dimensionList("Top entry pages", "Page-view sessions", summary.topPages ?? [])}${dimensionList("Devices", "Unique sessions", summary.devices ?? [])}</div></section>`;
   const accountQuery = `${selectedAccountRole === "all" ? "" : `&account_role=${encodeURIComponent(selectedAccountRole)}`}${selectedAccountPaid === "all" ? "" : `&account_paid=${encodeURIComponent(selectedAccountPaid)}`}`;
   const rangeLinks = ANALYTICS_RANGES.map((range) => `<a class="range ${range.key === rangeKey ? "selected" : ""}" href="/analytics?range=${range.key}${accountQuery}">${esc(range.label)}</a>`).join("");
@@ -910,6 +1171,16 @@ const handleAnalyticsRoute = async (request: Request, env: Env) => {
     }
   }
 
+  const eventBody = request.method === "POST" ? await request.text() : undefined;
+  if (internalPath === "/event" && eventBody) {
+    let publicEvent: { event?: unknown };
+    try { publicEvent = JSON.parse(eventBody) as { event?: unknown }; }
+    catch { return new Response("Invalid analytics event", { status: 400, headers }); }
+    if (publicEvent.event === "payment_completed") {
+      return new Response("Verified payment events are server-only", { status: 403, headers });
+    }
+  }
+
   const stub = env.ANALYTICS.get(
     env.ANALYTICS.idFromName("pencilproof-analytics"),
   );
@@ -917,7 +1188,7 @@ const handleAnalyticsRoute = async (request: Request, env: Env) => {
     new Request(`https://analytics.internal${internalPath}${internalPath === "/summary" ? new URL(request.url).search : ""}`, {
       method: request.method,
       headers: request.headers,
-      body: request.method === "POST" ? await request.text() : undefined,
+      body: eventBody,
     }),
   );
   const responseHeaders = new Headers(response.headers);
@@ -930,12 +1201,30 @@ const handleAnalyticsRoute = async (request: Request, env: Env) => {
   });
 };
 
-export const handleRequest = async (request: Request, env: Env) =>
-  (new URL(request.url).pathname === "/analytics" || new URL(request.url).pathname === "/analytics/")
-    ? analyticsDashboard(request, env)
-    : new URL(request.url).pathname === "/analytics/feedback.csv"
-      ? analyticsFeedbackCsv(request, env)
-    : await handleAnalyticsRoute(request, env) ?? app.fetch(request, env);
+export const handleRequest = async (request: Request, env: Env) => {
+  const url = new URL(request.url);
+  if (
+    request.method === "GET"
+    && url.hostname === "pencilproof-audit.internal"
+    && url.pathname === "/api/internal/automation-status"
+  ) {
+    return Response.json(await automationStatusSnapshot(env), {
+      headers: { "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow, noarchive" },
+    });
+  }
+  if (
+    request.method === "GET"
+    && url.hostname === "pencilproof-audit.internal"
+    && url.pathname === "/api/internal/operations-status"
+  ) {
+    return Response.json(await operationsStatusSnapshot(env), {
+      headers: { "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow, noarchive" },
+    });
+  }
+  if (url.pathname === "/analytics" || url.pathname === "/analytics/") return analyticsDashboard(request, env);
+  if (url.pathname === "/analytics/feedback.csv") return analyticsFeedbackCsv(request, env);
+  return await handleAnalyticsRoute(request, env) ?? app.fetch(request, env);
+};
 
 export default {
   fetch: handleRequest,

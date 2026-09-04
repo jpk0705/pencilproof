@@ -205,6 +205,7 @@ export class AccountStore {
     this.sql.exec(`CREATE TABLE IF NOT EXISTS marketing_deliveries (user_id TEXT NOT NULL, campaign_key TEXT NOT NULL, claimed_at INTEGER NOT NULL, sent_at INTEGER, PRIMARY KEY (user_id, campaign_key))`);
     this.sql.exec(`CREATE INDEX IF NOT EXISTS marketing_deliveries_user ON marketing_deliveries(user_id, sent_at)`);
     this.sql.exec(`CREATE INDEX IF NOT EXISTS marketing_deliveries_sent ON marketing_deliveries(sent_at)`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS automation_runs (automation_key TEXT PRIMARY KEY, started_at INTEGER NOT NULL, finished_at INTEGER NOT NULL, status TEXT NOT NULL, details TEXT NOT NULL)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS account_identity_contexts (user_id TEXT PRIMARY KEY, email TEXT NOT NULL, consumer_seen_at INTEGER, salesperson_seen_at INTEGER, last_role TEXT NOT NULL, first_seen_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL)`);
     this.sql.exec(`CREATE INDEX IF NOT EXISTS account_identity_contexts_last_seen ON account_identity_contexts(last_seen_at)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS salesperson_profiles (user_id TEXT PRIMARY KEY, email TEXT NOT NULL, display_name TEXT NOT NULL, referral_code TEXT UNIQUE NOT NULL, stripe_customer_id TEXT, stripe_subscription_id TEXT, subscription_status TEXT NOT NULL, earned_credits INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`);
@@ -250,6 +251,20 @@ export class AccountStore {
     this.trimCache(this.userCache, 512);
     return value;
   }
+  private salespersonUserForEmail(email: string) {
+    const row = this.sql.exec<{ id: string; provider_subject: string; created_at: number }>(`
+      SELECT users.id, users.provider_subject, users.created_at
+      FROM salesperson_profiles AS profiles
+      JOIN users ON users.id = profiles.user_id
+      WHERE lower(trim(profiles.email)) = ?
+      ORDER BY CASE WHEN profiles.subscription_status = 'active' THEN 0 ELSE 1 END,
+        profiles.updated_at DESC
+      LIMIT 1
+    `, email).toArray()[0];
+    return row
+      ? { id: row.id, providerSubject: row.provider_subject, createdAt: row.created_at } satisfies User
+      : null;
+  }
   sessionBootstrap(input: {
     providerSubject: string;
     email?: string | null;
@@ -257,8 +272,17 @@ export class AccountStore {
     guestId?: string | null;
     legacyEntitlement?: { sessionId: string; createdAt: number; accessExpiresAt: number } | null;
   }) {
-    const user = this.user(input.providerSubject);
     const email = validEmail(input.email);
+    // OAuth providers can issue a different subject for the same email (and
+    // a consumer session may already exist for that subject). For the
+    // salesperson/automatic paths, resolve an existing salesperson profile
+    // by its verified email first so an active subscription is not hidden
+    // behind a provider-specific user record. An explicit consumer path
+    // intentionally keeps its provider identity separate.
+    const salespersonUser = email && input.requestedRole !== "consumer"
+      ? this.salespersonUserForEmail(email)
+      : null;
+    const user = salespersonUser ?? this.user(input.providerSubject);
     if (email) this.saveEmailContact(user.id, email);
 
     const profile = this.salesperson({ action: "get", userId: user.id });
@@ -647,6 +671,67 @@ export class AccountStore {
   releaseMarketingDelivery(userId: string, campaignKey: string) {
     this.sql.exec(`DELETE FROM marketing_deliveries WHERE user_id = ? AND campaign_key = ? AND sent_at IS NULL`, userId, campaignKey);
   }
+  operationsStatus(now = isoNow()) {
+    const sevenDaysAgo = now - (7 * 24 * 60 * 60);
+    const deliveryRows = this.sql.exec<{
+      campaign_key: string;
+      count: number;
+      day: string;
+    }>(`
+      SELECT campaign_key, COUNT(*) AS count, strftime('%Y-%m-%d', sent_at, 'unixepoch') AS day
+      FROM marketing_deliveries
+      WHERE sent_at IS NOT NULL AND sent_at >= ?
+      GROUP BY campaign_key, day
+      ORDER BY day ASC, campaign_key ASC
+    `, sevenDaysAgo).toArray();
+    const pendingClaims = Number(this.sql.exec<{ count: number }>(`
+      SELECT COUNT(*) AS count
+      FROM marketing_deliveries
+      WHERE sent_at IS NULL AND claimed_at < ?
+    `, now - (15 * 60)).toArray()[0]?.count ?? 0);
+    const run = this.sql.exec<{
+      automation_key: string;
+      started_at: number;
+      finished_at: number;
+      status: string;
+      details: string;
+    }>(`SELECT automation_key, started_at, finished_at, status, details FROM automation_runs WHERE automation_key = 'marketing-email'`).toArray()[0] ?? null;
+    let details: Record<string, unknown> = {};
+    if (run?.details) {
+      try { details = JSON.parse(run.details) as Record<string, unknown>; } catch { details = {}; }
+    }
+    return {
+      emailDeliveries: {
+        sent: deliveryRows.reduce((total, row) => total + Number(row.count || 0), 0),
+        byDay: deliveryRows.reduce<Record<string, number>>((days, row) => {
+          days[row.day] = (days[row.day] ?? 0) + Number(row.count || 0);
+          return days;
+        }, {}),
+        byCampaign: deliveryRows.reduce<Record<string, number>>((campaigns, row) => {
+          campaigns[row.campaign_key] = (campaigns[row.campaign_key] ?? 0) + Number(row.count || 0);
+          return campaigns;
+        }, {}),
+        pendingClaims,
+      },
+      marketingAutomation: run ? {
+        startedAt: new Date(run.started_at * 1000).toISOString(),
+        finishedAt: new Date(run.finished_at * 1000).toISOString(),
+        status: run.status,
+        details,
+      } : null,
+    };
+  }
+  recordAutomationRun(input: { automationKey: string; startedAt: number; finishedAt: number; status: string; details: Record<string, unknown> }) {
+    if (!/^[a-z0-9:_-]{3,80}$/.test(input.automationKey) || !["healthy", "degraded", "failed", "skipped"].includes(input.status)) return false;
+    this.sql.exec(`INSERT OR REPLACE INTO automation_runs (automation_key, started_at, finished_at, status, details) VALUES (?, ?, ?, ?, ?)`,
+      input.automationKey,
+      Math.floor(input.startedAt),
+      Math.floor(input.finishedAt),
+      input.status,
+      JSON.stringify(input.details).slice(0, 20000),
+    );
+    return true;
+  }
   private newReferralCode() {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const candidate = crypto.randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase();
@@ -927,6 +1012,21 @@ export class AccountStore {
         return json({ released: userIds.length });
       }
       return json({ error: "invalid_marketing_delivery_action" }, 400);
+    }
+    if (path === "/operations-status") {
+      const now = typeof body.now === "number" && Number.isFinite(body.now) ? Math.floor(body.now) : isoNow();
+      return json(this.operationsStatus(now));
+    }
+    if (path === "/automation-run") {
+      const automationKey = typeof body.automationKey === "string" ? body.automationKey : "";
+      const startedAt = typeof body.startedAt === "number" ? body.startedAt : NaN;
+      const finishedAt = typeof body.finishedAt === "number" ? body.finishedAt : NaN;
+      const status = typeof body.status === "string" ? body.status : "";
+      const details = body.details && typeof body.details === "object" && !Array.isArray(body.details) ? body.details as Record<string, unknown> : {};
+      if (!Number.isFinite(startedAt) || !Number.isFinite(finishedAt)) return json({ error: "invalid_automation_run" }, 400);
+      return this.recordAutomationRun({ automationKey, startedAt, finishedAt, status, details })
+        ? json({ stored: true })
+        : json({ error: "invalid_automation_run" }, 400);
     }
     if (path === "/salesperson") {
       const userId = typeof body.userId === "string" ? body.userId : "";

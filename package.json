@@ -10,7 +10,7 @@
     "prebuild": "node scripts/prepare-ocr-assets.mjs",
     "build": "next build",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types scripts/test-regressions.mjs && node --experimental-strip-types --test worker/index.test.ts worker/entry.test.ts && node --test worker/social.test.mjs worker/social-direct.test.mjs worker/social-facebook.test.mjs"
+    "test": "node --experimental-strip-types scripts/test-regressions.mjs && node --experimental-strip-types --test worker/index.test.ts worker/entry.test.ts && node --test worker/social.test.mjs worker/social-direct.test.mjs worker/social-facebook.test.mjs worker/social-status.test.mjs worker/operations-dashboard.test.mjs"
   },
   "dependencies": {
     "@clerk/clerk-js": "^6.28.1",

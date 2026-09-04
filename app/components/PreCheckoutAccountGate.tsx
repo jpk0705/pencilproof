@@ -152,16 +152,16 @@ export default function PreCheckoutAccountGate({ onContinue, onPaidAccess }: Pro
           </>
         ) : accountReady ? (
           <button className="button button-primary" type="button" onClick={() => void continueAsAccount()} disabled={busy}>
-            {busy ? "Preparing checkout…" : "Continue to secure checkout"}
+            {busy ? "Preparing checkout…" : "Continue to secure checkout — use BETA1 for $1"}
           </button>
         ) : (
-          <button className="button button-primary" type="button" onClick={() => clerk?.openSignUp(authRedirectOptions("consumer"))} disabled={busy || !configured || clerkError}>
-            Create free account
+          <button className="button button-primary" type="button" onClick={continueAsGuest} disabled={busy}>
+            Continue to secure checkout — use BETA1 for $1
           </button>
         )}
         {!accountReady ? (
-          <button className="button button-quiet" type="button" onClick={continueAsGuest} disabled={busy}>
-            Continue as guest
+          <button className="button button-quiet" type="button" onClick={() => clerk?.openSignUp(authRedirectOptions("consumer"))} disabled={busy || !configured || clerkError}>
+            Save with a free account instead
           </button>
         ) : null}
         {!accountReady && clerk ? (

@@ -47,6 +47,8 @@ const questionsPageSource = await readFile(join(projectRoot, "app/questions/page
 const structuredDataSource = await readFile(join(projectRoot, "app/components/StructuredData.tsx"), "utf8");
 const freeQuotePreviewSource = await readFile(join(projectRoot, "app/components/FreeQuotePreview.tsx"), "utf8");
 const analyzePageSource = await readFile(join(projectRoot, "app/analyze/page.tsx"), "utf8");
+const checkoutGateSource = await readFile(join(projectRoot, "app/components/PreCheckoutAccountGate.tsx"), "utf8");
+const dealPdfSource = await readFile(join(projectRoot, "lib/deal-pdf.ts"), "utf8");
 const analyticsClientSource = await readFile(join(projectRoot, "lib/analytics.ts"), "utf8");
 const analyticsWorkerSource = await readFile(join(projectRoot, "worker/entry.ts"), "utf8");
 const deploymentConfigSource = await readFile(join(projectRoot, "wrangler.jsonc"), "utf8");
@@ -54,6 +56,20 @@ const accountNavSource = await readFile(join(projectRoot, "app/components/Accoun
 const salesCoachSource = await readFile(join(projectRoot, "app/components/SalesCoach.tsx"), "utf8");
 const accountPageSource = await readFile(join(projectRoot, "app/account/page.tsx"), "utf8");
 const accountStoreSource = await readFile(join(projectRoot, "worker/accounts.ts"), "utf8");
+const guideRoutes = [
+  "dealer-quote-review",
+  "car-payment-different",
+  "car-dealer-fees-add-ons",
+  "reading-car-dealer-worksheet",
+  "compare-car-dealer-quotes",
+  "amount-financed-higher-than-price",
+  "negative-equity-car-deal",
+  "gap-service-contract-add-ons",
+];
+for (const route of guideRoutes) {
+  const source = await readFile(join(projectRoot, "app", "guides", route, "page.tsx"), "utf8");
+  assert.match(source, /GuideWorksheetExample/);
+}
 
 assert.match(salesPageSource, /const PUBLIC_SALES_URL = "https:\/\/pencilproof\.com\/sales"/);
 assert.match(salesPageSource, /const PAID_AUDIT_URL = "https:\/\/audit\.pencilproof\.com\/analyze\/secure\/"/);
@@ -84,9 +100,23 @@ assert.match(pricingPageSource, /Start with the free scan/);
 assert.match(freeQuotePreviewSource, /event: "preview_ready"/);
 assert.doesNotMatch(freeQuotePreviewSource, /event: "audit_completed"/);
 assert.match(analyzePageSource, /const importDealFile = async[\s\S]*file\.size > 15 \* 1024 \* 1024[\s\S]*track\(\{ event: "scan_started" \}\)[\s\S]*extractDealFromFile\(/);
+assert.match(analyzePageSource, /event: "scan_completed"/);
+assert.match(analyzePageSource, /value: Math\.round\(performance\.now\(\) - scanStartedAt\)/);
+assert.doesNotMatch(analyzePageSource, /PreCheckoutFeedback/);
+assert.doesNotMatch(analyzePageSource, /preCheckoutFeedbackCompleted/);
+assert.doesNotMatch(analyzePageSource, /type CheckoutPayload = \{[^}]*fileName/);
+assert.match(checkoutGateSource, /Continue to secure checkout — use BETA1 for \$1/);
+assert.match(checkoutGateSource, /Save with a free account instead/);
+assert.ok(checkoutGateSource.indexOf("Continue to secure checkout — use BETA1 for $1") < checkoutGateSource.indexOf("Save with a free account instead"));
+assert.match(dealPdfSource, /processed the first 10 of \$\{pdfDocument\.numPages\} pages/);
+assert.match(dealPdfSource, /X-PencilProof-Scan-Session/);
 assert.match(analyticsClientSource, /const currentAttribution = utmSource/);
 assert.match(analyticsClientSource, /const attribution = existingAttribution \|\| currentAttribution/);
 assert.match(analyticsClientSource, /if \(attribution && !existingAttribution\)/);
+assert.match(analyticsClientSource, /utm_content/);
+assert.match(analyzePageSource, /pencilproof-redacted-quote-summary\.txt/);
+assert.match(analyzePageSource, /This export intentionally omits names, contact details, dealer identity, VIN/);
+assert.match(analyzePageSource, /utm_source=customer_share/);
 assert.match(analyticsWorkerSource, /"preview_ready"/);
 assert.match(analyticsWorkerSource, /Acquisition signals/);
 assert.match(analyticsWorkerSource, /sourceFunnel/);
@@ -98,6 +128,10 @@ assert.doesNotMatch(salesCoachSource, /FULL PLAYBOOK ·/);
 const salesWorkerSource = await readFile(join(projectRoot, "worker/index.ts"), "utf8");
 assert.match(salesWorkerSource, /utm_campaign=free_scan/);
 assert.match(salesWorkerSource, /utm_campaign=salesperson_plan/);
+assert.match(salesWorkerSource, /pencilproof-cover\.png/);
+assert.match(salesWorkerSource, /Quick quote checklist/);
+assert.match(salesWorkerSource, /Try this line/);
+assert.match(salesWorkerSource, /alt="\$\{htmlEscape\(imageAlt\)\}"/);
 assert.match(salesWorkerSource, /addSalespersonSubscriptionCredit/);
 assert.match(accountStoreSource, /profile\?\.subscriptionStatus === "active"/);
 assert.doesNotMatch(accountStoreSource, /profile\?\.subscriptionStatus === "active" \|\| profile\?\.subscriptionStatus === "past_due"/);
@@ -219,7 +253,8 @@ assert.match(phoneWorkerSource, /CASH DUE \/ FINANCE AMOUNT/);
 assert.match(phoneWorkerSource, /class PhoneSessionStore/);
 assert.match(phoneWorkerSource, /PHONE_SESSIONS/);
 assert.match(wranglerSource, /"PhoneSessionStore"/);
-assert.match(wranglerSource, /"0 17 \* \* 1,3,5"/);
+assert.match(wranglerSource, /"0 17 \* \* 2,4,6"/);
+assert.match(wranglerSource, /"10 17 \* \* 2,4,6"/);
 assert.match(phoneWorkerSource, /List-Unsubscribe/);
 assert.match(phoneWorkerSource, /api\/email\/preferences/);
 assert.match(phoneWorkerSource, /Choose whether you want to continue receiving PencilProof promotional emails/);
@@ -1038,6 +1073,10 @@ assert.match(quoteComparisonGuideSource, /How to compare two car dealer quotes/)
 assert.match(quoteComparisonGuideSource, /\/pilot/);
 assert.match(sitemapSource, /guides\/reading-car-dealer-worksheet/);
 assert.match(sitemapSource, /guides\/compare-car-dealer-quotes/);
+assert.match(sitemapSource, /guides\/amount-financed-higher-than-price/);
+assert.match(sitemapSource, /guides\/negative-equity-car-deal/);
+assert.match(sitemapSource, /guides\/gap-service-contract-add-ons/);
+assert.match(sitemapSource, /<loc>https:\/\/pencilproof\.com\/guides<\/loc>/);
 assert.match(layoutSource, /openGraph:/);
 assert.match(layoutSource, /twitter:/);
 assert.match(layoutSource, /<StructuredData/);

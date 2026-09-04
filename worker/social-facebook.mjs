@@ -3,30 +3,62 @@ import directWorker, {
   clampInteger,
   detectConfiguredPlatforms,
   isLikelyOwnComment,
+  isWithinActiveHours,
   localClockParts,
   parseBoolean,
-  resolveRecentPlatformPostUrl,
   runDirectReadOnlyAudit,
   shouldPublishNow,
   trimUnique,
 } from "./social-direct.mjs";
-import { routePostToPilot } from "./campaign-links.mjs";
+import { publicPilotUrl, routePostToPilot } from "./campaign-links.mjs";
+import {
+  mergeNewestPostMetrics,
+  mergePostMetrics,
+  postMetricsRecord,
+} from "./social-metrics.mjs";
+import {
+  buildFallbackPost,
+  contentHistoryEntry,
+  contentHistoryForPlatform,
+  contentPrompt,
+  formatSocialPost,
+  selectContentPlan,
+  validateSocialPost,
+} from "./social-content.mjs";
+import {
+  READ_ONLY_REQUEST_BUDGET,
+  READ_ONLY_PLATFORM_ORDER,
+  READ_ONLY_VERIFICATION_LEASE_MS,
+  applyVerificationFreshness,
+  readOnlyConfiguredPlatforms,
+  runReadOnlyStatusSampler,
+} from "./social-status.mjs";
+import { buildOperationsSnapshot, operationsStatusPage } from "./operations-dashboard.mjs";
 
 const FACEBOOK_STATE_KEY = "social-facebook-v1";
+const STATUS_STATE_KEY = "social-status-v1";
+const VERIFICATION_LEASE_KEY = "social-status-verification-lease-v1";
+const BUSINESS_STATUS_KEY = "operations-business-status-v1";
+const OPERATIONS_REPAIR_KEY = "operations-repair-v1";
+const OPERATIONS_COLLECTION_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const OPERATIONS_COLLECTION_CRON = "7 * * * *";
+const SOCIAL_HEARTBEAT_STALE_MS = 75 * 60 * 1000;
 const DEFAULT_TIMEZONE = "America/Los_Angeles";
 const DEFAULT_MODEL = "@cf/meta/llama-3.2-1b-instruct";
 const DEFAULT_META_API_VERSION = "v24.0";
 const MAX_SEEN_COMMENTS = 2000;
 const MAX_OWN_COMMENT_IDS = 1000;
 const MAX_RECENT_POSTS = 100;
+const MAX_POST_METRICS = 120;
+const MAX_METRIC_POSTS_PER_RUN = 2;
 const MAX_PUBLISHED_KEYS = 200;
 const DEFAULT_LOOKBACK_DAYS = 14;
 const DEFAULT_MAX_REPLIES_PER_RUN = 4;
 const DEFAULT_MAX_REPLIES_PER_DAY = 12;
-const DEFAULT_POST_INTERVAL_HOURS = 48;
+const DEFAULT_POST_INTERVAL_HOURS = 36;
 const DEFAULT_ACTIVE_START_HOUR = 8;
 const DEFAULT_ACTIVE_END_HOUR = 19;
-const DEFAULT_FACEBOOK_AI_CALLS_PER_DAY = 6;
+const DEFAULT_FACEBOOK_AI_CALLS_PER_DAY = 200;
 
 const BRAND_CONTEXT = `PencilProof is a privacy-first educational car-finance Full Quote Audit. It helps a buyer rebuild a dealer quote, compare payment with and without optional products, understand APR and trade-equity differences, and prepare questions for the dealership. PencilProof is not a broker, lender, law firm, financial adviser, or negotiating service. It does not contact dealerships. Users should verify figures with the dealer and lender before signing.`;
 
@@ -53,23 +85,6 @@ function responseJson(body, status = 200) {
   return new Response(JSON.stringify(body, null, 2), { status, headers: JSON_HEADERS });
 }
 
-function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>\"']/g, (character) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    "\"": "&quot;",
-    "'": "&#39;",
-  }[character] ?? character));
-}
-
-function formattedStatusDate(value) {
-  const timestamp = Date.parse(String(value ?? ""));
-  return Number.isFinite(timestamp)
-    ? new Date(timestamp).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Los_Angeles" })
-    : "Not recorded yet";
-}
-
 function wantsHtmlStatus(request) {
   const format = new URL(request.url).searchParams.get("format");
   if (format === "html") return true;
@@ -82,70 +97,14 @@ function safePostUrl(value) {
   return /^https?:\/\//i.test(url) ? url : "";
 }
 
-async function hydrateStatusPostUrl(env, platform, record) {
-  if (!record || safePostUrl(record.url ?? record.postUrl) || !String(record.id ?? "").trim()) return record;
-  try {
-    const url = platform === "facebook"
-      ? await resolveFacebookPostUrl(env, record.id, record)
-      : await resolveRecentPlatformPostUrl(env, { blueskySession: null }, platform, record.id);
-    return safePostUrl(url) ? { ...record, url } : record;
-  } catch {
-    return record;
-  }
-}
-
-async function hydrateStatusPostUrls(env, publishedByPlatform) {
-  const entries = await Promise.all(
-    Object.entries(publishedByPlatform && typeof publishedByPlatform === "object" ? publishedByPlatform : {})
-      .map(async ([platform, record]) => [platform, await hydrateStatusPostUrl(env, platform, record)]),
-  );
-  return Object.fromEntries(entries);
-}
-
-function statusPageResponse(status) {
-  const configured = new Set(Array.isArray(status.configuredPlatforms) ? status.configuredPlatforms : []);
-  const platformRows = ["facebook", "instagram", "threads"].map((platform) => {
-    const platformStatus = platform === "facebook" ? (status.facebook ?? {}) : {};
-    const published = platform === "facebook"
-      ? (platformStatus.lastPublishedByPlatform?.facebook ?? platformStatus.lastPublished ?? null)
-      : (status.lastPublishedByPlatform?.[platform] ?? null);
-    const isConfigured = platform === "facebook"
-      ? platformStatus.configured === true
-      : configured.has(platform);
-    const hasError = Boolean(platformStatus.lastError);
-    const state = hasError ? "Needs attention" : isConfigured ? "Configured" : "Not configured";
-    const stateClass = hasError ? "bad" : isConfigured ? "good" : "muted";
-    const lastPostUrl = safePostUrl(published?.url ?? published?.postUrl);
-    const lastPost = `${escapeHtml(formattedStatusDate(published?.at ?? platformStatus.lastPostAt))}${lastPostUrl ? ` <a style="display:inline-block;margin-top:7px;color:#f5bf3f;font-weight:700;text-decoration:underline;text-underline-offset:3px" href="${escapeHtml(lastPostUrl)}" target="_blank" rel="noopener noreferrer">Open post ↗</a>` : `<span style="display:block;margin-top:7px;color:#90a6c0;font-size:12px">Link not recorded</span>`}`;
-    return `<tr><th scope="row">${escapeHtml(platform[0].toUpperCase() + platform.slice(1))}</th><td><span class="pill ${stateClass}">${state}</span></td><td>${lastPost}</td><td>${hasError ? `<span class="error">${escapeHtml(platformStatus.lastError)}</span>` : "No current error"}</td></tr>`;
-  }).join("");
-  const directSummary = status.lastSummary ?? {};
-  const facebookSummary = status.facebook?.lastSummary ?? {};
-  const overallError = status.lastError || status.facebook?.lastError || "";
-  const overallState = overallError ? "Needs attention" : "Operating normally";
-  const overallClass = overallError ? "bad" : "good";
-  const stat = (label, value, detail) => `<div class="stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(detail)}</small></div>`;
-  const html = `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PencilProof automation status</title>
-<style>
-:root{font-family:Arial,sans-serif;color:#f3f6fb;background:#061329}*{box-sizing:border-box}body{margin:0;background:linear-gradient(145deg,#061329 0%,#0b2346 100%);min-height:100vh}.shell{max-width:1080px;margin:auto;padding:34px 20px 60px}header{display:flex;align-items:center;justify-content:space-between;gap:18px;border-bottom:1px solid #274269;padding-bottom:18px;margin-bottom:28px}.brand{display:flex;align-items:center;gap:12px;font-weight:800;font-size:20px}.logo{display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:#f5bf3f;color:#061329;font-size:20px;font-weight:900}.refresh{border:1px solid #4a6488;border-radius:999px;padding:9px 14px;color:#f3f6fb;text-decoration:none;font-size:13px;font-weight:700}.hero,.panel{background:#102b52;border:1px solid #35557d;border-radius:18px;box-shadow:0 14px 40px #0003}.hero{padding:28px;display:flex;align-items:flex-end;justify-content:space-between;gap:22px}.eyebrow{display:block;color:#f5bf3f;letter-spacing:.14em;font-size:11px;font-weight:800;text-transform:uppercase;margin-bottom:10px}.hero h1{font:700 clamp(30px,6vw,52px)/1.05 Georgia,serif;margin:0}.hero p{max-width:620px;color:#c4d2e5;line-height:1.55;margin:14px 0 0}.pill{display:inline-block;border-radius:999px;padding:7px 11px;font-size:12px;font-weight:800;white-space:nowrap}.pill.good{background:#153f3b;color:#79e2c4}.pill.bad{background:#542d2d;color:#ffb5a9}.pill.muted{background:#283b55;color:#bac8da}.hero>.pill{font-size:14px;padding:10px 14px}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}.stat{background:#0b1e3a;border:1px solid #2a476c;border-radius:14px;padding:16px}.stat span,.stat small{display:block;color:#a9bad0}.stat span{font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:800}.stat strong{display:block;font-size:20px;margin:9px 0 5px}.stat small{font-size:12px}.panel{padding:22px;margin-top:18px}.panel h2{font:700 26px Georgia,serif;margin:0 0 7px}.panel p{color:#bfcde0;line-height:1.5;font-size:13px;margin:0 0 16px}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:680px;font-size:13px}th,td{border-bottom:1px solid #29476e;padding:13px 10px;text-align:left;vertical-align:top}thead th{color:#a9bad0;font-size:11px;letter-spacing:.1em;text-transform:uppercase}tbody th{font-size:14px}.error{color:#ffb5a9}.notice{background:#0b1e3a;border-left:4px solid #f5bf3f;padding:13px 15px;color:#c4d2e5;font-size:13px;line-height:1.5}.footer{color:#90a6c0;font-size:12px;margin-top:18px}.footer a{color:#f5bf3f}@media(max-width:760px){.hero{display:block}.hero>.pill{margin-top:18px}.stats{grid-template-columns:repeat(2,1fr)}}@media(max-width:480px){.shell{padding:22px 14px 42px}.stats{grid-template-columns:1fr}.hero{padding:22px}.panel{padding:18px}}
-</style></head><body><main class="shell"><header><div class="brand"><span class="logo">P</span><span>PencilProof</span></div><a class="refresh" href="/status?format=html">Refresh status</a></header>
-<section class="hero"><div><span class="eyebrow">LIVE AUTOMATION</span><h1>Promotion system status</h1><p>This page shows whether the connected PencilProof social automation is running. It never displays access tokens, passwords, or customer content.</p></div><span class="pill ${overallClass}">${overallState}</span></section>
-<section class="stats">${stat("Automation", status.automationEnabled === false ? "Paused" : "Enabled", "Scheduled checks are active")}${stat("Publishing", status.publishEnabled === false ? "Paused" : "Enabled", "Posts follow the configured cadence")}${stat("Replies", status.repliesEnabled === false ? "Paused" : "Enabled", "Replies remain policy-limited")}${stat("Last run", formattedStatusDate(status.lastRunAt), "Pacific time")}</section>
-<section class="panel"><h2>Platform connections</h2><p>Configured means the required provider connection is present. Each platform shows its latest recorded post time in Pacific time and a direct link when the provider supplied one.</p><div class="table-wrap"><table><thead><tr><th>Platform</th><th>Status</th><th>Last post (Pacific)</th><th>Errors</th></tr></thead><tbody>${platformRows}</tbody></table></div></section>
-<section class="panel"><h2>Latest activity</h2><p>Recent activity from the direct-network loop, without exposing post or comment text.</p><div class="stats">${stat("Posts today", String(status.counters?.posts ?? 0), "Publishing actions")}${stat("Replies today", String(status.counters?.replies ?? 0), "Reply actions")}${stat("Posts scanned", String(directSummary.postsScanned ?? 0), "Latest direct run")}${stat("Warnings", String((directSummary.warningCount ?? 0) + (facebookSummary.warningCount ?? 0)), "Latest run warnings")}</div>${overallError ? `<div class="notice"><strong>Attention needed:</strong> ${escapeHtml(overallError)}</div>` : `<div class="notice"><strong>No current errors.</strong> The system is waiting for its next permitted scheduled action when the cadence and active hours allow it.</div>`}</section>
-<p class="footer">Need the machine-readable response? Use <a href="/status?format=json">JSON status</a>. Read-only endpoints do not publish, reply, or change provider settings.</p></main></body></html>`;
-  return new Response(html, {
-    headers: {
-      "Cache-Control": "no-store",
-      "Content-Type": "text/html; charset=utf-8",
-      Vary: "Accept",
-    },
-  });
-}
-
 function safeErrorMessage(error) {
   return error instanceof Error ? error.message.slice(0, 500) : String(error ?? "Unknown error").slice(0, 500);
+}
+
+function numericMetric(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) return Number(value);
+  return null;
 }
 
 function metaApiVersion(env) {
@@ -198,15 +157,18 @@ function emptyFacebookState() {
     repliedComments: [],
     ownCommentIds: [],
     recentPosts: [],
+    postMetrics: [],
     publishedKeys: [],
     lastPublishedByPlatform: {},
+    contentHistoryByPlatform: { facebook: [] },
+    readOnlyAudit: null,
     lastSummary: null,
   };
 }
 
 function normalizeFacebookState(value) {
   const state = value && typeof value === "object" ? value : {};
-  return {
+  const normalized = {
     ...emptyFacebookState(),
     ...state,
     counters: {
@@ -217,11 +179,26 @@ function normalizeFacebookState(value) {
     repliedComments: Array.isArray(state.repliedComments) ? state.repliedComments : [],
     ownCommentIds: Array.isArray(state.ownCommentIds) ? state.ownCommentIds : [],
     recentPosts: Array.isArray(state.recentPosts) ? state.recentPosts : [],
+    postMetrics: Array.isArray(state.postMetrics) ? state.postMetrics : [],
     publishedKeys: Array.isArray(state.publishedKeys) ? state.publishedKeys : [],
     lastPublishedByPlatform: state.lastPublishedByPlatform && typeof state.lastPublishedByPlatform === "object"
       ? state.lastPublishedByPlatform
       : {},
+    contentHistoryByPlatform: {
+      facebook: Array.isArray(state.contentHistoryByPlatform?.facebook)
+        ? state.contentHistoryByPlatform.facebook
+        : [],
+    },
+    readOnlyAudit: state.readOnlyAudit && typeof state.readOnlyAudit === "object"
+      ? state.readOnlyAudit
+      : null,
   };
+  if (!normalized.contentHistoryByPlatform.facebook.length) {
+    normalized.contentHistoryByPlatform.facebook = normalized.recentPosts
+      .filter((item) => item?.platform === "facebook" || !item?.platform)
+      .map((item) => ({ platform: "facebook", post: String(item.post ?? ""), created: item.created ?? null }));
+  }
+  return normalized;
 }
 
 function resetDailyCounters(state, now, timeZone) {
@@ -236,7 +213,7 @@ function reserveAiCall(env, state) {
     env.SOCIAL_FACEBOOK_AI_MAX_CALLS_PER_DAY,
     DEFAULT_FACEBOOK_AI_CALLS_PER_DAY,
     0,
-    50,
+    200,
   );
   if (state.counters.aiCalls >= max) {
     throw new Error("Facebook AI daily cap reached; skipping until the next local day");
@@ -245,19 +222,72 @@ function reserveAiCall(env, state) {
 }
 
 function extractAiText(result) {
+  if (typeof result === "string") return result;
   if (typeof result?.response === "string") return result.response;
+  if (result?.response && typeof result.response === "object") return result.response;
   const choices = Array.isArray(result?.choices) ? result.choices : [];
   const content = choices[0]?.message?.content;
-  return typeof content === "string" ? content : "";
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content.map((part) => {
+      if (typeof part === "string") return part;
+      if (typeof part?.text === "string") return part.text;
+      if (typeof part?.content === "string") return part.content;
+      return "";
+    }).join("");
+  }
+  return "";
 }
 
-function parseAiJson(text) {
+export function parseAiJson(text) {
+  if (text && typeof text === "object") return text;
   const raw = String(text ?? "").trim();
   const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim() ?? raw;
-  const start = fenced.indexOf("{");
-  const end = fenced.lastIndexOf("}");
-  if (start < 0 || end <= start) throw new Error("AI returned invalid JSON");
-  return JSON.parse(fenced.slice(start, end + 1));
+  const candidates = new Set([fenced]);
+  for (const source of [raw, fenced]) {
+    for (let start = 0; start < source.length; start += 1) {
+      if (source[start] !== "{" && source[start] !== "[") continue;
+      const stack = [];
+      let inString = false;
+      let escaped = false;
+      for (let index = start; index < source.length; index += 1) {
+        const character = source[index];
+        if (inString) {
+          if (escaped) escaped = false;
+          else if (character === "\\") escaped = true;
+          else if (character === '"') inString = false;
+          continue;
+        }
+        if (character === '"') {
+          inString = true;
+          continue;
+        }
+        if (character === "{" || character === "[") {
+          stack.push(character);
+          continue;
+        }
+        if (character === "}" || character === "]") {
+          const opening = stack.at(-1);
+          if ((character === "}" && opening !== "{") || (character === "]" && opening !== "[")) break;
+          stack.pop();
+          if (stack.length === 0) {
+            candidates.add(source.slice(start, index + 1));
+            break;
+          }
+        }
+      }
+    }
+  }
+  for (const candidate of candidates) {
+    for (const value of [candidate, candidate.replace(/[“”]/g, '"')]) {
+      try {
+        return JSON.parse(value);
+      } catch {
+        // Try the next balanced candidate. The content validator remains the final gate.
+      }
+    }
+  }
+  throw new Error("AI returned invalid JSON");
 }
 
 async function aiJson(env, state, system, user, maxTokens = 260) {
@@ -277,8 +307,8 @@ async function aiJson(env, state, system, user, maxTokens = 260) {
 }
 
 async function decideFacebookReply(env, state, comment) {
-  const system = `You write concise Facebook Page replies for PencilProof. ${BRAND_CONTEXT}\n\nReturn JSON only: {"action":"reply"|"ignore","reply":"...","reason":"..."}. Reply only to genuine engagement or relevant car-finance/dealer-quote questions. Ignore spam, bait, harassment, politics, unrelated comments, legal disputes, credit-repair requests, individualized legal/financial advice, and requests requiring private paperwork. Never request SSNs, account numbers, DOB, addresses, or sensitive personal data. Never claim PencilProof negotiates, contacts dealers, guarantees savings, or gives legal/financial advice. If replying, stay under 350 characters, use no hashtags, and avoid hard selling.`;
-  const user = `Parent post: ${String(comment.postText ?? "").slice(0, 800)}\nComment by ${comment.username || "unknown"}: ${String(comment.text ?? "").slice(0, 1200)}\nPencilProof URL: https://pencilproof.com`;
+  const system = `You write concise Facebook Page replies for PencilProof. ${BRAND_CONTEXT}\n\nReturn JSON only: {"action":"reply"|"ignore","reply":"...","reason":"..."}. Reply only to genuine engagement or relevant car-finance/dealer-quote questions. Ignore spam, bait, harassment, politics, unrelated comments, legal disputes, credit-repair requests, individualized legal/financial advice, and requests requiring private paperwork. Never request SSNs, account numbers, DOB, addresses, or sensitive personal data. Never claim PencilProof negotiates, contacts dealers, guarantees savings, or gives legal/financial advice. If replying, answer the question directly, invite one useful follow-up question, and include the tracked free-review link only when it naturally helps. Stay under 350 characters, use no hashtags, and avoid hard selling.`;
+  const user = `Parent post: ${String(comment.postText ?? "").slice(0, 800)}\nComment by ${comment.username || "unknown"}: ${String(comment.text ?? "").slice(0, 1200)}\nTracked free-review link: ${publicPilotUrl("facebook", "reply-qa")}`;
   const parsed = await aiJson(env, state, system, user, 240);
   const reply = typeof parsed?.reply === "string" ? parsed.reply.trim().slice(0, 500) : "";
   return {
@@ -287,15 +317,52 @@ async function decideFacebookReply(env, state, comment) {
   };
 }
 
-async function generateFacebookPost(env, state, recentPostTexts) {
-  const system = `You create educational Facebook Page posts for PencilProof. ${BRAND_CONTEXT}\n\nReturn JSON only: {"post":"..."}. Write one concrete, useful car-finance quote-checking tip. Rotate among APR, amount financed, add-ons, VSC, GAP, prepaid maintenance, tire/wheel, trade equity, negative equity, cash down, rebates, term, and monthly-payment math. Avoid fearmongering, accusations against dealers, guaranteed savings, individualized advice, and legal claims. Keep it concise and readable, ideally under 500 characters. Include https://pencilproof.com only when natural and use no more than 2 hashtags.`;
-  const recent = recentPostTexts.length
-    ? recentPostTexts.slice(-8).map((text, index) => `${index + 1}. ${String(text).slice(0, 400)}`).join("\n")
-    : "No prior automated Facebook posts recorded.";
-  const parsed = await aiJson(env, state, system, `Avoid repeating these recent posts:\n${recent}`, 260);
-  const post = typeof parsed?.post === "string" ? parsed.post.trim().slice(0, 1000) : "";
-  if (!post) throw new Error("AI did not generate a Facebook post");
-  return post;
+async function generateFacebookPost(env, state, now = new Date()) {
+  const platform = "facebook";
+  const history = contentHistoryForPlatform(state, platform);
+  const primaryPlan = selectContentPlan(now, platform, history);
+  const attempt = async (plan, promptHistory = history) => {
+    const parsed = await aiJson(
+      env,
+      state,
+      `You are the content engine for PencilProof. ${BRAND_CONTEXT}\n\n${contentPrompt(platform, plan, promptHistory)}`,
+      `Assigned platform: ${platform}\nAssigned content plan: ${JSON.stringify(plan)}\nCreate the post now.`,
+      1400,
+    );
+    return formatSocialPost(typeof parsed?.post === "string" ? parsed.post : "");
+  };
+
+  let firstDraft = "";
+  let firstError = null;
+  try {
+    firstDraft = await attempt(primaryPlan);
+  } catch (error) {
+    firstError = error;
+    if (!safeErrorMessage(error).includes("AI returned invalid JSON")) throw error;
+  }
+  const firstValidation = validateSocialPost(firstDraft, primaryPlan, history, platform);
+  if (!firstError && firstValidation.ok) {
+    return { post: firstDraft, plan: primaryPlan, validation: firstValidation, rewritten: false, fallback: false };
+  }
+
+  const rewritePlan = selectContentPlan(new Date(new Date(now).getTime() + 86400000), platform, [
+    ...history,
+    { ...primaryPlan, post: firstDraft },
+  ]);
+  try {
+    const rewrittenDraft = await attempt(rewritePlan, [...history, { ...primaryPlan, post: firstDraft }]);
+    const rewrittenValidation = validateSocialPost(rewrittenDraft, rewritePlan, history, platform);
+    if (rewrittenValidation.ok) {
+      return { post: rewrittenDraft, plan: rewritePlan, validation: rewrittenValidation, rewritten: true, fallback: false };
+    }
+  } catch (error) {
+    if (!safeErrorMessage(error).includes("AI returned invalid JSON")) throw error;
+  }
+
+  const fallback = buildFallbackPost(rewritePlan, platform, history);
+  const fallbackValidation = validateSocialPost(fallback, rewritePlan, history, platform);
+  if (!fallbackValidation.ok) throw new Error(`Facebook content fallback failed validation: ${fallbackValidation.reasons.join(", ")}`);
+  return { post: fallback, plan: rewritePlan, validation: fallbackValidation, rewritten: true, fallback: true };
 }
 
 async function getFacebookPosts(env, limit = 10) {
@@ -318,6 +385,51 @@ async function getFacebookPosts(env, limit = 10) {
       created: String(item.created_time ?? ""),
       postUrl: String(item.permalink_url ?? ""),
     }));
+}
+
+async function getFacebookPostMetrics(env, post, now = new Date()) {
+  const source = `${facebookGraphBase(env)}/${encodeURIComponent(post.id)}`;
+  // The status sampler is intentionally one provider request per post. The
+  // engagement summary is stable across post types and gives real values
+  // without a fallback cascade that can exhaust the Worker budget.
+  const fields = new URLSearchParams({ fields: "comments.limit(0).summary(true),reactions.limit(0).summary(true),shares" });
+  try {
+    const summary = await facebookJson(
+      env,
+      `/${encodeURIComponent(post.id)}?${fields}`,
+      {},
+      "Facebook post engagement summary",
+    );
+    const comments = numericMetric(summary.comments?.summary?.total_count);
+    const likes = numericMetric(summary.reactions?.summary?.total_count);
+    const shares = numericMetric(summary.shares?.count);
+    const engagementValues = [comments, likes, shares].filter((value) => value !== null);
+    const engagement = engagementValues.length
+      ? engagementValues.reduce((sum, value) => sum + value, 0)
+      : null;
+    return postMetricsRecord({
+      platform: "facebook",
+      post,
+      metrics: { comments, likes, shares, engagement },
+      rawMetrics: { "comments.summary.total_count": comments, "reactions.summary.total_count": likes, "shares.count": shares },
+      observations: {
+        comments: { providerMetric: "comments.summary.total_count", source },
+        likes: { providerMetric: "reactions.summary.total_count", source },
+        shares: { providerMetric: "shares.count", source },
+        engagement: { kind: "derived", formula: "comments + likes + shares", source },
+      },
+      source,
+      fetchedAt: now.toISOString(),
+    });
+  } catch (error) {
+    return postMetricsRecord({
+      platform: "facebook",
+      post,
+      fetchedAt: now.toISOString(),
+      source,
+      error: safeErrorMessage(error),
+    });
+  }
 }
 
 async function getFacebookComments(env, post) {
@@ -406,6 +518,8 @@ async function runFacebookAutomation(env, state, now = new Date()) {
     repliesPosted: 0,
     commentsIgnored: 0,
     postPublished: false,
+    contentPlans: [],
+    contentFallbacks: 0,
     aiCalls: 0,
     warnings: [],
   };
@@ -435,6 +549,18 @@ async function runFacebookAutomation(env, state, now = new Date()) {
     posts = await getFacebookPosts(env, 10);
   } catch (error) {
     summary.warnings.push(`facebook history: ${safeErrorMessage(error)}`);
+  }
+
+  const recentForMetrics = posts.slice(0, MAX_METRIC_POSTS_PER_RUN);
+  const refreshedAt = now.getTime() - (6 * 60 * 60 * 1000);
+  const staleForMetrics = recentForMetrics.filter((post) => {
+    const previous = state.postMetrics.find((item) => String(item.id) === String(post.id));
+    const previousAt = Date.parse(String(previous?.fetchedAt ?? ""));
+    return !previous || !Number.isFinite(previousAt) || previousAt < refreshedAt;
+  });
+  if (staleForMetrics.length > 0) {
+    const refreshedMetrics = await Promise.all(staleForMetrics.map((post) => getFacebookPostMetrics(env, post, now)));
+    state.postMetrics = mergePostMetrics(state.postMetrics, refreshedMetrics, MAX_POST_METRICS);
   }
 
   outer: for (const post of posts) {
@@ -508,7 +634,8 @@ async function runFacebookAutomation(env, state, now = new Date()) {
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean);
   const facebookRequested = requested.length === 0 || requested.includes("facebook");
-  const intervalHours = clampInteger(env.SOCIAL_POST_INTERVAL_HOURS, DEFAULT_POST_INTERVAL_HOURS, 6, 720);
+  const intervalHours = clampInteger(env.SOCIAL_POST_INTERVAL_HOURS, DEFAULT_POST_INTERVAL_HOURS, 36, 720);
+  const maxPostsPerDay = clampInteger(env.SOCIAL_MAX_POSTS_PER_DAY, 1, 1, 10);
   const activeStartHour = clampInteger(env.SOCIAL_ACTIVE_START_HOUR, DEFAULT_ACTIVE_START_HOUR, 0, 23);
   const activeEndHour = clampInteger(env.SOCIAL_ACTIVE_END_HOUR, DEFAULT_ACTIVE_END_HOUR, 0, 23);
 
@@ -520,19 +647,31 @@ async function runFacebookAutomation(env, state, now = new Date()) {
     activeStartHour,
     activeEndHour,
     postsToday: state.counters.posts,
+    maxPostsPerDay,
   });
 
   if (eligibleToPublish) {
     const { date } = localClockParts(now, timeZone);
-    const publishKey = `${date}:facebook`;
+    const publishKey = `${date}:facebook:${state.counters.posts + 1}`;
     if (!state.publishedKeys.includes(publishKey)) {
       try {
-        const generated = await generateFacebookPost(
-          env,
-          state,
-          state.recentPosts.map((item) => item.post).filter(Boolean),
-        );
-        const publishedPost = routePostToPilot(generated, "facebook");
+        const generated = await generateFacebookPost(env, state, now);
+        summary.contentPlans.push({
+          platform: "facebook",
+          context: generated.plan.context,
+          angle: generated.plan.angle,
+          takeaway: generated.plan.takeaway,
+          structure: generated.plan.structure,
+          openingStyle: generated.plan.openingStyle,
+          hook: generated.plan.hook,
+          contentFormat: generated.plan.contentFormat,
+          callToAction: generated.plan.callToAction,
+          rewritten: generated.rewritten,
+          fallback: generated.fallback,
+          validation: generated.validation,
+        });
+        if (generated.fallback) summary.contentFallbacks += 1;
+        const publishedPost = routePostToPilot(generated.post, "facebook", generated.plan.structure);
         const result = await publishFacebook(env, publishedPost);
         state.publishedKeys.push(publishKey);
         state.lastPostAt = now.toISOString();
@@ -544,7 +683,19 @@ async function runFacebookAutomation(env, state, now = new Date()) {
           ...(postUrl ? { url: postUrl } : {}),
         };
         state.counters.posts += 1;
-        state.recentPosts.push({ id: state.lastPostId, post: publishedPost, created: now.toISOString() });
+        state.contentHistoryByPlatform.facebook.push(contentHistoryEntry("facebook", generated.plan, generated.post, now, {
+          id: state.lastPostId,
+          url: postUrl || null,
+          rewritten: generated.rewritten,
+          fallback: generated.fallback,
+        }));
+        state.recentPosts.push({
+          platform: "facebook",
+          id: state.lastPostId,
+          post: generated.post,
+          created: now.toISOString(),
+          postUrl: postUrl || "",
+        });
         summary.postPublished = true;
       } catch (error) {
         summary.warnings.push(`facebook publish: ${safeErrorMessage(error)}`);
@@ -556,6 +707,7 @@ async function runFacebookAutomation(env, state, now = new Date()) {
   state.repliedComments = trimUnique(state.repliedComments, MAX_SEEN_COMMENTS);
   state.ownCommentIds = trimUnique([...ownCommentIds], MAX_OWN_COMMENT_IDS);
   state.recentPosts = state.recentPosts.slice(-MAX_RECENT_POSTS);
+  state.contentHistoryByPlatform.facebook = state.contentHistoryByPlatform.facebook.slice(-40);
   state.publishedKeys = trimUnique(state.publishedKeys, MAX_PUBLISHED_KEYS);
   state.lastRunAt = new Date().toISOString();
   state.lastError = summary.warnings.length ? summary.warnings.slice(-5).join(" | ") : null;
@@ -575,91 +727,122 @@ async function triggerFacebookRun(env) {
   return response;
 }
 
-function recentPostCheck(posts) {
+const VERIFICATION_STATES = new Set(["not_configured", "configured", "verified", "stale", "needs_attention"]);
+const METRICS_STATES = new Set(["not_attempted", "measured", "partial", "no_post", "needs_attention"]);
+
+function boundedText(value, max = 500) {
+  return String(value ?? "").trim().slice(0, max);
+}
+
+function sanitizeStoredError(value) {
+  if (!value) return null;
+  const source = typeof value === "string" ? { message: value } : value;
+  const category = ["authentication", "permission", "account_mismatch", "rate_limited", "provider", "malformed_response"].includes(String(source.category))
+    ? String(source.category)
+    : "provider";
   return {
-    apiReachable: true,
-    recentPostCount: posts.length,
-    latestRemotePostAt: posts
-      .map((post) => String(post.created ?? ""))
-      .filter(Boolean)
-      .sort()
-      .at(-1) ?? null,
+    category,
+    httpStatus: Number.isFinite(Number(source.httpStatus)) ? Number(source.httpStatus) : null,
+    providerCode: source.providerCode === undefined || source.providerCode === null ? null : boundedText(source.providerCode, 80),
+    message: boundedText(source.message ?? source.error ?? "Provider error"),
   };
 }
 
-async function buildReadOnlyAudit(env, ctx) {
-  const checkedAt = new Date().toISOString();
-  const directAudit = await runDirectReadOnlyAudit(env, new Date(checkedAt));
-  const directResponse = await directWorker.fetch(new Request("https://social.internal/status"), env, ctx);
-  const directStatus = directResponse.ok ? await directResponse.json() : {};
-  const facebookStatusResponse = await stateStub(env).fetch(new Request("https://social.internal/facebook-status"));
-  const facebookStatus = facebookStatusResponse.ok ? await facebookStatusResponse.json() : {};
-
-  let facebookResult = {
-    configured: facebookConfigured(env),
-    apiReachable: false,
-    recentPostCount: 0,
-    latestRemotePostAt: null,
-  };
-  if (facebookResult.configured) {
-    try {
-      facebookResult = { configured: true, ...recentPostCheck(await getFacebookPosts(env, 5)) };
-    } catch (error) {
-      facebookResult.error = safeErrorMessage(error);
-    }
-  }
-
-  const lastPublishedByPlatform = {
-    ...(directStatus.lastPublishedByPlatform ?? {}),
-    ...(facebookStatus.lastPublishedByPlatform ?? {}),
-  };
-  const weekStart = Date.now() - (7 * 24 * 60 * 60 * 1000);
-  const targetPlatforms = ["facebook", "instagram", "threads"];
-  const platforms = {
-    facebook: { ...facebookResult, lastPublished: lastPublishedByPlatform.facebook ?? null },
-    instagram: {
-      ...(directAudit.platforms.instagram ?? { configured: false, apiReachable: false, recentPostCount: 0, latestRemotePostAt: null }),
-      lastPublished: lastPublishedByPlatform.instagram ?? null,
+function sanitizeStoredMetric(record) {
+  if (!record || typeof record !== "object") return null;
+  const sanitized = postMetricsRecord({
+    platform: boundedText(record.platform, 30),
+    post: {
+      id: boundedText(record.id, 200),
+      created: boundedText(record.created, 80),
+      postUrl: safePostUrl(record.url),
     },
-    threads: {
-      ...(directAudit.platforms.threads ?? { configured: false, apiReachable: false, recentPostCount: 0, latestRemotePostAt: null }),
-      lastPublished: lastPublishedByPlatform.threads ?? null,
-    },
-  };
-  for (const platform of targetPlatforms) {
-    const lastPublished = platforms[platform].lastPublished;
-    platforms[platform].publishedWithin7Days = Boolean(lastPublished?.at && Date.parse(lastPublished.at) >= weekStart);
-  }
+    metrics: record.metrics,
+    fetchedAt: boundedText(record.fetchedAt, 80) || new Date(0).toISOString(),
+    error: record.error ? boundedText(record.error, 300) : null,
+    source: boundedText(record.provenance?.source, 300) || "stored metric record",
+    rawMetrics: record.provenance?.rawMetrics,
+    observations: record.provenance?.observations,
+  });
+  return sanitized.platform && sanitized.id ? sanitized : null;
+}
 
-  const errors = [];
-  for (const [platform, result] of Object.entries(platforms)) {
-    if (result.error) errors.push(`${platform}: ${result.error}`);
-  }
-  if (directStatus.lastError) errors.push(`direct automation: ${directStatus.lastError}`);
-  if (facebookStatus.lastError) errors.push(`facebook automation: ${facebookStatus.lastError}`);
-
+function sanitizeStoredPlatform(value) {
+  const source = value && typeof value === "object" ? value : {};
+  const connectionState = VERIFICATION_STATES.has(String(source.connectionState)) ? String(source.connectionState) : "configured";
+  const metricsState = METRICS_STATES.has(String(source.metricsState)) ? String(source.metricsState) : "not_attempted";
+  const postMetrics = (Array.isArray(source.postMetrics) ? source.postMetrics : [])
+    .map(sanitizeStoredMetric)
+    .filter(Boolean);
   return {
-    ok: errors.length === 0,
-    mode: "read-only-health-audit",
-    checkedAt,
-    automation: {
-      enabled: parseBoolean(env.SOCIAL_AUTOMATION_ENABLED, true),
-      publishingEnabled: parseBoolean(env.SOCIAL_PUBLISH_ENABLED, false),
-      repliesEnabled: false,
-      configuredPlatforms: combinedConfiguredPlatforms(env),
-      lastDirectRunAt: directStatus.lastRunAt ?? null,
-      lastFacebookRunAt: facebookStatus.lastRunAt ?? null,
-    },
+    configured: source.configured === true,
+    connectionState,
+    apiReachable: source.apiReachable === true,
+    lastAttemptAt: boundedText(source.lastAttemptAt, 80) || null,
+    lastVerifiedAt: boundedText(source.lastVerifiedAt, 80) || null,
+    verificationExpiresAt: boundedText(source.verificationExpiresAt, 80) || null,
+    expectedAccountId: boundedText(source.expectedAccountId, 200) || null,
+    verifiedAccountId: boundedText(source.verifiedAccountId, 200) || null,
+    accountMatched: source.accountMatched === true,
+    verifiedAt: boundedText(source.verifiedAt, 80) || null,
+    verificationMethod: boundedText(source.verificationMethod, 200) || null,
+    connectionError: sanitizeStoredError(source.connectionError),
+    recentPostCount: clampInteger(source.recentPostCount, 0, 0, 100),
+    latestRemotePostAt: boundedText(source.latestRemotePostAt, 80) || null,
+    metricsState,
+    metricsAttemptAt: boundedText(source.metricsAttemptAt, 80) || null,
+    metricsError: sanitizeStoredError(source.metricsError),
+    providerRequestsUsed: clampInteger(source.providerRequestsUsed, 0, 0, READ_ONLY_REQUEST_BUDGET),
+    metricsStatus: boundedText(source.metricsStatus, 40) || "not_sampled",
+    postMetrics: mergeNewestPostMetrics(postMetrics).slice(-MAX_POST_METRICS),
+  };
+}
+
+function sanitizeStoredAudit(payload) {
+  const source = payload && typeof payload === "object" ? payload : {};
+  const platforms = {};
+  for (const platform of READ_ONLY_PLATFORM_ORDER) platforms[platform] = sanitizeStoredPlatform(source.platforms?.[platform]);
+  const automation = source.automation && typeof source.automation === "object"
+    ? {
+        enabled: source.automation.enabled === true,
+        publishingEnabled: source.automation.publishingEnabled === true,
+        repliesEnabled: source.automation.repliesEnabled === true,
+        configuredPlatforms: Array.isArray(source.automation.configuredPlatforms)
+          ? source.automation.configuredPlatforms.map((item) => boundedText(item, 30)).filter(Boolean).slice(0, 10)
+          : [],
+      }
+    : null;
+  return {
+    ok: source.ok !== false,
+    mode: "read-only-on-demand-sampler",
+    checkedAt: boundedText(source.checkedAt, 80) || new Date().toISOString(),
+    collectedAt: boundedText(source.collectedAt ?? source.checkedAt, 80) || new Date().toISOString(),
+    selectedPlatform: boundedText(source.selectedPlatform, 30) || null,
+    nextPlatform: boundedText(source.nextPlatform, 30) || null,
+    nextEligibleRefreshAt: boundedText(source.nextEligibleRefreshAt, 80) || null,
+    providerRequestsUsed: clampInteger(source.providerRequestsUsed ?? source.requestsUsed, 0, 0, READ_ONLY_REQUEST_BUDGET),
+    requestsUsed: clampInteger(source.providerRequestsUsed ?? source.requestsUsed, 0, 0, READ_ONLY_REQUEST_BUDGET),
+    requestBudget: READ_ONLY_REQUEST_BUDGET,
+    verifiedCount: clampInteger(source.verifiedCount, 0, 0, READ_ONLY_PLATFORM_ORDER.length),
+    verificationTotal: READ_ONLY_PLATFORM_ORDER.length,
     platforms,
-    weeklyPromotion: {
-      windowDays: 7,
-      completed: targetPlatforms.every((platform) => platforms[platform].publishedWithin7Days),
-      targetPlatforms,
-      lastPublishedByPlatform,
-    },
-    errors,
+    errors: Array.isArray(source.errors) ? source.errors.map((error) => boundedText(error, 300)).filter(Boolean).slice(-20) : [],
+    postMetrics: (Array.isArray(source.postMetrics) ? source.postMetrics : [])
+      .map(sanitizeStoredMetric)
+      .filter(Boolean)
+      .reduce((records, record) => mergeNewestPostMetrics(records, [record]), [])
+      .slice(-MAX_POST_METRICS),
+    automation,
     sideEffects: [],
   };
+}
+
+async function deleteStorageKey(storage, key) {
+  if (typeof storage.delete === "function") {
+    await storage.delete(key);
+  } else {
+    await storage.put(key, undefined);
+  }
 }
 
 export class SocialAutomationState extends DirectSocialAutomationState {
@@ -683,23 +866,249 @@ export class SocialAutomationState extends DirectSocialAutomationState {
 
     if (request.method === "GET" && url.pathname === "/facebook-status") {
       const state = normalizeFacebookState(await this.state.storage.get(FACEBOOK_STATE_KEY));
+      const readOnlyAudit = await this.state.storage.get(STATUS_STATE_KEY);
+      const businessStatus = await this.state.storage.get(BUSINESS_STATUS_KEY);
+      const repairStatus = await this.state.storage.get(OPERATIONS_REPAIR_KEY);
       return responseJson({
         lastRunAt: state.lastRunAt,
         lastPostAt: state.lastPostAt,
         lastError: state.lastError,
+        contentHistoryByPlatform: state.contentHistoryByPlatform,
         lastPublishedByPlatform: {
           ...state.lastPublishedByPlatform,
           ...(state.lastPublishedByPlatform.facebook
             ? { facebook: hydrateFacebookPostUrl(state.lastPublishedByPlatform.facebook, state.recentPosts) }
             : {}),
         },
+        postMetrics: state.postMetrics,
+        readOnlyAudit: readOnlyAudit && typeof readOnlyAudit === "object" ? readOnlyAudit : null,
+        businessStatus: businessStatus && typeof businessStatus === "object" ? businessStatus : null,
+        repairStatus: repairStatus && typeof repairStatus === "object" ? repairStatus : null,
         counters: state.counters,
         lastSummary: state.lastSummary,
       });
     }
 
+    if (request.method === "POST" && url.pathname === "/claim-read-only-verification") {
+      let payload = {};
+      try {
+        payload = await request.json();
+      } catch {
+        return responseJson({ ok: false, error: "Invalid verification claim payload" }, 400);
+      }
+      const token = boundedText(payload.token, 100);
+      if (!token) return responseJson({ ok: false, error: "Verification claim token is required" }, 400);
+      const now = Date.parse(String(payload.now ?? ""));
+      const nowMs = Number.isFinite(now) ? now : Date.now();
+      const storedAudit = await this.state.storage.get(STATUS_STATE_KEY);
+      const audit = storedAudit && typeof storedAudit === "object" ? storedAudit : null;
+      const nextEligible = Date.parse(String(audit?.nextEligibleRefreshAt ?? ""));
+      if (Number.isFinite(nextEligible) && nextEligible > nowMs) {
+        return responseJson({ ok: false, reason: "cooldown", audit });
+      }
+      const existingLease = await this.state.storage.get(VERIFICATION_LEASE_KEY);
+      if (existingLease?.expiresAt && Number(existingLease.expiresAt) > nowMs) {
+        return responseJson({ ok: false, reason: "lease", audit });
+      }
+      const lease = {
+        token,
+        claimedAt: new Date(nowMs).toISOString(),
+        expiresAt: nowMs + READ_ONLY_VERIFICATION_LEASE_MS,
+      };
+      await this.state.storage.put(VERIFICATION_LEASE_KEY, lease);
+      return responseJson({ ok: true, expiresAt: new Date(lease.expiresAt).toISOString() });
+    }
+
+    if (request.method === "POST" && url.pathname === "/release-read-only-verification") {
+      let payload = {};
+      try {
+        payload = await request.json();
+      } catch {
+        return responseJson({ ok: false, error: "Invalid verification release payload" }, 400);
+      }
+      const token = boundedText(payload.token, 100);
+      const lease = await this.state.storage.get(VERIFICATION_LEASE_KEY);
+      if (token && lease?.token === token) await deleteStorageKey(this.state.storage, VERIFICATION_LEASE_KEY);
+      return responseJson({ ok: true });
+    }
+
+    if (request.method === "POST" && url.pathname === "/read-only-audit") {
+      let payload = {};
+      try {
+        payload = await request.json();
+      } catch {
+        return responseJson({ ok: false, error: "Invalid read-only audit payload" }, 400);
+      }
+      const readOnlyAudit = sanitizeStoredAudit(payload);
+      await this.state.storage.put(STATUS_STATE_KEY, readOnlyAudit);
+      const token = boundedText(payload.verificationToken, 100);
+      const lease = await this.state.storage.get(VERIFICATION_LEASE_KEY);
+      if (token && lease?.token === token) await deleteStorageKey(this.state.storage, VERIFICATION_LEASE_KEY);
+      return responseJson({ ok: true });
+    }
+
+    if (request.method === "POST" && url.pathname === "/business-status") {
+      let payload = {};
+      try {
+        payload = await request.json();
+      } catch {
+        return responseJson({ ok: false, error: "Invalid business status payload" }, 400);
+      }
+      const snapshot = payload && typeof payload === "object" ? payload : {};
+      await this.state.storage.put(BUSINESS_STATUS_KEY, snapshot);
+      return responseJson({ ok: true });
+    }
+
+    if (request.method === "POST" && url.pathname === "/operations-repair") {
+      let payload = {};
+      try {
+        payload = await request.json();
+      } catch {
+        return responseJson({ ok: false, error: "Invalid operations repair payload" }, 400);
+      }
+      const repairStatus = {
+        checkedAt: boundedText(payload.checkedAt, 80) || new Date().toISOString(),
+        attempted: Array.isArray(payload.attempted) ? payload.attempted.map((item) => boundedText(item, 60)).filter(Boolean).slice(0, 5) : [],
+        repaired: Array.isArray(payload.repaired) ? payload.repaired.map((item) => boundedText(item, 60)).filter(Boolean).slice(0, 5) : [],
+        failed: Array.isArray(payload.failed) ? payload.failed.map((item) => boundedText(item, 300)).filter(Boolean).slice(0, 5) : [],
+      };
+      await this.state.storage.put(OPERATIONS_REPAIR_KEY, repairStatus);
+      return responseJson({ ok: true });
+    }
+
     return super.fetch(request);
   }
+}
+
+export async function collectScheduledOperationsStatus(env, now = new Date()) {
+  const stub = stateStub(env);
+  const currentResponse = await stub.fetch(new Request("https://social.internal/facebook-status"));
+  const current = currentResponse.ok ? await currentResponse.json() : {};
+  const lastSocialCollection = Date.parse(String(current.readOnlyAudit?.collectedAt ?? current.readOnlyAudit?.checkedAt ?? ""));
+  if (!Number.isFinite(lastSocialCollection) || now.getTime() - lastSocialCollection >= OPERATIONS_COLLECTION_INTERVAL_MS) {
+    const verificationToken = typeof globalThis.crypto?.randomUUID === "function"
+      ? globalThis.crypto.randomUUID()
+      : `${now.getTime()}-${Math.random().toString(36).slice(2)}`;
+    const claimResponse = await stub.fetch(new Request("https://social.internal/claim-read-only-verification", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: verificationToken, now: now.toISOString() }),
+    }));
+    const claim = claimResponse.ok ? await claimResponse.json() : { ok: false };
+    if (claim.ok) {
+      try {
+        const sampled = await runReadOnlyStatusSampler(env, current.readOnlyAudit ?? null, now, {
+          lastPublishedByPlatform: current.lastPublishedByPlatform ?? {},
+        });
+        sampled.verificationToken = verificationToken;
+        await stub.fetch(new Request("https://social.internal/read-only-audit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(sampled),
+        }));
+      } catch (error) {
+        await stub.fetch(new Request("https://social.internal/release-read-only-verification", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: verificationToken }),
+        }));
+        console.error(JSON.stringify({ event: "operations_social_collection_error", error: safeErrorMessage(error) }));
+      }
+    }
+  }
+
+  await syncBusinessOperationsStatus(env, stub, current.businessStatus, now);
+}
+
+async function syncBusinessOperationsStatus(env, stub, currentBusinessStatus, now = new Date(), force = false) {
+  const lastBusinessSync = Date.parse(String(currentBusinessStatus?.generatedAt ?? ""));
+  if (
+    !env.AUDIT_SERVICE?.fetch
+    || (!force && Number.isFinite(lastBusinessSync) && now.getTime() - lastBusinessSync < OPERATIONS_COLLECTION_INTERVAL_MS)
+  ) return currentBusinessStatus ?? null;
+
+  try {
+    const response = await env.AUDIT_SERVICE.fetch(new Request("https://pencilproof-audit.internal/api/internal/operations-status"));
+    if (!response.ok) throw new Error(`Audit operations endpoint returned HTTP ${response.status}.`);
+    const businessStatus = await response.json();
+    await stub.fetch(new Request("https://social.internal/business-status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(businessStatus),
+    }));
+    return businessStatus;
+  } catch (error) {
+    console.error(JSON.stringify({ event: "operations_business_sync_error", error: safeErrorMessage(error) }));
+    return currentBusinessStatus ?? null;
+  }
+}
+
+async function mergeLiveEmailAutomationStatus(env, currentBusinessStatus) {
+  if (!env.AUDIT_SERVICE?.fetch) return currentBusinessStatus ?? null;
+  try {
+    const response = await env.AUDIT_SERVICE.fetch(new Request("https://pencilproof-audit.internal/api/internal/automation-status"));
+    if (!response.ok) throw new Error(`Audit automation endpoint returned HTTP ${response.status}.`);
+    const live = await response.json();
+    if (!live?.email || typeof live.email !== "object") return currentBusinessStatus ?? null;
+    return {
+      ...(currentBusinessStatus && typeof currentBusinessStatus === "object" ? currentBusinessStatus : {}),
+      generatedAt: currentBusinessStatus?.generatedAt ?? null,
+      email: {
+        ...(currentBusinessStatus?.email && typeof currentBusinessStatus.email === "object" ? currentBusinessStatus.email : {}),
+        automationCheckedAt: live.generatedAt ?? null,
+        automation: live.email.automation ?? currentBusinessStatus?.email?.automation ?? null,
+        localDeliveries: live.email.localDeliveries ?? currentBusinessStatus?.email?.localDeliveries ?? null,
+      },
+    };
+  } catch (error) {
+    console.error(JSON.stringify({ event: "operations_email_status_error", error: safeErrorMessage(error) }));
+    return currentBusinessStatus ?? null;
+  }
+}
+
+function heartbeatIsStale(value, now) {
+  const measured = Date.parse(String(value ?? ""));
+  return !Number.isFinite(measured) || now.getTime() - measured > SOCIAL_HEARTBEAT_STALE_MS;
+}
+
+export async function repairScheduledSocialAutomation(env, controller, now = new Date()) {
+  const repair = { checkedAt: now.toISOString(), attempted: [], repaired: [], failed: [] };
+  if (!parseBoolean(env.SOCIAL_AUTOMATION_ENABLED, true)) return repair;
+  const directResponse = await directWorker.fetch(new Request("https://social.internal/status"), env);
+  const directStatus = directResponse.ok ? await directResponse.json() : {};
+  const facebookResponse = await stateStub(env).fetch(new Request("https://social.internal/facebook-status"));
+  const facebookStatus = facebookResponse.ok ? await facebookResponse.json() : {};
+
+  if (
+    detectConfiguredPlatforms(env).length > 0
+    && (heartbeatIsStale(directStatus.lastRunAt, now) || Boolean(String(directStatus.lastError ?? "").trim()))
+  ) {
+    repair.attempted.push("threads/instagram automation");
+    try {
+      await directWorker.scheduled(controller, env, { waitUntil() {} });
+      repair.repaired.push("threads/instagram automation");
+    } catch (error) {
+      repair.failed.push(`Threads/Instagram recovery: ${safeErrorMessage(error)}`);
+    }
+  }
+  if (
+    facebookConfigured(env)
+    && (heartbeatIsStale(facebookStatus.lastRunAt, now) || Boolean(String(facebookStatus.lastError ?? "").trim()))
+  ) {
+    repair.attempted.push("facebook automation");
+    try {
+      await triggerFacebookRun(env);
+      repair.repaired.push("facebook automation");
+    } catch (error) {
+      repair.failed.push(`Facebook recovery: ${safeErrorMessage(error)}`);
+    }
+  }
+  await stateStub(env).fetch(new Request("https://social.internal/operations-repair", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(repair),
+  }));
+  return repair;
 }
 
 export default {
@@ -718,33 +1127,102 @@ export default {
       });
     }
 
-    if (request.method === "GET" && url.pathname === "/status") {
-      const directResponse = await directWorker.fetch(request, env, ctx);
+    if (request.method === "GET" && (url.pathname === "/status" || url.pathname === "/status.json")) {
+      const directRequest = url.pathname === "/status.json"
+        ? new Request(new URL(`/status${url.search}`, request.url), request)
+        : request;
+      const directResponse = await directWorker.fetch(directRequest, env, ctx);
       const directStatus = directResponse.ok ? await directResponse.json() : {};
-      const facebookResponse = await stateStub(env).fetch(new Request("https://social.internal/facebook-status"));
+      const stub = stateStub(env);
+      const facebookResponse = await stub.fetch(new Request("https://social.internal/facebook-status"));
       const facebookStatus = facebookResponse.ok ? await facebookResponse.json() : {};
+      let businessStatus = facebookStatus.businessStatus ?? null;
+      businessStatus = await mergeLiveEmailAutomationStatus(env, businessStatus);
+      let cachedAudit = facebookStatus.readOnlyAudit && typeof facebookStatus.readOnlyAudit === "object"
+        ? applyVerificationFreshness(facebookStatus.readOnlyAudit, env, new Date())
+        : applyVerificationFreshness(null, env, new Date());
+      if (url.searchParams.get("refresh") === "1") {
+        const verificationToken = typeof globalThis.crypto?.randomUUID === "function"
+          ? globalThis.crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const claimResponse = await stub.fetch(new Request("https://social.internal/claim-read-only-verification", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: verificationToken, now: new Date().toISOString() }),
+        }));
+        const claim = claimResponse.ok ? await claimResponse.json() : { ok: false, reason: "claim_failed" };
+        if (!claim.ok) {
+          cachedAudit = claim.audit && typeof claim.audit === "object"
+            ? applyVerificationFreshness(claim.audit, env, new Date())
+            : cachedAudit;
+        } else {
+          const sampledAt = new Date();
+          const sampledAudit = await runReadOnlyStatusSampler(env, cachedAudit, sampledAt, {
+            platform: url.searchParams.get("platform"),
+            lastPublishedByPlatform: {
+              ...(directStatus.lastPublishedByPlatform ?? {}),
+              ...(facebookStatus.lastPublishedByPlatform ?? {}),
+            },
+          });
+          sampledAudit.verificationToken = verificationToken;
+          const saveResponse = await stub.fetch(new Request("https://social.internal/read-only-audit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(sampledAudit),
+          }));
+          if (!saveResponse.ok) {
+            await stub.fetch(new Request("https://social.internal/release-read-only-verification", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ token: verificationToken }),
+            }));
+            return responseJson({ ok: false, error: "Read-only status snapshot could not be saved." }, 502);
+          }
+          cachedAudit = applyVerificationFreshness(sampledAudit, env, sampledAt);
+        }
+        businessStatus = await syncBusinessOperationsStatus(env, stub, businessStatus, new Date(), true);
+      }
+      const cachedMetrics = Array.isArray(cachedAudit?.postMetrics) ? cachedAudit.postMetrics : [];
+      const mergedMetrics = mergeNewestPostMetrics(
+        directStatus.postMetrics,
+        facebookStatus.postMetrics,
+        cachedMetrics,
+      ).slice(-MAX_POST_METRICS);
       const directPublishedByPlatform = directStatus.lastPublishedByPlatform ?? {};
       const facebookPublishedByPlatform = facebookStatus.lastPublishedByPlatform ?? {};
-      const [hydratedDirectPublishedByPlatform, hydratedFacebookPublishedByPlatform] = await Promise.all([
-        hydrateStatusPostUrls(env, directPublishedByPlatform),
-        hydrateStatusPostUrls(env, facebookPublishedByPlatform),
-      ]);
       const status = {
         ...directStatus,
         automationEnabled: parseBoolean(env.SOCIAL_AUTOMATION_ENABLED, true),
-        publishEnabled: parseBoolean(env.SOCIAL_PUBLISH_ENABLED, false),
-        repliesEnabled: parseBoolean(env.SOCIAL_REPLY_ENABLED, true),
-        configuredPlatforms: combinedConfiguredPlatforms(env),
+         publishEnabled: parseBoolean(env.SOCIAL_PUBLISH_ENABLED, false),
+         repliesEnabled: parseBoolean(env.SOCIAL_REPLY_ENABLED, true),
+         configuredPlatforms: combinedConfiguredPlatforms(env),
+         readOnlyConfiguredPlatforms: readOnlyConfiguredPlatforms(env),
         lastPublishedByPlatform: {
-          ...hydratedDirectPublishedByPlatform,
-          ...hydratedFacebookPublishedByPlatform,
+          ...directPublishedByPlatform,
+          ...facebookPublishedByPlatform,
+        },
+        postMetrics: mergedMetrics.filter((record) => record?.platform !== "facebook"),
+         readOnlyAudit: cachedAudit,
+         businessStatus,
+        reporting: {
+          mode: "stored-on-demand-sampler",
+          collectedAt: cachedAudit?.collectedAt ?? cachedAudit?.checkedAt ?? null,
+          selectedPlatform: cachedAudit?.selectedPlatform ?? null,
+          nextPlatform: cachedAudit?.nextPlatform ?? null,
+          nextEligibleRefreshAt: cachedAudit?.nextEligibleRefreshAt ?? null,
+          providerRequestsUsed: Number(cachedAudit?.providerRequestsUsed ?? cachedAudit?.requestsUsed ?? 0),
+          requestsUsed: Number(cachedAudit?.providerRequestsUsed ?? cachedAudit?.requestsUsed ?? 0),
+          requestBudget: Number(cachedAudit?.requestBudget ?? READ_ONLY_REQUEST_BUDGET),
+          postRecords: mergedMetrics.length,
+          errors: Array.isArray(cachedAudit?.errors) ? cachedAudit.errors : [],
         },
         facebook: {
           configured: facebookConfigured(env),
           lastRunAt: facebookStatus.lastRunAt ?? null,
           lastPostAt: facebookStatus.lastPostAt ?? null,
           lastError: facebookStatus.lastError ?? null,
-          lastPublishedByPlatform: hydratedFacebookPublishedByPlatform,
+          lastPublishedByPlatform: facebookPublishedByPlatform,
+          postMetrics: mergedMetrics.filter((record) => record?.platform === "facebook"),
           counters: facebookStatus.counters ?? null,
           lastSummary: facebookStatus.lastSummary
             ? {
@@ -753,6 +1231,8 @@ export default {
                 repliesPosted: facebookStatus.lastSummary.repliesPosted ?? 0,
                 commentsIgnored: facebookStatus.lastSummary.commentsIgnored ?? 0,
                 postPublished: facebookStatus.lastSummary.postPublished ?? false,
+                contentPlans: facebookStatus.lastSummary.contentPlans ?? [],
+                contentFallbacks: facebookStatus.lastSummary.contentFallbacks ?? 0,
                 aiCalls: facebookStatus.lastSummary.aiCalls ?? 0,
                 warningCount: Array.isArray(facebookStatus.lastSummary.warnings)
                   ? facebookStatus.lastSummary.warnings.length
@@ -761,20 +1241,47 @@ export default {
             : null,
         },
       };
-      return wantsHtmlStatus(request)
-        ? statusPageResponse(status)
-        : responseJson(status);
+      const operations = buildOperationsSnapshot({
+        directStatus,
+        facebookStatus,
+        socialAudit: cachedAudit,
+        businessStatus,
+        env,
+        now: new Date(),
+      });
+      if (url.pathname !== "/status.json" && wantsHtmlStatus(request)) return operationsStatusPage(operations);
+      return responseJson(operations);
     }
 
     if (request.method === "GET" && url.pathname === "/audit") {
-      const audit = await buildReadOnlyAudit(env, ctx);
-      return responseJson(audit, audit.ok ? 200 : 503);
+      const response = await stateStub(env).fetch(new Request("https://social.internal/facebook-status"));
+      const facebookStatus = response.ok ? await response.json() : {};
+      const audit = facebookStatus.readOnlyAudit && typeof facebookStatus.readOnlyAudit === "object"
+         ? applyVerificationFreshness(facebookStatus.readOnlyAudit, env, new Date())
+        : {
+            ok: false,
+            mode: "read-only-on-demand-sampler",
+            collectedAt: null,
+            providerRequestsUsed: 0,
+            requestsUsed: 0,
+            requestBudget: READ_ONLY_REQUEST_BUDGET,
+            errors: ["No stored read-only sample exists yet."],
+            sideEffects: [],
+          };
+      return responseJson(audit, audit.ok === false && !audit.collectedAt ? 503 : 200);
     }
 
     return directWorker.fetch(request, env, ctx);
   },
 
   async scheduled(controller, env, ctx) {
+    if (controller.cron === OPERATIONS_COLLECTION_CRON) {
+      const now = new Date(controller.scheduledTime ?? Date.now());
+      await repairScheduledSocialAutomation(env, controller, now);
+      await collectScheduledOperationsStatus(env, now);
+      return;
+    }
+
     if (!parseBoolean(env.SOCIAL_AUTOMATION_ENABLED, true)) {
       console.log(JSON.stringify({ event: "social_meta_skipped", reason: "disabled" }));
       return;
@@ -788,9 +1295,9 @@ export default {
 
     if (!facebookConfigured(env)) {
       console.log(JSON.stringify({ event: "social_facebook_skipped", reason: "missing_page_credentials" }));
-      return;
+    } else {
+      await triggerFacebookRun(env);
     }
 
-    await triggerFacebookRun(env);
   },
 };

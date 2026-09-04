@@ -1749,8 +1749,12 @@ export const extractDealFromPdf = async (
     }
   }
 
+  if (pdfDocument.numPages > pagesProcessed && pagesProcessed === 10) {
+    warnings.push(`PencilProof processed the first 10 of ${pdfDocument.numPages} pages. Add any information from the remaining pages manually.`);
+  }
+
   const reconciled = reconcileQuotedPayment(withoutOfferSelectionFields(fields, offerMatrix));
-  warnings = reconciled.warnings;
+  warnings = [...warnings, ...reconciled.warnings];
   const fieldConfidence = confidenceFor(reconciled.fields, usedOcr ? "review" : "high");
   if (reconciled.warnings.length && reconciled.fields.quotedPayment) fieldConfidence.quotedPayment = "review";
   const fieldNames = Object.keys(reconciled.fields).map((field) => DEAL_FIELD_LABELS[field as keyof ImportedDealFields]);
@@ -1887,6 +1891,7 @@ const extractDealWithServerVision = async (
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
+      "X-PencilProof-Scan-Session": window.localStorage.getItem("pencilproof:analytics-session") ?? "",
       ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
     },
     body: JSON.stringify({
@@ -1907,6 +1912,7 @@ const extractDealWithServerVision = async (
     const code = payload.providerCode ? `_${payload.providerCode}` : "";
     throw new Error(payload.error === "AI_IMPORT_PROVIDER_ERROR" ? `AI_IMPORT_PROVIDER${code}` : (payload.error ?? "AI_IMPORT_UNAVAILABLE"));
   }
+
   const source = (payload.fields ?? {}) as ImportedDealFields;
   const offerMatrix = payload.offerMatrix?.options?.length
     ? {

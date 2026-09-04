@@ -27,7 +27,6 @@ import { track } from "@/lib/analytics";
 import VehiclePhoto from "@/app/components/VehiclePhoto";
 import PhoneCameraBridge from "@/app/components/PhoneCameraBridge";
 import PreCheckoutAccountGate from "@/app/components/PreCheckoutAccountGate";
-import PreCheckoutFeedback from "@/app/components/PreCheckoutFeedback";
 import AccountNav from "@/app/components/AccountNav";
 import { createLoadedClerk, getAuthContext, syncAccountContact } from "@/lib/clerk-client";
 
@@ -81,15 +80,12 @@ type PendingImport = {
 type CheckoutPayload = {
   fields: Partial<Deal>;
   confidence: PendingImport["confidence"];
-  fileName: string;
   offerMatrix: DealOfferMatrix | null;
   selectedOfferId: string | null;
   referralCode?: string;
-  preCheckoutFeedbackCompleted?: boolean;
 };
 
 const PENDING_CHECKOUT_KEY = "pencilproof:pending-checkout";
-const PRECHECKOUT_FEEDBACK_KEY = "pencilproof:pre-checkout-feedback-completed";
 const PAID_AUDIT_FEEDBACK_KEY = "pencilproof:paid-audit-feedback-completed";
 const QUOTE_BASELINE_KEY = "pencilproof:quote-baseline";
 const REFERRAL_CODE_KEY = "pencilproof:referral-code";
@@ -310,7 +306,6 @@ export default function AnalyzePage() {
   // Default to the public state so an unauthenticated visitor never gets a
   // client-side glimpse of the paid calculator while the host is being read.
   const [isPaidAuditHost, setIsPaidAuditHost] = useState(false);
-  const [auditHostResolved, setAuditHostResolved] = useState(false);
   const [deal, setDeal] = useState<Deal>(blank);
   const [copied, setCopied] = useState(false);
   const [dealImport, setDealImport] = useState<DealImportState>({ status: "idle", message: "", fields: [] });
@@ -326,10 +321,6 @@ export default function AnalyzePage() {
     worth: "",
   });
   const [auditFeedbackSent, setAuditFeedbackSent] = useState(false);
-  // The survey belongs to the current scan, not to the browser or account globally.
-  // This keeps it visible for a new quote while the handoff flag preserves the
-  // completed-before-payment decision across the checkout redirect.
-  const [preCheckoutFeedbackCompleted, setPreCheckoutFeedbackCompleted] = useState(false);
   const [sampleLoaded, setSampleLoaded] = useState(false);
   const savedAuditKey = useRef("");
   const [accountPromptDismissed, setAccountPromptDismissed] = useState(false);
@@ -351,7 +342,6 @@ export default function AnalyzePage() {
       window.location.hostname.toLowerCase() === "audit.pencilproof.com"
       && (window.location.pathname === "/analyze/secure" || window.location.pathname.startsWith("/analyze/secure/")),
     );
-    setAuditHostResolved(true);
   }, []);
 
   useEffect(() => {
@@ -476,7 +466,6 @@ export default function AnalyzePage() {
   }, [pendingCheckout]);
 
   useEffect(() => {
-    if (localStorage.getItem(PRECHECKOUT_FEEDBACK_KEY) === "true") setPreCheckoutFeedbackCompleted(true);
     if (sessionStorage.getItem(PAID_AUDIT_FEEDBACK_KEY) === "true") setAuditFeedbackSent(true);
   }, []);
 
@@ -487,11 +476,10 @@ export default function AnalyzePage() {
       const payload = JSON.parse(saved) as CheckoutPayload;
       if (!payload.fields || !Object.keys(payload.fields).length) return;
       setPendingCheckout(payload);
-      setPreCheckoutFeedbackCompleted(payload.preCheckoutFeedbackCompleted === true);
       setPendingImport({
         fields: payload.fields,
         confidence: payload.confidence ?? {},
-        fileName: payload.fileName ?? "your quote scan",
+        fileName: "your quote scan",
       });
       setOfferMatrix(payload.offerMatrix ?? null);
       const selectedOffer = payload.offerMatrix && payload.selectedOfferId
@@ -527,13 +515,10 @@ export default function AnalyzePage() {
       const handoff = JSON.parse(saved) as {
         fields?: Partial<Deal>;
         confidence?: PendingImport["confidence"];
-        fileName?: string;
         offerMatrix?: DealOfferMatrix | null;
         selectedOfferId?: string | null;
-        preCheckoutFeedbackCompleted?: boolean;
       };
       if (!handoff.fields || !Object.keys(handoff.fields).length) return;
-      setPreCheckoutFeedbackCompleted(handoff.preCheckoutFeedbackCompleted === true);
       const importedFields = { ...handoff.fields } as Partial<Deal> & { protection?: number };
       if (importedFields.protection) {
         importedFields.accessories = (importedFields.accessories ?? 0) + importedFields.protection;
@@ -559,7 +544,7 @@ export default function AnalyzePage() {
       setPendingImport({
         fields: importedFields,
         confidence: handoff.confidence ?? {},
-        fileName: handoff.fileName ?? "your free quote scan",
+        fileName: "your free quote scan",
       });
       setOfferMatrix(handoff.offerMatrix ?? null);
       const selectedHandoffOffer = handoff.offerMatrix && handoff.selectedOfferId
@@ -690,22 +675,6 @@ export default function AnalyzePage() {
     window.location.assign(PAID_AUDIT_URL);
   }, [pendingCheckout]);
 
-  const completePreCheckoutFeedback = () => {
-    setPreCheckoutFeedbackCompleted(true);
-    localStorage.setItem(PRECHECKOUT_FEEDBACK_KEY, "true");
-    const saved = sessionStorage.getItem(PENDING_CHECKOUT_KEY);
-    if (saved) {
-      try {
-        const payload = JSON.parse(saved) as CheckoutPayload;
-        const completedPayload = { ...payload, preCheckoutFeedbackCompleted: true };
-        sessionStorage.setItem(PENDING_CHECKOUT_KEY, JSON.stringify(completedPayload));
-      } catch {
-        sessionStorage.removeItem(PENDING_CHECKOUT_KEY);
-      }
-    }
-    setPendingCheckout((current) => current ? { ...current, preCheckoutFeedbackCompleted: true } : current);
-  };
-
   const importDealFile = async (file: File) => {
     setSampleLoaded(false);
     const isPdf = isDealImportPdf(file);
@@ -736,6 +705,12 @@ export default function AnalyzePage() {
       progress: 0.02,
     });
     track({ event: "scan_started" });
+    const scanStartedAt = performance.now();
+    const trackScanCompleted = (category: "success" | "failed") => track({
+      event: "scan_completed",
+      category,
+      value: Math.round(performance.now() - scanStartedAt),
+    });
     try {
       // Keep the public scan available to guests, but carry the active Clerk
       // session into the secured vision fallback. Without this token, a
@@ -755,6 +730,7 @@ export default function AnalyzePage() {
         });
       }, authToken);
       if (!isPreviewImportUsable(result)) {
+        trackScanCompleted("failed");
         track({ event: "import_failed", category: "insufficient_deal_data" });
         setDealImport({
           status: "error",
@@ -799,15 +775,21 @@ export default function AnalyzePage() {
         progress: 1,
       });
       track({ event: "import_success", category: result.sourceType === "pdf" ? "pdf" : "image" });
+      trackScanCompleted("success");
     } catch (error) {
       console.error("PencilProof document import failed", error);
       const unreadableImage = error instanceof Error && error.message === "UNREADABLE_IMAGE";
-      const failureCategory = unreadableImage ? "unreadable_document" : error instanceof Error && error.message.startsWith("AI_IMPORT_PROVIDER_QUOTA") ? "provider_quota" : error instanceof Error && error.message.startsWith("AI_IMPORT_PROVIDER_AUTHENTICATION") ? "provider_authentication" : error instanceof Error && error.message.startsWith("AI_IMPORT_PROVIDER_PERMISSION") ? "provider_permission" : error instanceof Error && error.message.startsWith("AI_IMPORT_PROVIDER_BAD_REQUEST") ? "provider_bad_request" : "import_error";
+      const failureCategory = unreadableImage ? "unreadable_document" : error instanceof Error && error.message === "AI_IMPORT_RATE_LIMITED" ? "rate_limited" : error instanceof Error && error.name === "TimeoutError" ? "provider_timeout" : error instanceof Error && error.message.startsWith("AI_IMPORT_PROVIDER_QUOTA") ? "provider_quota" : error instanceof Error && error.message.startsWith("AI_IMPORT_PROVIDER_AUTHENTICATION") ? "provider_authentication" : error instanceof Error && error.message.startsWith("AI_IMPORT_PROVIDER_PERMISSION") ? "provider_permission" : error instanceof Error && error.message.startsWith("AI_IMPORT_PROVIDER_BAD_REQUEST") ? "provider_bad_request" : "import_error";
+      trackScanCompleted("failed");
       track({ event: "import_failed", category: failureCategory });
       setDealImport({
         status: "error",
         message: unreadableImage
           ? "PencilProof could not find enough readable text in that image or scanned PDF. Try a brighter, sharper copy or enter the figures manually."
+          : error instanceof Error && error.message === "AI_IMPORT_RATE_LIMITED"
+            ? "PencilProof is protecting the vision importer from unusually frequent requests. Wait one minute, then try again or enter the figures manually."
+            : error instanceof Error && error.name === "TimeoutError"
+              ? "The vision importer took too long to respond. Please try again or enter the figures manually."
           : error instanceof Error && error.message.startsWith("AI_IMPORT_PROVIDER_QUOTA")
             ? "PencilProof's vision importer reached its Google Gemini usage limit. Please try again shortly or enter the figures manually."
             : error instanceof Error && error.message.startsWith("AI_IMPORT_PROVIDER_AUTHENTICATION")
@@ -950,10 +932,8 @@ export default function AnalyzePage() {
       openCheckout({
         fields: pendingImport.fields,
         confidence: pendingImport.confidence,
-        fileName: pendingImport.fileName,
         offerMatrix,
         selectedOfferId: selectedOfferId || null,
-        preCheckoutFeedbackCompleted: preCheckoutFeedbackCompleted === true,
       });
       return;
     }
@@ -1607,7 +1587,6 @@ export default function AnalyzePage() {
               <button className="button button-primary" type="button" onClick={confirmPendingImport}>{isPaidAuditHost ? "Confirm values and see audits" : "Confirm values and continue to checkout"} <Arrow /></button>
             </div>
             {!isPaidAuditHost ? <p className="sales-promo-banner"><strong>Ready for the complete audit?</strong> Enter <strong>BETA1</strong> in secure checkout for the $1 beta offer while it remains active.</p> : null}
-            {!isPaidAuditHost && auditHostResolved && preCheckoutFeedbackCompleted === false ? <PreCheckoutFeedback onCompleted={completePreCheckoutFeedback} /> : null}
             {pendingCheckout !== null ? <div ref={checkoutGateRef} className="checkout-gate-anchor"><PreCheckoutAccountGate onContinue={continueCheckout} onPaidAccess={continueToPaidAudit} /></div> : null}
           </section>
         ) : null}
@@ -1694,7 +1673,6 @@ export default function AnalyzePage() {
                 onClick={() => openCheckout({
                   fields: manualCheckoutFields.fields,
                   confidence: Object.fromEntries(Object.keys(manualCheckoutFields.fields).map((field) => [field, "review"])),
-                  fileName: "Manual quote entry",
                   offerMatrix: null,
                   selectedOfferId: null,
                 })}

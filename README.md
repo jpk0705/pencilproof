@@ -41,7 +41,7 @@ Pages.
 
 ## Automated email campaigns
 
-The Worker has a twice-weekly U.S.-focused campaign trigger for users who create
+The Worker has a three-times-weekly U.S.-focused campaign trigger for users who create
 an account or provide an email address. It rotates unfinished-audit reminders,
 30-Day Pass offers, PencilProof benefits, promotions, and practical car-buying
 information through Resend. Every campaign includes a clear unsubscribe link,
@@ -55,5 +55,7 @@ Configure these through Cloudflare secrets/variables; never commit them:
 - `MARKETING_BUSINESS_ADDRESS` — required compliant mailing address included in email footers; use a business address, a USPS-registered PO box, or a properly registered commercial private mailbox, not a home address unless you choose to use it
 - `MARKETING_ALERT_EMAIL` — destination for campaign configuration and delivery-failure alerts
 
-The schedule is Tuesday and Friday at 17:00 UTC. The scheduler remains inactive
-until the required email settings are present.
+The primary schedule is Monday, Wednesday, and Friday at 17:00 UTC (10 AM PDT / 9 AM PST), with an automatic
+retry at 17:10 UTC. Both triggers use the same campaign key, and completed delivery claims prevent duplicate
+emails. Cloudflare numbers Sunday as day 1, so the production expressions use `2,4,6` for Monday, Wednesday,
+and Friday. The scheduler remains inactive until the required email settings are present.

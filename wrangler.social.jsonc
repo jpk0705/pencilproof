@@ -1,4 +1,4 @@
-// PencilProof social health audit — read-only mode
+// PencilProof social automation and read-only health reporting
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "pencilproof-social",
@@ -10,6 +10,13 @@
   "ai": {
     "binding": "AI"
   },
+  "services": [
+    {
+      "binding": "AUDIT_SERVICE",
+      "service": "pencilproof-audit",
+      "environment": "production"
+    }
+  ],
   "durable_objects": {
     "bindings": [
       {
@@ -27,7 +34,7 @@
     }
   ],
   "triggers": {
-    "crons": ["*/30 * * * *"]
+    "crons": ["*/30 * * * *", "7 * * * *"]
   },
   "vars": {
     "SOCIAL_AUTOMATION_ENABLED": "true",
@@ -37,14 +44,25 @@
     "SOCIAL_TIMEZONE": "America/Los_Angeles",
     "SOCIAL_ACTIVE_START_HOUR": "8",
     "SOCIAL_ACTIVE_END_HOUR": "19",
-    "SOCIAL_POST_INTERVAL_HOURS": "48",
+    "SOCIAL_POST_INTERVAL_HOURS": "36",
+    "INSTAGRAM_IMAGE_URL": "https://pencilproof.com/pencilproof-cover.png",
+    "SOCIAL_MAX_POSTS_PER_DAY": "2",
     "SOCIAL_REPLY_LOOKBACK_DAYS": "14",
     "SOCIAL_MAX_REPLIES_PER_RUN": "4",
     "SOCIAL_MAX_REPLIES_PER_DAY": "12",
     "SOCIAL_AI_MAX_CALLS_PER_DAY": "12",
-    "SOCIAL_FACEBOOK_AI_MAX_CALLS_PER_DAY": "6",
+    "SOCIAL_FACEBOOK_AI_MAX_CALLS_PER_DAY": "200",
+    "SOCIAL_INSTAGRAM_AI_MAX_CALLS_PER_DAY": "400",
+    "SOCIAL_THREADS_AI_MAX_CALLS_PER_DAY": "200",
     "SOCIAL_AI_MODEL": "@cf/meta/llama-3.2-1b-instruct",
+    "SOCIAL_PUBLIC_BASE_URL": "https://pencilproof-social.jpkwork0705.workers.dev",
     "META_API_VERSION": "v24.0",
+    "SOCIAL_STATUS_META_API_VERSION": "v25.0",
+    "FACEBOOK_PAGE_ID": "1161922693680664",
+    "INSTAGRAM_API_HOST": "https://graph.facebook.com",
+    "INSTAGRAM_USER_ID": "17841436730926296",
+    "THREADS_USER_ID": "",
+    "THREADS_EXPECTED_USERNAME": "pencil.proof",
     "LINKEDIN_API_VERSION": "202604"
   },
   "observability": {
