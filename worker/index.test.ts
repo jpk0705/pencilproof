@@ -1278,7 +1278,103 @@ test("Stripe webhook signatures are authenticated and time bounded", async () =>
   );
 });
 
-test("a verified webhook records one order and binds recovery to its browser", async () => {
+test("the staged website-audit Payment Link is acknowledged without PencilProof fulfillment", async () => {
+  const payload = JSON.stringify({
+    data: {
+      object: {
+        id: "cs_test_website_audit",
+        payment_link: "plink_1UCqu2Eopq0gcXsN3ClrqAxz",
+      },
+    },
+    id: "evt_test_website_audit",
+    type: "checkout.session.completed",
+  });
+  const signature = await signWebhook(payload);
+  let stripeCalled = false;
+  globalThis.fetch = async () => {
+    stripeCalled = true;
+    return Response.json({});
+  };
+
+  const response = await handleRequest(
+    new Request("https://audit.pencilproof.com/api/stripe/webhook", {
+      body: payload,
+      headers: { "Stripe-Signature": signature },
+      method: "POST",
+    }),
+    makeEnv(),
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { ignored: true, received: true });
+  assert.equal(stripeCalled, false);
+});
+
+test("a different Payment Link without PencilProof metadata remains fail closed", async () => {
+  const payload = JSON.stringify({
+    data: {
+      object: {
+        id: "cs_test_other_payment_link",
+        payment_link: "plink_other",
+      },
+    },
+    id: "evt_test_other_payment_link",
+    type: "checkout.session.completed",
+  });
+  const signature = await signWebhook(payload);
+  globalThis.fetch = async () => {
+    return Response.json({ id: "cs_test_other_payment_link" });
+  };
+
+  const response = await handleRequest(
+    new Request("https://audit.pencilproof.com/api/stripe/webhook", {
+      body: payload,
+      headers: { "Stripe-Signature": signature },
+      method: "POST",
+    }),
+    makeEnv(),
+  );
+
+  assert.equal(response.status, 503);
+});
+
+test("car-audit metadata on the staged service link cannot bypass strict verification", async () => {
+  const deviceHash = await sha256Hex(TEST_DEVICE_ID);
+  const payload = JSON.stringify({
+    data: {
+      object: {
+        id: "cs_test_spoofed_car_audit",
+        metadata: { pencilproof_product: "full_quote_audit_v1" },
+        payment_link: "plink_1UCqu2Eopq0gcXsN3ClrqAxz",
+      },
+    },
+    id: "evt_test_spoofed_car_audit",
+    type: "checkout.session.completed",
+  });
+  const signature = await signWebhook(payload);
+  globalThis.fetch = async (input) => {
+    if (String(input).endsWith("/line_items?limit=2")) {
+      return Response.json({
+        data: [{ price: { id: "price_wrong" }, quantity: 1 }],
+        has_more: false,
+      });
+    }
+    return Response.json(paidSession(deviceHash, "cs_test_spoofed_car_audit"));
+  };
+
+  const response = await handleRequest(
+    new Request("https://audit.pencilproof.com/api/stripe/webhook", {
+      body: payload,
+      headers: { "Stripe-Signature": signature },
+      method: "POST",
+    }),
+    makeEnv(),
+  );
+
+  assert.equal(response.status, 503);
+});
+
+test("a verified car-audit webhook records one order and binds recovery to its browser", async () => {
   const deviceHash = await sha256Hex(TEST_DEVICE_ID);
   const event = {
     created: Math.floor(Date.now() / 1000),

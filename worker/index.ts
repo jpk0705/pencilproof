@@ -7,6 +7,7 @@ const ROLE_COOKIE = "pp_role";
 const DEVICE_COOKIE = "pp_device";
 const PRODUCT_CODE = "full_quote_audit_v1";
 const SALESPERSON_PRODUCT_CODE = "salesperson_plan_v1";
+const WEBSITE_AUDIT_PAYMENT_LINK_ID = "plink_1UCqu2Eopq0gcXsN3ClrqAxz";
 const SALESPERSON_CREDIT_AMOUNT_CENTS = 2000;
 const DEFAULT_ACCESS_SECONDS = 60 * 60 * 24 * 30;
 const DEVICE_COOKIE_SECONDS = 60 * 60 * 24 * 400;
@@ -578,6 +579,7 @@ type StripeEventObject = {
   charge?: string | null;
   id?: string;
   payment_intent?: string | null;
+  payment_link?: string | null;
   refunded?: boolean | null;
   status?: string | null;
   customer?: string | null;
@@ -3595,6 +3597,13 @@ const handleStripeWebhook = async (request: Request, env: Env) => {
       const activated = await processSalespersonCheckout(sessionId, env);
       if (!activated) return new Response("Salesperson subscription verification failed", { status: 503 });
       return Response.json({ received: true });
+    }
+    if (
+      object.payment_link === WEBSITE_AUDIT_PAYMENT_LINK_ID
+      && object.metadata?.pencilproof_product !== PRODUCT_CODE
+      && object.metadata?.pencilproof_product !== SALESPERSON_PRODUCT_CODE
+    ) {
+      return Response.json({ ignored: true, received: true });
     }
     const stored = await verifyAndStorePaidOrder(
       sessionId,
