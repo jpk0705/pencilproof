@@ -1,0 +1,13 @@
+{
+  "sourceImage": "content/organic/assets/cash-down-vs-total-due-short-v1.png",
+  "scenes": [
+    {"text":"$2,000 DOWN","caption":"Why is $3,030 due?","duration":5,"crop":{"x":120,"y":0,"width":700,"height":1500}},
+    {"text":"THE NUMBERS DIFFER","caption":"Ask for the written itemization","duration":5,"crop":{"x":120,"y":0,"width":700,"height":1500}},
+    {"text":"CASH DOWN $2,000","caption":"This reduces the financed balance","duration":5,"crop":{"x":120,"y":0,"width":700,"height":1500}},
+    {"text":"FIRST PAYMENT +$620","caption":"May be collected at signing","duration":5,"crop":{"x":120,"y":0,"width":700,"height":1500}},
+    {"text":"REGISTRATION +$410","caption":"Confirm where it appears","duration":5,"crop":{"x":120,"y":0,"width":700,"height":1500}},
+    {"text":"TOTAL DUE $3,030","caption":"Fictional example","duration":5,"crop":{"x":120,"y":0,"width":700,"height":1500}},
+    {"text":"CHECK FOR DOUBLE COUNTING","caption":"Upfront should not also mean financed","duration":5,"crop":{"x":120,"y":0,"width":700,"height":1500}},
+    {"text":"CHECK YOUR QUOTE FREE","caption":"PencilProof.com · verify every line","duration":5,"crop":{"x":120,"y":0,"width":700,"height":1500}}
+  ]
+}
