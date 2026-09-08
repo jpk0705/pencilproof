@@ -146,7 +146,7 @@ assert.match(salesWorkerSource, /url\.pathname\.replace/);
 assert.match(deploymentConfigSource, /"\/guides"/);
 assert.match(deploymentConfigSource, /"\/guides\/\*"/);
 assert.match(deploymentConfigSource, /"\/pilot"/);
-assert.match(deploymentConfigSource, /"crons": \["0 17 \* \* 1,3,5", "10 17 \* \* 1,3,5"\]/);
+assert.match(deploymentConfigSource, /"crons": \["0 17 \* \* MON,WED,FRI", "10 17 \* \* MON,WED,FRI"\]/);
 
 const closeTo = (actual, expected, tolerance = 0.01) => {
   assert.ok(
@@ -254,8 +254,8 @@ assert.match(phoneWorkerSource, /CASH DUE \/ FINANCE AMOUNT/);
 assert.match(phoneWorkerSource, /class PhoneSessionStore/);
 assert.match(phoneWorkerSource, /PHONE_SESSIONS/);
 assert.match(wranglerSource, /"PhoneSessionStore"/);
-assert.match(wranglerSource, /"0 17 \* \* 1,3,5"/);
-assert.match(wranglerSource, /"10 17 \* \* 1,3,5"/);
+assert.match(wranglerSource, /"0 17 \* \* MON,WED,FRI"/);
+assert.match(wranglerSource, /"10 17 \* \* MON,WED,FRI"/);
 assert.match(phoneWorkerSource, /List-Unsubscribe/);
 assert.match(phoneWorkerSource, /api\/email\/preferences/);
 assert.match(phoneWorkerSource, /Choose whether you want to continue receiving PencilProof promotional emails/);
