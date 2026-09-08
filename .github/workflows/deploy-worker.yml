@@ -70,12 +70,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: "4.129.1"
-          # Pass the schedules explicitly as a fail-closed guard. The dashboard
-          # retained stale Cron Triggers after earlier config-only deployments.
-          command: >-
-            deploy --config wrangler.jsonc
-            --triggers="0 17 * * MON,WED,FRI"
-            --triggers="10 17 * * MON,WED,FRI"
+          command: deploy --config wrangler.jsonc
 
 # Deployment trigger: keep Worker deployment attached to main updates.
 # Deployment trigger: refresh after Gemini model routing fix.
