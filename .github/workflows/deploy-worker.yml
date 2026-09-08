@@ -28,6 +28,7 @@ on:
       - "public/sitemap.xml"
       - "package.json"
       - "package-lock.json"
+      - "scripts/test-regressions.mjs"
       - "tsconfig.json"
       - ".github/workflows/deploy-worker.yml"
   workflow_dispatch:
