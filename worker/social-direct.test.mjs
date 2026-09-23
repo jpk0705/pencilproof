@@ -148,6 +148,18 @@ test("Threads fallbacks remain distinct across a rolling production history", ()
   }
 });
 
+test("Instagram fallbacks choose contextual copy when the generic template is recent", () => {
+  const now = new Date("2026-09-23T15:00:00.000Z");
+  const plan = selectContentPlan(now, "instagram", []);
+  const generic = buildFallbackPost(plan, "instagram", []);
+  const history = [contentHistoryEntry("instagram", plan, generic, new Date(now.getTime() - 86400000))];
+  const next = buildFallbackPost(plan, "instagram", history);
+  const validation = validateSocialPost(next, plan, history, "instagram");
+  assert.notEqual(next, generic);
+  assert.equal(validation.ok, true, validation.reasons.join(", "));
+  assert.ok(validation.highestSimilarity < 0.72);
+});
+
 test("Threads validation still blocks an actual duplicate fallback", () => {
   const plan = selectContentPlan(new Date("2026-08-29T18:00:00.000Z"), "threads", []);
   const post = buildFallbackPost(plan, "threads", []);

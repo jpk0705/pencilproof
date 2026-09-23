@@ -634,6 +634,40 @@ export function buildFallbackPost(plan = {}, platform = "", history = []) {
     }[plan.structure];
     if (compact) sentences = compact;
     else sentences = ["A clear dealer quote needs context.", "Start with the vehicle price.", "Then check the taxes and fees.", "Review the trade figures separately.", "Check the trade payoff separately too.", "Review the APR and loan term.", "Ask about every optional product.", "Confirm the full amount financed.", "Ask which exact line changed.", "Compare the total of payments."];
+  } else {
+    const context = String(plan.context ?? plan.topic ?? "the written quote").trim();
+    const takeaway = firstSentence(plan.takeaway) || `The written ${context} details should explain what changed.`;
+    const plannedOpening = firstSentence(plan.hook);
+    const repeatsOpening = recentMetadata(history).slice(-4).some(
+      (item) => overlap(plannedOpening, firstSentence(item.post)) >= 0.72,
+    );
+    const contextualHook = repeatsOpening
+      ? `What should you verify about ${context}?`
+      : plannedOpening || `What should you verify about ${context}?`;
+    const contextual = [
+      contextualHook,
+      `Today's worksheet focus is ${context}.`,
+      takeaway,
+      `Find the matching line on the dealer's written quote.`,
+      `Mark the original figure before reviewing any revision.`,
+      `Ask which exact input changed and why.`,
+      `Keep price, financing, trade figures, and products separate.`,
+      `Compare the revised amount financed with the earlier version.`,
+      `Keep both written copies so the explanation stays specific.`,
+      `Use PencilProof's free review to organize the numbers before your next question.`,
+    ];
+    const candidates = [sentences, contextual].map((candidate, index) => {
+      const copy = [...candidate];
+      if (index === 0 && String(plan.hook ?? "").trim()) copy[0] = firstSentence(plan.hook);
+      const post = formatSocialPost(copy.join(" "));
+      const highestSimilarity = recentMetadata(history).reduce(
+        (highest, item) => Math.max(highest, jaccardOverlap(post, item.post)),
+        0,
+      );
+      return { post, highestSimilarity };
+    });
+    candidates.sort((left, right) => left.highestSimilarity - right.highestSimilarity);
+    return candidates[0].post;
   }
   if (String(plan.hook ?? "").trim()) sentences[0] = firstSentence(plan.hook);
   return formatSocialPost(sentences.join(" "));
