@@ -634,6 +634,36 @@ export function buildFallbackPost(plan = {}, platform = "", history = []) {
     }[plan.structure];
     if (compact) sentences = compact;
     else sentences = ["A clear dealer quote needs context.", "Start with the vehicle price.", "Then check the taxes and fees.", "Review the trade figures separately.", "Check the trade payoff separately too.", "Review the APR and loan term.", "Ask about every optional product.", "Confirm the full amount financed.", "Ask which exact line changed.", "Compare the total of payments."];
+    const context = String(plan.context ?? plan.topic ?? "the quote").trim();
+    const recent = recentMetadata(history);
+    const plannedOpening = firstSentence(plan.hook);
+    const repeatsOpening = recent.slice(-4).some(
+      (item) => overlap(plannedOpening, firstSentence(item.post)) >= 0.72,
+    );
+    const contextual = [
+      repeatsOpening ? `Question: what should you verify about ${context}?` : plannedOpening || `Question: what should you verify about ${context}?`,
+      `Start with the written ${context} line.`,
+      "Mark the original figure first.",
+      "Find that line on the revision.",
+      "Keep price and financing separate.",
+      "Check trade figures on their own.",
+      "Name every optional product clearly.",
+      "Ask which exact number changed.",
+      "Keep both written quote versions.",
+      "Use the free review before deciding.",
+    ];
+    const candidates = [sentences, contextual].map((candidate, index) => {
+      const copy = [...candidate];
+      if (index === 0 && plannedOpening) copy[0] = plannedOpening;
+      const post = formatSocialPost(copy.join(" "));
+      const highestSimilarity = recent.reduce(
+        (highest, item) => Math.max(highest, jaccardOverlap(post, item.post)),
+        0,
+      );
+      return { post, highestSimilarity };
+    }).filter((candidate) => candidate.post.length <= 420);
+    candidates.sort((left, right) => left.highestSimilarity - right.highestSimilarity);
+    if (candidates.length) return candidates[0].post;
   } else {
     const context = String(plan.context ?? plan.topic ?? "the written quote").trim();
     const takeaway = firstSentence(plan.takeaway) || `The written ${context} details should explain what changed.`;

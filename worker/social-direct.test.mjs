@@ -148,6 +148,19 @@ test("Threads fallbacks remain distinct across a rolling production history", ()
   }
 });
 
+test("Threads fallback escapes a recent generic template without exceeding the platform limit", () => {
+  const now = new Date("2026-09-24T15:00:00.000Z");
+  const plan = selectContentPlan(now, "threads", []);
+  const generic = buildFallbackPost(plan, "threads", []);
+  const history = [contentHistoryEntry("threads", plan, generic, new Date(now.getTime() - 86400000))];
+  const next = buildFallbackPost(plan, "threads", history);
+  const validation = validateSocialPost(next, plan, history, "threads");
+  assert.notEqual(next, generic);
+  assert.ok(next.length <= 420);
+  assert.equal(validation.ok, true, validation.reasons.join(", "));
+  assert.ok(validation.highestSimilarity < 0.72);
+});
+
 test("Instagram fallbacks choose contextual copy when the generic template is recent", () => {
   const now = new Date("2026-09-23T15:00:00.000Z");
   const plan = selectContentPlan(now, "instagram", []);
