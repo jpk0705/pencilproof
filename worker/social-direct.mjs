@@ -5,12 +5,12 @@ import {
   postMetricsRecord,
 } from "./social-metrics.mjs";
 import {
-  buildFallbackPost,
   contentHistoryEntry,
   contentHistoryForPlatform,
   contentPrompt,
   formatSocialPost,
   selectContentPlan,
+  selectValidatedFallback,
   validateSocialPost,
 } from "./social-content.mjs";
 
@@ -460,10 +460,12 @@ async function generatePost(env, state, platform, now = new Date()) {
     if (!safeErrorMessage(error).includes("AI returned invalid JSON")) throw error;
   }
 
-  const fallback = buildFallbackPost(rewritePlan, platform, history);
-  const fallbackValidation = validateSocialPost(fallback, rewritePlan, history, platform);
-  if (!fallbackValidation.ok) throw new Error(`Content fallback failed validation: ${fallbackValidation.reasons.join(", ")}`);
-  return { post: fallback, plan: rewritePlan, validation: fallbackValidation, rewritten: true, fallback: true };
+  const fallback = selectValidatedFallback(rewritePlan, platform, history, 48, now);
+  if (!fallback.validation?.ok) {
+    const reasons = fallback.validation?.reasons ?? ["no validated fallback candidate"];
+    throw new Error(`Content fallback failed validation after ${fallback.attempts} candidates: ${reasons.join(", ")}`);
+  }
+  return { post: fallback.post, plan: fallback.plan, validation: fallback.validation, rewritten: true, fallback: true };
 }
 
 // Bluesky -------------------------------------------------------------------

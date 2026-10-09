@@ -21,6 +21,7 @@ import {
   contentPrompt,
   formatSocialPost,
   selectContentPlan,
+  selectValidatedFallback,
   selectSocialAngle,
   validateSocialPost,
 } from "./social-content.mjs";
@@ -146,6 +147,25 @@ test("Threads fallbacks remain distinct across a rolling production history", ()
     assert.ok(validation.length <= 420, `day ${day} ${plan.structure}: ${validation.length} characters`);
     history.push(contentHistoryEntry("threads", plan, post, now));
   }
+});
+
+test("Threads fallback search finds a valid post after the first candidate collides with saturated history", () => {
+  const now = new Date("2026-10-09T18:00:00.000Z");
+  const basePlan = selectContentPlan(now, "threads", []);
+  const repeated = buildFallbackPost(basePlan, "threads", []);
+  const history = Array.from({ length: 120 }, (_, index) => contentHistoryEntry(
+    "threads",
+    basePlan,
+    repeated,
+    new Date(now.getTime() - (120 - index) * 86400000),
+  ));
+
+  const selected = selectValidatedFallback(basePlan, "threads", history, 48, now);
+
+  assert.ok(selected.attempts >= 1);
+  assert.equal(selected.validation.ok, true, selected.validation.reasons.join(", "));
+  assert.notEqual(selected.post, repeated);
+  assert.ok(selected.validation.highestSimilarity < 0.72);
 });
 
 test("Threads fallback escapes a recent generic template without exceeding the platform limit", () => {

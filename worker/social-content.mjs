@@ -703,6 +703,24 @@ export function buildFallbackPost(plan = {}, platform = "", history = []) {
   return formatSocialPost(sentences.join(" "));
 }
 
+export function selectValidatedFallback(plan = {}, platform = "", history = [], maxAttempts = 48, now = new Date()) {
+  const normalized = normalizedPlatform(platform);
+  const attempts = Math.max(1, Math.min(96, Number.isInteger(maxAttempts) ? maxAttempts : 48));
+  let lastValidation = null;
+  const baseTime = new Date(now).getTime();
+  if (!Number.isFinite(baseTime)) throw new TypeError("Fallback search requires a valid date");
+  for (let offset = 0; offset < attempts; offset += 1) {
+    const candidatePlan = offset === 0
+      ? plan
+      : selectContentPlan(new Date(baseTime + offset * 86400000), normalized, history);
+    const post = buildFallbackPost(candidatePlan, normalized, history);
+    const validation = validateSocialPost(post, candidatePlan, history, normalized);
+    if (validation.ok) return { post, plan: candidatePlan, validation, attempts: offset + 1 };
+    lastValidation = validation;
+  }
+  return { post: "", plan, validation: lastValidation, attempts };
+}
+
 export function contentHistoryEntry(platform, plan, post, at = new Date(), extra = {}) {
   return {
     platform: normalizedPlatform(platform),
