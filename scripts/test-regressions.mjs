@@ -35,7 +35,8 @@ import {
 import { extractVinFromText, normalizeVehicleVin } from "../lib/vehicle-vin.ts";
 
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const salesPageSource = await readFile(join(projectRoot, "app/sales/page.tsx"), "utf8");
+const salesRouteSource = await readFile(join(projectRoot, "app/sales/page.tsx"), "utf8");
+const salesPageSource = `${salesRouteSource}\n${await readFile(join(projectRoot, "app/sales/SalesDashboard.tsx"), "utf8")}`;
 const homePageSource = await readFile(join(projectRoot, "app/page.tsx"), "utf8");
 const pricingPageSource = await readFile(join(projectRoot, "app/pricing/page.tsx"), "utf8");
 const pilotPageSource = await readFile(join(projectRoot, "app/pilot/page.tsx"), "utf8");
@@ -72,6 +73,13 @@ for (const route of guideRoutes) {
 }
 
 assert.match(salesPageSource, /const PUBLIC_SALES_URL = "https:\/\/pencilproof\.com\/sales"/);
+assert.match(salesRouteSource, /canonical: "\/sales"/);
+assert.match(salesRouteSource, /title: "PencilProof for Automotive Salespeople/);
+assert.match(salesRouteSource, /description: "Review vehicle quotes privately/);
+assert.match(salesRouteSource, /openGraph:/);
+assert.match(salesRouteSource, /twitter:/);
+assert.match(salesRouteSource, /Know the numbers before you make a promise\./);
+assert.match(sitemapSource, /<loc>https:\/\/pencilproof\.com\/sales<\/loc>/);
 assert.match(salesPageSource, /const PAID_AUDIT_URL = "https:\/\/audit\.pencilproof\.com\/analyze\/secure\/"/);
 assert.match(salesPageSource, /UNLIMITED AUDIT ACCESS/);
 assert.match(salesPageSource, /Upload quote for audit/);
