@@ -19,6 +19,7 @@ on:
       - "wrangler.social.jsonc"
       - "package.json"
       - "package-lock.json"
+      - "scripts/test-regressions.mjs"
       - ".github/workflows/deploy-social.yml"
   workflow_dispatch:
 
