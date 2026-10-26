@@ -1687,8 +1687,8 @@ export default function AnalyzePage() {
               <MoneyField label={isCashDeal ? "Cash due / finance amount" : "Dealer's quoted monthly payment"} field="quotedPayment" value={deal.quotedPayment} onChange={setNumber} hint={isCashDeal ? "The one payment shown on the quote" : "Keeps the amount printed on the quote for comparison"} />
             </div>
             <div className="live-payment" aria-live="polite">
-              <div><span>{isCashDeal ? "LIVE CALCULATED CASH DUE" : "LIVE CALCULATED PAYMENT"}</span><strong>{dollarsAndCents(analysis.calculatedPayment)}{isCashDeal ? null : <small>/month</small>}</strong></div>
-              <p>{isCashDeal ? "This one-payment cash total updates immediately when you change the price, tax, fees, products, trade, cash down, or rebate." : "This amount updates immediately when you change the price, tax, fees, products, trade, cash down, APR, or term. The dealer's quoted payment above stays unchanged so PencilProof can compare the two."}</p>
+              <div><span>{isCashDeal ? "LIVE CALCULATED CASH DUE" : "LIVE CALCULATED PAYMENT"}</span><strong>{analysis.hasMinimumData ? <>{dollarsAndCents(analysis.calculatedPayment)}{isCashDeal ? null : <small>/month</small>}</> : "Add missing figures"}</strong></div>
+              <p>{!analysis.hasMinimumData ? "Enter the selling price and loan term, plus the dealer APR for a financed deal, to see an estimate." : isCashDeal ? "This one-payment cash total updates immediately when you change the price, tax, fees, products, trade, cash down, or rebate." : "This amount updates immediately when you change the price, tax, fees, products, trade, cash down, APR, or term. The dealer's quoted payment above stays unchanged so PencilProof can compare the two."}</p>
             </div>
           </section>
           {!isPaidAuditHost ? (

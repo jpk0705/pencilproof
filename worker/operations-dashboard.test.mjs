@@ -55,9 +55,9 @@ function healthyInput() {
       },
       traffic: {
         status: "verified",
-        funnel: { visitors: 20, pageViews: 30, scanUsers: 8, scanStarts: 9, previewUsers: 6, previewsReady: 6, checkoutUsers: 2, checkoutStarts: 2, purchasers: 1 },
-        sourceFunnel: [{ name: "facebook", visitors: 10, scanUsers: 5, previewUsers: 4, checkoutUsers: 1, purchasers: 1 }],
-        byDay: { "2026-08-30": { page_view: 30, scan_started: 9, preview_ready: 6, checkout_started: 2, payment_completed: 1 } },
+        funnel: { visitors: 20, pageViews: 30, scanUsers: 8, scanStarts: 9, manualEntryUsers: 4, manualEntryStarts: 5, manualReadyUsers: 2, manualEntriesReady: 3, previewUsers: 6, previewsReady: 6, checkoutUsers: 2, checkoutStarts: 2, purchasers: 1 },
+        sourceFunnel: [{ name: "facebook", visitors: 10, scanUsers: 5, manualEntryUsers: 2, manualReadyUsers: 1, previewUsers: 4, checkoutUsers: 1, purchasers: 1 }],
+        byDay: { "2026-08-30": { page_view: 30, scan_started: 9, manual_entry_started: 5, manual_entry_ready: 3, preview_ready: 6, checkout_started: 2, payment_completed: 1 } },
       },
     },
   };
@@ -82,8 +82,15 @@ test("fresh operations snapshot verifies automation, platforms, email, and traff
   assert.match(html, /Automation health and recovery/);
   assert.match(html, /Not provided by Threads/);
   assert.match(html, /2026-08-30/);
+  assert.match(html, /Manual-entry users/);
+  assert.match(html, /Manual-ready users/);
+  assert.match(html, /Manual entry/);
+  assert.match(html, /Manual ready events/);
+  assert.match(html, /<strong>4<\/strong>/);
+  assert.match(html, /<strong>2<\/strong>/);
+  assert.match(html, /do not add them into a total/);
   assert.doesNotMatch(html, /Unavailable|Not exposed/);
-  assert.doesNotMatch(html, /2026-08-30<\/th><td>30<\/td><td>9<\/td><td>6<\/td><td>2<\/td><td>Not measured/);
+  assert.match(html, /2026-08-30<\/th><td>30<\/td><td>9<\/td><td>5<\/td><td>3<\/td><td>6<\/td><td>2<\/td><td>1<\/td>/);
 });
 
 test("stale heartbeat and an account mismatch become visible incidents", () => {
@@ -102,7 +109,7 @@ test("stale heartbeat and an account mismatch become visible incidents", () => {
 
 test("traffic recommendations do not call a zero-conversion source the winner", async () => {
   const input = healthyInput();
-  input.businessStatus.traffic.funnel = { visitors: 59, pageViews: 192, scanUsers: 0, scanStarts: 0, previewUsers: 0, checkoutUsers: 1, purchasers: 0 };
+  input.businessStatus.traffic.funnel = { visitors: 59, pageViews: 192, scanUsers: 0, scanStarts: 0, manualEntryUsers: 0, manualEntryStarts: 0, manualReadyUsers: 0, manualEntriesReady: 0, previewUsers: 0, checkoutUsers: 1, purchasers: 0 };
   input.businessStatus.traffic.topPages = [{ name: "/analyze", sessions: 6 }, { name: "/analyze/secure/", sessions: 3 }];
   input.businessStatus.traffic.sourceFunnel = [
     { name: "direct", visitors: 34, scanUsers: 0, purchasers: 0 },
@@ -112,9 +119,64 @@ test("traffic recommendations do not call a zero-conversion source the winner", 
   ];
   input.businessStatus.traffic.byDay = { "2026-08-30": { page_view: 1 } };
   const snapshot = buildOperationsSnapshot(input);
-  assert.match(snapshot.recommendations[0], /9 visits to quote-analysis pages but zero scan-start events/);
+  assert.match(snapshot.recommendations[0], /9 visits to quote-analysis pages but zero file-scan starts and zero manual-entry starts/);
   assert.match(snapshot.recommendations[1], /6 visitors came from tracked social sources/);
   assert.doesNotMatch(snapshot.recommendations.join(" "), /strongest measured result/);
   const html = await operationsStatusPage(snapshot).text();
-  assert.match(html, /2026-08-30<\/th><td>1<\/td><td>0<\/td><td>0<\/td><td>0<\/td><td>0<\/td>/);
+  assert.match(html, /2026-08-30<\/th><td>1<\/td><td>0<\/td><td>Not measured<\/td><td>Not measured<\/td><td>0<\/td><td>0<\/td><td>0<\/td>/);
+});
+
+test("manual-only activity stays separate from file scans and avoids scan-only advice", async () => {
+  const input = healthyInput();
+  input.businessStatus.traffic.funnel = {
+    visitors: 10,
+    pageViews: 12,
+    scanUsers: 0,
+    scanStarts: 0,
+    manualEntryUsers: 4,
+    manualEntryStarts: 5,
+    manualReadyUsers: 2,
+    manualEntriesReady: 2,
+    previewUsers: 0,
+    previewsReady: 0,
+    checkoutUsers: 1,
+    checkoutStarts: 1,
+    purchasers: 0,
+  };
+  input.businessStatus.traffic.topPages = [{ name: "/analyze", sessions: 7 }];
+  input.businessStatus.traffic.sourceFunnel = [
+    { name: "direct", visitors: 10, scanUsers: 0, manualEntryUsers: 4, manualReadyUsers: 2, purchasers: 0 },
+  ];
+  input.businessStatus.traffic.byDay = {
+    "2026-08-30": { page_view: 12, scan_started: 0, manual_entry_started: 5, manual_entry_ready: 2 },
+  };
+
+  const snapshot = buildOperationsSnapshot(input);
+  assert.match(snapshot.recommendations[0], /Manual entry started for 4 unique browsers/);
+  assert.match(snapshot.recommendations[0], /manual-ready users: 2/);
+  assert.match(snapshot.recommendations[0], /groups may overlap, so do not add the counts/);
+  assert.doesNotMatch(snapshot.recommendations.join(" "), /Fewer than 20%|zero file-scan starts and zero manual-entry starts|zero scan-start events/);
+
+  const html = await operationsStatusPage(snapshot).text();
+  assert.match(html, /Manual-entry users/);
+  assert.match(html, /Manual-ready users/);
+  assert.match(html, /<strong>4<\/strong>/);
+  assert.match(html, /<strong>2<\/strong>/);
+  assert.match(html, /groups may overlap/);
+  assert.match(html, /<tr><th>direct<\/th><td>10<\/td><td>0<\/td><td>4<\/td><td>2<\/td>/);
+});
+
+test("unavailable manual-entry metrics remain not measured", async () => {
+  const input = healthyInput();
+  input.businessStatus.traffic.funnel = { visitors: 10, pageViews: 12, scanUsers: 0, scanStarts: 0, previewUsers: 0 };
+  input.businessStatus.traffic.topPages = [{ name: "/analyze", sessions: 7 }];
+  input.businessStatus.traffic.sourceFunnel = [{ name: "direct", visitors: 10, scanUsers: 0 }];
+  input.businessStatus.traffic.byDay = { "2026-08-30": { page_view: 12, scan_started: 0 } };
+  const snapshot = buildOperationsSnapshot(input);
+  assert.match(snapshot.recommendations[0], /manual-entry tracking is not measured/);
+  const html = await operationsStatusPage(snapshot).text();
+  assert.match(html, /Manual-entry users/);
+  assert.match(html, /Manual-ready users/);
+  assert.match(html, /Not measured/);
+  assert.match(html, /<tr><th>direct<\/th><td>10<\/td><td>0<\/td><td>Not measured<\/td><td>Not measured<\/td>/);
 });
