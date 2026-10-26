@@ -4,7 +4,7 @@ import TrackedLink from "@/app/components/TrackedLink";
 
 export const metadata = {
   title: "PencilProof Pricing | Full Quote Audit",
-  description: "Try the quote scan free, then unlock the one-time $39 PencilProof Full Quote Audit when you are ready.",
+  description: "Scan your car quote free. The full audit is $39 once, or $1 with BETA1 while the beta offer is active.",
   alternates: { canonical: "/pricing" },
 };
 

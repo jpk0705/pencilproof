@@ -53,10 +53,13 @@ const dealPdfSource = await readFile(join(projectRoot, "lib/deal-pdf.ts"), "utf8
 const analyticsClientSource = await readFile(join(projectRoot, "lib/analytics.ts"), "utf8");
 const analyticsWorkerSource = await readFile(join(projectRoot, "worker/entry.ts"), "utf8");
 const deploymentConfigSource = await readFile(join(projectRoot, "wrangler.jsonc"), "utf8");
+const socialDeploymentWorkflow = await readFile(join(projectRoot, ".github/workflows/deploy-social.yml"), "utf8");
 const accountNavSource = await readFile(join(projectRoot, "app/components/AccountNav.tsx"), "utf8");
 const salesCoachSource = await readFile(join(projectRoot, "app/components/SalesCoach.tsx"), "utf8");
 const accountPageSource = await readFile(join(projectRoot, "app/account/page.tsx"), "utf8");
 const accountStoreSource = await readFile(join(projectRoot, "worker/accounts.ts"), "utf8");
+assert.match(socialDeploymentWorkflow, /"worker\/operations-dashboard\.mjs"/);
+assert.match(socialDeploymentWorkflow, /"worker\/operations-dashboard\.test\.mjs"/);
 const guideRoutes = [
   "dealer-quote-review",
   "car-payment-different",
