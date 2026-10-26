@@ -1,6 +1,36 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import worker, { type Env } from "./entry.ts";
+import { DatabaseSync } from "node:sqlite";
+import worker, { AnalyticsStore, type Env } from "./entry.ts";
+
+class SqliteAnalyticsState {
+  readonly database = new DatabaseSync(":memory:");
+  readonly storage = {
+    sql: {
+      exec: <T extends Record<string, string | number | null> = Record<string, string | number | null>>(
+        query: string,
+        ...bindings: Array<string | number | null>
+      ) => {
+        const normalized = query.trim().toUpperCase();
+        let rows: T[] = [];
+        let rowsWritten = 0;
+        if (/^(SELECT|WITH|PRAGMA)/.test(normalized)) {
+          rows = this.database.prepare(query).all(...bindings) as T[];
+        } else if (normalized.includes(";") && /^(CREATE|ALTER|DROP)/.test(normalized)) {
+          this.database.exec(query);
+        } else {
+          rowsWritten = Number(this.database.prepare(query).run(...bindings).changes) || 0;
+        }
+        return {
+          one: () => rows[0],
+          rowsWritten,
+          toArray: () => rows,
+          [Symbol.iterator]: () => rows[Symbol.iterator](),
+        };
+      },
+    },
+  };
+}
 
 const makeEnv = (paths: string[]): Env => ({
   PUBLIC_SITE_ORIGIN: "https://pencilproof.com",
@@ -27,6 +57,8 @@ const makeEnv = (paths: string[]): Env => ({
               sourceFunnel: [
                 {
                   checkoutUsers: 1,
+                  manualEntryUsers: 2,
+                  manualReadyUsers: 1,
                   name: "threads/organic/free_scan",
                   previewUsers: 2,
                   purchasers: 1,
@@ -34,6 +66,16 @@ const makeEnv = (paths: string[]): Env => ({
                   visitors: 4,
                 },
               ],
+              funnel: {
+                manualEntriesReady: 1,
+                manualEntryStarts: 2,
+                manualEntryUsers: 2,
+                manualReadyUsers: 1,
+                previewUsers: 1,
+                previewsReady: 1,
+                scanStarts: 3,
+                scanUsers: 3,
+              },
               sessions: 0,
               updatedAt: new Date(0).toISOString(),
             })
@@ -53,6 +95,70 @@ const makeEnv = (paths: string[]): Env => ({
 
 const basicAuth = (username: string, password: string) =>
   `Basic ${btoa(`${username}:${password}`)}`;
+
+test("manual-entry events are admitted, deduplicated, and counted apart from scans and previews", async () => {
+  const state = new SqliteAnalyticsState();
+  const store = new AnalyticsStore(state as never);
+  const record = async (event: string, eventId: string, sessionId: string, extra: Record<string, unknown> = {}) => {
+    const response = await store.fetch(new Request("https://analytics.internal/event", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event, eventId, sessionId, source: "manual-entry-test", path: "/analyze", ...extra }),
+    }));
+    assert.equal(response.status, 200);
+    const result = await response.json() as { duplicate: boolean; recorded: boolean };
+    return { duplicate: result.duplicate, recorded: result.recorded };
+  };
+
+  assert.deepEqual(
+    await record("page_view", "manual-page-event-0000001", "manual-session-one-000001"),
+    { duplicate: false, recorded: true },
+  );
+  assert.equal((await record(
+    "manual_entry_started",
+    "manual-start-event-0000001",
+    "manual-session-one-000001",
+    { comment: "private@example.test", quoteText: "customer quote text" },
+  )).recorded, true);
+  assert.deepEqual(
+    await record("manual_entry_started", "manual-start-event-0000001", "manual-session-one-000001"),
+    { duplicate: true, recorded: false },
+  );
+  const secondStart = await record("manual_entry_started", "manual-start-event-0000002", "manual-session-one-000001");
+  const ready = await record("manual_entry_ready", "manual-ready-event-0000001", "manual-session-one-000001");
+  await record("page_view", "manual-page-event-0000002", "manual-session-two-000001");
+  const thirdStart = await record("manual_entry_started", "manual-start-event-0000003", "manual-session-two-000001");
+  assert.equal(secondStart.recorded, true);
+  assert.equal(ready.recorded, true);
+  assert.equal(thirdStart.recorded, true);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+
+  const response = await store.fetch(new Request("https://analytics.internal/summary?range=1y"));
+  assert.equal(response.status, 200);
+  const summary = await response.json() as {
+    byEvent: Record<string, number>;
+    byDay: Record<string, Record<string, number>>;
+    funnel: Record<string, number>;
+    ledger: { duplicateEventsRejected: number };
+    sourceFunnel: Array<Record<string, number | string>>;
+  };
+  assert.equal(summary.byEvent.manual_entry_started, 3);
+  assert.equal(summary.byEvent.manual_entry_ready, 1);
+  assert.equal(summary.funnel.manualEntryStarts, 3);
+  assert.equal(summary.funnel.manualEntryUsers, 2);
+  assert.equal(summary.funnel.manualEntriesReady, 1);
+  assert.equal(summary.funnel.manualReadyUsers, 1);
+  assert.equal(summary.funnel.scanStarts, 0);
+  assert.equal(summary.funnel.scanUsers, 0);
+  assert.equal(summary.funnel.previewsReady, 0);
+  assert.equal(summary.funnel.previewUsers, 0);
+  assert.equal(summary.ledger.duplicateEventsRejected, 1);
+  const source = summary.sourceFunnel.find((row) => row.name === "manual-entry-test");
+  assert.equal(source?.manualEntryUsers, 2);
+  assert.equal(source?.manualReadyUsers, 1);
+  const serialized = JSON.stringify(summary);
+  assert.doesNotMatch(serialized, /private@example\.test|customer quote text|manual-session-one/);
+});
 
 test("analytics authentication keeps timingSafeEqual bound to crypto.subtle", async () => {
   const originalSubtle = crypto.subtle;
@@ -191,6 +297,32 @@ test("internal automation status reads the local run ledger without calling Rese
   }
 });
 
+test("operations status carries additive manual-entry metrics without provider access", async () => {
+  const env = makeEnv([]);
+  env.ACCOUNTS = {
+    idFromName: (name: string) => name,
+    get: () => ({ fetch: async () => Response.json({}) }),
+  } as Env["ACCOUNTS"];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error("No provider request is expected"); };
+  try {
+    const response = await worker.fetch(
+      new Request("https://pencilproof-audit.internal/api/internal/operations-status"),
+      env,
+    );
+    assert.equal(response.status, 200);
+    const body = await response.json() as { traffic: { funnel: Record<string, number> } };
+    assert.equal(body.traffic.funnel.manualEntryUsers, 2);
+    assert.equal(body.traffic.funnel.manualEntryStarts, 2);
+    assert.equal(body.traffic.funnel.manualReadyUsers, 1);
+    assert.equal(body.traffic.funnel.manualEntriesReady, 1);
+    assert.equal(body.traffic.funnel.scanUsers, 3);
+    assert.equal(body.traffic.funnel.previewUsers, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("analytics fails closed when dashboard credentials are not configured", async () => {
   const env = makeEnv([]);
   delete env.ANALYTICS_DASHBOARD_USERNAME;
@@ -292,11 +424,17 @@ test("analytics dashboard renders the selected range and business funnel", async
   assert.match(body, /1 year/);
   assert.match(body, /Visitors/);
   assert.match(body, /Started a scan/);
+  assert.match(body, /Started manual entry/);
+  assert.match(body, /Manual entry ready/);
+  assert.match(body, /Started a file scan/);
+  assert.match(body, /Imported preview ready/);
   assert.match(body, /Preview ready/);
   assert.match(body, /Acquisition signals/);
   assert.match(body, /Funnel by source/);
   assert.match(body, /threads\/organic\/free_scan/);
   assert.match(body, /Started scan/);
+  assert.match(body, /Started manual entry/);
+  assert.match(body, /Manual entry ready/);
   assert.match(body, /Reached checkout/);
   assert.match(body, /Purchased/);
   assert.match(body, /Customer feedback/);

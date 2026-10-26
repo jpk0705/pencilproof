@@ -136,6 +136,9 @@ const Arrow = () => <span aria-hidden="true">→</span>;
 const PUBLIC_ANALYZE_URL = "https://pencilproof.com/analyze";
 const ACCOUNT_API_URL = "https://audit.pencilproof.com";
 const PAID_AUDIT_URL = "https://audit.pencilproof.com/analyze/secure/";
+const isPaidAuditLocation = () => typeof window !== "undefined"
+  && window.location.hostname.toLowerCase() === "audit.pencilproof.com"
+  && (window.location.pathname === "/analyze/secure" || window.location.pathname.startsWith("/analyze/secure/"));
 
 const sample: Deal = {
   vehicle: "2026 Toyota RAV4 XLE Premium",
@@ -339,12 +342,11 @@ export default function AnalyzePage() {
   const [creditVehicleType, setCreditVehicleType] = useState<CreditVehicleType>("new");
   const printAfterSaveRef = useRef(false);
   const checkoutGateRef = useRef<HTMLDivElement | null>(null);
+  const manualEntryStartedRef = useRef(false);
+  const manualEntryReadyRef = useRef(false);
 
   useEffect(() => {
-    setIsPaidAuditHost(
-      window.location.hostname.toLowerCase() === "audit.pencilproof.com"
-      && (window.location.pathname === "/analyze/secure" || window.location.pathname.startsWith("/analyze/secure/")),
-    );
+    setIsPaidAuditHost(isPaidAuditLocation());
   }, []);
 
   useEffect(() => {
@@ -574,7 +576,15 @@ export default function AnalyzePage() {
     sessionStorage.removeItem(QUOTE_HANDOFF_KEY);
   }, []);
 
+  const trackManualEntryStarted = () => {
+    if (!isPaidAuditLocation() && !manualEntryStartedRef.current) {
+      manualEntryStartedRef.current = true;
+      track({ event: "manual_entry_started" });
+    }
+  };
+
   const setNumber = (field: keyof Deal, value: string) => {
+    trackManualEntryStarted();
     setSampleLoaded(false);
     setDeal((current) => ({
       ...current,
@@ -657,6 +667,12 @@ export default function AnalyzePage() {
       ready: isPreviewImportUsable({ fields, fieldNames, offerMatrix: undefined }),
     };
   }, [deal]);
+
+  useEffect(() => {
+    if (isPaidAuditLocation() || !manualCheckoutFields.ready || manualEntryReadyRef.current) return;
+    manualEntryReadyRef.current = true;
+    track({ event: "manual_entry_ready" });
+  }, [manualCheckoutFields.ready]);
 
   const startCheckout = (payload: CheckoutPayload) => {
     track({ event: "checkout_started" });
@@ -1622,7 +1638,7 @@ export default function AnalyzePage() {
         <form className="deal-form" onSubmit={(event) => event.preventDefault()}>
           <section className="form-section">
             <div className="form-section-title"><span>01</span><div><h2>Vehicle & price</h2><p>Start with the top of the buyer&apos;s order or dealer worksheet.</p></div></div>
-            <label className="input-field full-field"><span>Vehicle description</span><input aria-label="Vehicle description" type="text" placeholder="e.g. 2026 Honda CR-V EX-L" value={deal.vehicle} onChange={(event) => { setSampleLoaded(false); setDeal((current) => ({ ...current, vehicle: event.target.value })); }} /></label>
+            <label className="input-field full-field"><span>Vehicle description</span><input aria-label="Vehicle description" type="text" placeholder="e.g. 2026 Honda CR-V EX-L" value={deal.vehicle} onChange={(event) => { trackManualEntryStarted(); setSampleLoaded(false); setDeal((current) => ({ ...current, vehicle: event.target.value })); }} /></label>
             <div className="field-grid">
               <MoneyField label="Selling price" field="sellingPrice" value={deal.sellingPrice} onChange={setNumber} />
               <MoneyField label="Rebate" field="rebate" value={deal.rebate} onChange={setNumber} hint="Only a true manufacturer or cash rebate" />

@@ -14,6 +14,8 @@ const ANALYTICS_EVENT_NAMES = [
   "import_success",
   "import_failed",
   "manual_fallback_opened",
+  "manual_entry_started",
+  "manual_entry_ready",
   "audit_completed",
   "checkout_started",
   "cta_clicked",
@@ -73,6 +75,8 @@ type DimensionCountRow = CountRow & {
 type SourceFunnelRow = {
   checkout_users: number;
   dimension: string | null;
+  manual_entry_users: number;
+  manual_ready_users: number;
   preview_users: number;
   purchasers: number;
   scan_users: number;
@@ -493,6 +497,8 @@ export class AnalyticsStore {
       const devices = await dimensionCounts("device");
       const sourceFunnel: Array<{
         checkoutUsers: number;
+        manualEntryUsers: number;
+        manualReadyUsers: number;
         name: string;
         previewUsers: number;
         purchasers: number;
@@ -505,6 +511,8 @@ export class AnalyticsStore {
           COUNT(DISTINCT CASE WHEN event_name = 'page_view' THEN session_id END) AS visitors,
           COUNT(DISTINCT CASE WHEN event_name = 'scan_started' THEN session_id END) AS scan_users,
           COUNT(DISTINCT CASE WHEN event_name = 'preview_ready' THEN session_id END) AS preview_users,
+          COUNT(DISTINCT CASE WHEN event_name = 'manual_entry_started' THEN session_id END) AS manual_entry_users,
+          COUNT(DISTINCT CASE WHEN event_name = 'manual_entry_ready' THEN session_id END) AS manual_ready_users,
           COUNT(DISTINCT CASE WHEN event_name = 'checkout_started' THEN session_id END) AS checkout_users,
           COUNT(DISTINCT CASE WHEN event_name = 'payment_completed' THEN session_id END) AS purchasers
           , COALESCE(SUM(CASE WHEN event_name = 'payment_completed' THEN value_cents ELSE 0 END), 0) AS revenue_cents
@@ -517,6 +525,8 @@ export class AnalyticsStore {
       `, startIso, endIso)) {
         sourceFunnel.push({
           checkoutUsers: Number(row.checkout_users) || 0,
+          manualEntryUsers: Number(row.manual_entry_users) || 0,
+          manualReadyUsers: Number(row.manual_ready_users) || 0,
           name: String(row.dimension ?? "direct"),
           previewUsers: Number(row.preview_users) || 0,
           purchasers: Number(row.purchasers) || 0,
@@ -543,6 +553,10 @@ export class AnalyticsStore {
         pageViews: eventTotal("page_view"),
         scanUsers: await distinctEventUsers("scan_started"),
         scanStarts: eventTotal("scan_started"),
+        manualEntryUsers: await distinctEventUsers("manual_entry_started"),
+        manualEntryStarts: eventTotal("manual_entry_started"),
+        manualReadyUsers: await distinctEventUsers("manual_entry_ready"),
+        manualEntriesReady: eventTotal("manual_entry_ready"),
         previewUsers: await distinctEventUsers("preview_ready"),
         previewsReady: eventTotal("preview_ready"),
         auditUsers: await distinctEventUsers("audit_completed"),
@@ -736,6 +750,10 @@ type AnalyticsDashboardSummary = {
     pageViews?: number;
     scanUsers?: number;
     scanStarts?: number;
+    manualEntryUsers?: number;
+    manualEntryStarts?: number;
+    manualReadyUsers?: number;
+    manualEntriesReady?: number;
     previewUsers?: number;
     previewsReady?: number;
     auditUsers?: number;
@@ -751,6 +769,8 @@ type AnalyticsDashboardSummary = {
   sources?: Array<{ name?: string; sessions?: number; events?: number }>;
   sourceFunnel?: Array<{
     checkoutUsers?: number;
+    manualEntryUsers?: number;
+    manualReadyUsers?: number;
     name?: string;
     previewUsers?: number;
     purchasers?: number;
@@ -1017,6 +1037,10 @@ const analyticsDashboard = async (request: Request, env: Env) => {
     pageViews: summary.funnel?.pageViews ?? fallback.page_view ?? 0,
     scanUsers: summary.funnel?.scanUsers ?? 0,
     scanStarts: summary.funnel?.scanStarts ?? fallback.scan_started ?? 0,
+    manualEntryUsers: summary.funnel?.manualEntryUsers ?? 0,
+    manualEntryStarts: summary.funnel?.manualEntryStarts ?? fallback.manual_entry_started ?? 0,
+    manualReadyUsers: summary.funnel?.manualReadyUsers ?? 0,
+    manualEntriesReady: summary.funnel?.manualEntriesReady ?? fallback.manual_entry_ready ?? 0,
     previewUsers: summary.funnel?.previewUsers ?? 0,
     previewsReady: summary.funnel?.previewsReady ?? fallback.preview_ready ?? 0,
     auditUsers: summary.funnel?.auditUsers ?? 0,
@@ -1033,6 +1057,8 @@ const analyticsDashboard = async (request: Request, env: Env) => {
   const funnelCards = [
     ["Visitors", "unique browsers that loaded PencilProof", funnel.visitors],
     ["Started a scan", "unique browsers that began an upload", funnel.scanUsers],
+    ["Started manual entry", "unique browsers that began entering quote figures", funnel.manualEntryUsers],
+    ["Manual entry ready", "unique browsers whose figures met the checkout minimum", funnel.manualReadyUsers],
     ["Preview ready", "unique browsers that reached imported values", funnel.previewUsers],
     ["Reached checkout", "unique browsers that opened checkout", funnel.checkoutUsers],
     ["Purchased", "unique browsers with a verified Stripe payment", funnel.purchasers],
@@ -1051,9 +1077,9 @@ const analyticsDashboard = async (request: Request, env: Env) => {
   const sourceFunnelCell = (count: number, visitors: number) => `<span class="source-funnel-count">${count.toLocaleString("en-US")}</span><small>${percent(count, visitors)}</small>`;
   const sourceFunnelRows = (summary.sourceFunnel ?? []).map((row) => {
     const visitors = Number(row.visitors ?? 0);
-    return `<tr><th scope="row">${esc(row.name ?? "direct")}</th><td>${visitors.toLocaleString("en-US")}</td><td>${sourceFunnelCell(Number(row.scanUsers ?? 0), visitors)}</td><td>${sourceFunnelCell(Number(row.previewUsers ?? 0), visitors)}</td><td>${sourceFunnelCell(Number(row.checkoutUsers ?? 0), visitors)}</td><td>${sourceFunnelCell(Number(row.purchasers ?? 0), visitors)}</td><td>$${(Number(row.revenueCents ?? 0) / 100).toFixed(2)}</td></tr>`;
+    return `<tr><th scope="row">${esc(row.name ?? "direct")}</th><td>${visitors.toLocaleString("en-US")}</td><td>${sourceFunnelCell(Number(row.scanUsers ?? 0), visitors)}</td><td>${sourceFunnelCell(Number(row.manualEntryUsers ?? 0), visitors)}</td><td>${sourceFunnelCell(Number(row.manualReadyUsers ?? 0), visitors)}</td><td>${sourceFunnelCell(Number(row.previewUsers ?? 0), visitors)}</td><td>${sourceFunnelCell(Number(row.checkoutUsers ?? 0), visitors)}</td><td>${sourceFunnelCell(Number(row.purchasers ?? 0), visitors)}</td><td>$${(Number(row.revenueCents ?? 0) / 100).toFixed(2)}</td></tr>`;
   }).join("");
-  const sourceFunnelPanel = `<section class="panel" style="margin-top:18px"><h2>Funnel by source</h2><p class="subtle">Each row follows one source from visitor to purchase. Counts are unique browsers in the selected period; percentages show the share of that source’s visitors reaching each stage.</p>${sourceFunnelRows ? `<div class="table-wrap"><table class="source-funnel-table"><thead><tr><th>Source</th><th>Visitors</th><th>Started scan</th><th>Preview ready</th><th>Checkout</th><th>Purchased</th><th>Revenue</th></tr></thead><tbody>${sourceFunnelRows}</tbody></table></div>` : `<div class="empty">No source-level funnel data in this period yet.</div>`}</section>`;
+  const sourceFunnelPanel = `<section class="panel" style="margin-top:18px"><h2>Funnel by source</h2><p class="subtle">Each row follows one source from visitor to purchase. Counts are unique browsers in the selected period; percentages show the share of that source’s visitors reaching each stage.</p>${sourceFunnelRows ? `<div class="table-wrap"><table class="source-funnel-table"><thead><tr><th>Source</th><th>Visitors</th><th>Started scan</th><th>Started manual entry</th><th>Manual entry ready</th><th>Preview ready</th><th>Checkout</th><th>Purchased</th><th>Revenue</th></tr></thead><tbody>${sourceFunnelRows}</tbody></table></div>` : `<div class="empty">No source-level funnel data in this period yet.</div>`}</section>`;
   const acquisitionPanel = `<section class="panel" style="margin-top:18px"><h2>Acquisition signals</h2><p class="subtle">These dimensions show where visits came from and which public pages are attracting attention. A source is carried from UTM tags or the referring site; direct means no source was available.</p><div class="dimension-grid">${dimensionList("Traffic sources", "Unique sessions", summary.sources ?? [])}${dimensionList("Top entry pages", "Page-view sessions", summary.topPages ?? [])}${dimensionList("Devices", "Unique sessions", summary.devices ?? [])}</div></section>`;
   const accountQuery = `${selectedAccountRole === "all" ? "" : `&account_role=${encodeURIComponent(selectedAccountRole)}`}${selectedAccountPaid === "all" ? "" : `&account_paid=${encodeURIComponent(selectedAccountPaid)}`}`;
   const rangeLinks = ANALYTICS_RANGES.map((range) => `<a class="range ${range.key === rangeKey ? "selected" : ""}" href="/analytics?range=${range.key}${accountQuery}">${esc(range.label)}</a>`).join("");
@@ -1090,7 +1116,7 @@ const analyticsDashboard = async (request: Request, env: Env) => {
 <body><main class="shell"><header><div><div class="label">PENCILPROOF / MEASUREMENT</div><h1>Traffic and conversion</h1><p>Selected period: <strong>${esc(rangeLabel)}</strong>. This dashboard is private.</p></div><div class="updated">Updated ${esc(updated)}</div></header>
 <nav class="range-row" aria-label="Analytics date range">${rangeLinks}</nav>
 <section class="cards">${funnelCards}</section>
- <section class="grid"><div class="panel"><h2>Visitor funnel</h2><p class="subtle">Unique browsers are counted once per selected period. A preview is ready only after the importer or manual entry produces reviewable values.</p>${funnelStep("Visitors", `${funnel.pageViews.toLocaleString("en-US")} total page views`, funnel.visitors, funnel.visitors)}${funnelStep("Started a scan", `${funnel.scanStarts.toLocaleString("en-US")} scan starts`, funnel.scanUsers, funnel.visitors)}${funnelStep("Preview ready", `${funnel.previewsReady.toLocaleString("en-US")} reviewable previews`, funnel.previewUsers, funnel.visitors)}${funnelStep("Reached checkout", `${funnel.checkoutStarts.toLocaleString("en-US")} checkout starts`, funnel.checkoutUsers, funnel.visitors)}${funnelStep("Purchased", `${funnel.purchases.toLocaleString("en-US")} verified payment events`, funnel.purchasers, funnel.visitors)}</div>
+ <section class="grid"><div class="panel"><h2>Visitor funnel</h2><p class="subtle">Unique browsers are counted once per selected period. File scans, manual-entry starts, manual-entry readiness, and imported previews are separate signals.</p>${funnelStep("Visitors", `${funnel.pageViews.toLocaleString("en-US")} total page views`, funnel.visitors, funnel.visitors)}${funnelStep("Started a file scan", `${funnel.scanStarts.toLocaleString("en-US")} scan starts`, funnel.scanUsers, funnel.visitors)}${funnelStep("Started manual entry", `${funnel.manualEntryStarts.toLocaleString("en-US")} starts`, funnel.manualEntryUsers, funnel.visitors)}${funnelStep("Manual entry ready", `${funnel.manualEntriesReady.toLocaleString("en-US")} entries met the checkout minimum`, funnel.manualReadyUsers, funnel.visitors)}${funnelStep("Imported preview ready", `${funnel.previewsReady.toLocaleString("en-US")} reviewable imported previews`, funnel.previewUsers, funnel.visitors)}${funnelStep("Reached checkout", `${funnel.checkoutStarts.toLocaleString("en-US")} checkout starts`, funnel.checkoutUsers, funnel.visitors)}${funnelStep("Purchased", `${funnel.purchases.toLocaleString("en-US")} verified payment events`, funnel.purchasers, funnel.visitors)}</div>
  <div class="panel"><h2>Activity trend</h2><p class="subtle">${monthlyTrend ? "Monthly activity" : "Daily activity"} within the selected period.</p>${trendBars ? `<div class="chart">${trendBars}</div>` : `<div class="empty">No tracked activity in this period.</div>`}<div class="definitions"><strong>What “session” means</strong><p>A session is an anonymous browser visit ID. It is not a login or a person’s name. PencilProof starts a new session after 30 minutes of inactivity, so <strong>Visitors</strong> is the clearest estimate of unique browsers that visited during this period.</p><p>Page views, scan starts, preview-ready events, checkout starts, and purchases are separate signals. This keeps a scan from being counted as a completed audit or a sale.</p></div></div></section>
  ${acquisitionPanel}
  ${sourceFunnelPanel}
