@@ -89,8 +89,9 @@ test("zero-AI mode publishes Threads and Instagram education without AI or repli
     const method = String(init.method ?? "GET").toUpperCase();
     requests.push({ url, method });
     if (url.host === "graph.threads.net") {
+      if (url.pathname === "/me" && method === "GET") return Response.json({ id: "threads-user", username: "pencil.proof" });
       if (url.pathname === "/me/threads" && method === "GET") {
-        return Response.json({ data: [{ id: "thread-old", text: "A recent PencilProof post.", timestamp: "2026-10-26T15:00:00.000Z", is_reply: false }] });
+        return Response.json({ data: [{ id: "thread-old", text: "A recent PencilProof post.", timestamp: "2026-10-24T15:00:00.000Z", is_reply: false }] });
       }
       if (url.pathname === "/thread-old/replies") return Response.json({ data: [{ id: "thread-comment", text: "Should I compare the total?", timestamp: "2026-10-26T15:30:00.000Z", username: "reader" }] });
       if (url.pathname === "/thread-old/insights") return Response.json({ data: [] });
@@ -149,6 +150,330 @@ test("zero-AI mode publishes Threads and Instagram education without AI or repli
   }
 });
 
+test("manual Threads posts enforce the 36-hour cadence and unverifiable history fails closed", async () => {
+  const originalFetch = globalThis.fetch;
+  const RealDate = globalThis.Date;
+  const fixedTime = RealDate.parse("2026-10-26T16:00:00.000Z");
+  globalThis.Date = class extends RealDate {
+    constructor(...args) { super(...(args.length ? args : [fixedTime])); }
+    static now() { return fixedTime; }
+  };
+
+  try {
+    for (const scenario of [
+      { name: "35 hours", timestamp: "2026-10-25T05:00:00.000Z", shouldPublish: false },
+      { name: "36 hours", timestamp: "2026-10-25T04:00:00.000Z", shouldPublish: true },
+      { name: "history error", historyError: true, shouldPublish: false },
+      { name: "missing timestamp", missingTimestamp: true, shouldPublish: false },
+      { name: "pagination next link", timestamp: "2026-10-25T05:00:00.000Z", pagingNext: true, shouldPublish: false },
+      { name: "next without cursor", ambiguousNext: true, shouldPublish: false },
+      { name: "failed continuation page", failContinuation: true, shouldPublish: false },
+      { name: "full old page without next link", timestamp: "2026-10-24T04:00:00.000Z", fullPage: true, shouldPublish: true },
+    ]) {
+      const requests = [];
+      globalThis.fetch = async (input, init = {}) => {
+        const url = new URL(String(input));
+        const method = String(init.method ?? "GET").toUpperCase();
+        requests.push({ url, method });
+        if (url.host !== "graph.threads.net") throw new Error(`Unexpected provider request: ${method} ${url}`);
+        if (url.pathname === "/me" && method === "GET") return Response.json({ id: "threads-user", username: "pencil.proof" });
+        if (url.pathname === "/me/threads" && method === "GET") {
+          if (!url.searchParams.has("since")) return Response.json({ data: [] });
+          if (scenario.historyError) return new Response(JSON.stringify({ error: { message: "temporarily unavailable" } }), { status: 503 });
+          const after = url.searchParams.get("after");
+          if (scenario.failContinuation && after === "cursor-1") return new Response(JSON.stringify({ error: { message: "page unavailable" } }), { status: 503 });
+          if (scenario.ambiguousNext) return Response.json({ data: [], paging: { next: "https://provider.invalid/next", cursors: {} } });
+          if (scenario.pagingNext && !after) {
+            return Response.json({
+              data: [{ id: "old-page-thread", text: "Older post.", timestamp: "2026-10-24T04:00:00.000Z", is_reply: false }],
+              paging: { next: "https://provider.invalid/next", cursors: { after: "cursor-1" } },
+            });
+          }
+          if (scenario.pagingNext && after === "cursor-1") {
+            return Response.json({ data: [{ id: "manual-thread", text: "Official manually published post.", timestamp: scenario.timestamp, is_reply: false }] });
+          }
+          if (scenario.fullPage && after === "cursor-old") return Response.json({ data: [] });
+          const count = scenario.fullPage ? 10 : 1;
+          const data = Array.from({ length: count }, (_, index) => ({ id: scenario.fullPage ? `manual-thread-${index}` : "manual-thread", text: "Official manually published post.", is_reply: false }));
+          if (scenario.pagingNext) return Response.json({ data, paging: { next: "https://graph.threads.net/next-page" } });
+          const post = data[0];
+          if (!scenario.missingTimestamp) post.timestamp = scenario.timestamp;
+          if (scenario.fullPage) for (const item of data) item.timestamp = scenario.timestamp;
+          return Response.json({ data, ...(scenario.fullPage ? { paging: { cursors: { after: "cursor-old" } } } : {}) });
+        }
+        if (/^\/(?:manual-thread(?:-\d+)?|old-page-thread)\/insights$/.test(url.pathname)) return Response.json({ data: [] });
+        if (/^\/(?:manual-thread(?:-\d+)?|old-page-thread)\/replies$/.test(url.pathname)) return Response.json({ data: [] });
+        if (url.pathname === "/me/threads" && method === "POST") {
+          return Response.json({ id: "automated-thread", permalink: "https://www.threads.net/@pencil.proof/post/automated-thread" });
+        }
+        throw new Error(`Unexpected provider request: ${method} ${url}`);
+      };
+
+      const env = {
+        SOCIAL_ZERO_AI_MODE: "true",
+        SOCIAL_PUBLISH_ENABLED: "true",
+        SOCIAL_REPLY_ENABLED: "false",
+        SOCIAL_PUBLISH_PLATFORMS: "threads",
+        SOCIAL_TIMEZONE: "UTC",
+        SOCIAL_ACTIVE_START_HOUR: "8",
+        SOCIAL_ACTIVE_END_HOUR: "19",
+        SOCIAL_POST_INTERVAL_HOURS: "36",
+        THREADS_USER_ID: "threads-user",
+        THREADS_ACCESS_TOKEN: "threads-token",
+        AI: { run: async () => { throw new Error("AI must not be called"); } },
+      };
+      const values = new Map();
+      const state = new DirectSocialAutomationState({ storage: { get: async (key) => values.get(key), put: async (key, value) => values.set(key, value) } }, env);
+      const response = await state.fetch(new Request("https://social.internal/run", { method: "POST" }));
+      const result = await response.json();
+      assert.equal(response.status, 200, scenario.name);
+      assert.equal(result.summary.postsPublished.length === 1, scenario.shouldPublish, scenario.name);
+      assert.equal(requests.some(({ method, url }) => method === "POST" && url.pathname === "/me/threads"), scenario.shouldPublish, scenario.name);
+      const cadenceReads = requests.filter(({ method, url }) => method === "GET" && url.pathname === "/me/threads" && url.searchParams.has("since"));
+      assert.equal(cadenceReads.length >= 1, true, scenario.name);
+      assert.ok(cadenceReads.every(({ url }) => url.searchParams.get("since") === String(Math.floor((fixedTime - 36 * 60 * 60 * 1000) / 1000))), scenario.name);
+      if (scenario.historyError || scenario.missingTimestamp || scenario.ambiguousNext || scenario.failContinuation) {
+        assert.ok(result.summary.warnings.some((warning) => warning.includes("history") || warning.includes("unknown timestamp") || warning.includes("incomplete or paginated")), scenario.name);
+      }
+      assert.doesNotMatch(result.summary.warnings.join(" "), /threads-token|provider\.invalid|graph\.threads\.net/i, scenario.name);
+      if (scenario.pagingNext) {
+        const pages = requests.filter(({ method, url }) => method === "GET" && url.pathname === "/me/threads" && url.searchParams.has("since"));
+        assert.equal(pages.length, 2, scenario.name);
+        assert.deepEqual(pages.map(({ url }) => url.searchParams.get("after")), [null, "cursor-1"], scenario.name);
+        assert.equal(requests.some(({ url }) => url.hostname === "provider.invalid"), false, scenario.name);
+      }
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.Date = RealDate;
+  }
+});
+
+test("Threads reply monitoring keeps its 14-day lookback while cadence checks use a separate 36-hour window", async () => {
+  const originalFetch = globalThis.fetch;
+  const RealDate = globalThis.Date;
+  const fixedTime = RealDate.parse("2026-10-26T16:00:00.000Z");
+  globalThis.Date = class extends RealDate {
+    constructor(...args) { super(...(args.length ? args : [fixedTime])); }
+    static now() { return fixedTime; }
+  };
+  const requests = [];
+  globalThis.fetch = async (input, init = {}) => {
+    const url = new URL(String(input));
+    const method = String(init.method ?? "GET").toUpperCase();
+    requests.push({ url, method });
+    if (url.pathname === "/me" && method === "GET") return Response.json({ id: "threads-user", username: "pencil.proof" });
+    if (url.pathname === "/me/threads" && method === "GET") {
+      if (url.searchParams.has("since")) return Response.json({ data: [] });
+      return Response.json({ data: [{ id: "old-thread", text: "Older educational post.", timestamp: "2026-10-20T16:00:00.000Z", is_reply: false }] });
+    }
+    if (url.pathname === "/old-thread/insights") return Response.json({ data: [] });
+    if (url.pathname === "/old-thread/replies") return Response.json({ data: [{ id: "old-thread-comment", text: "What does APR mean?", timestamp: "2026-10-20T17:00:00.000Z", username: "reader" }] });
+    throw new Error(`Unexpected provider request: ${method} ${url}`);
+  };
+  try {
+    const env = {
+      SOCIAL_ZERO_AI_MODE: "false",
+      SOCIAL_PUBLISH_ENABLED: "true",
+      SOCIAL_REPLY_ENABLED: "true",
+      SOCIAL_PUBLISH_PLATFORMS: "threads",
+      SOCIAL_REPLY_LOOKBACK_DAYS: "14",
+      SOCIAL_POST_INTERVAL_HOURS: "36",
+      SOCIAL_TIMEZONE: "UTC",
+      SOCIAL_ACTIVE_START_HOUR: "20",
+      SOCIAL_ACTIVE_END_HOUR: "22",
+      THREADS_USER_ID: "threads-user",
+      THREADS_EXPECTED_USERNAME: "pencil.proof",
+      THREADS_ACCESS_TOKEN: "threads-token",
+      AI: { run: async () => ({ response: JSON.stringify({ action: "ignore", reason: "test fixture" }) }) },
+    };
+    const values = new Map();
+    const state = new DirectSocialAutomationState({ storage: { get: async (key) => values.get(key), put: async (key, value) => values.set(key, value) } }, env);
+    const response = await state.fetch(new Request("https://social.internal/run", { method: "POST" }));
+    const result = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(result.summary.postsScanned, 1);
+    assert.equal(result.summary.commentsScanned, 1);
+    assert.equal(result.summary.aiCalls, 1);
+    assert.equal(result.summary.postsPublished.length, 0);
+    const monitoringRead = requests.find(({ method, url }) => method === "GET" && url.pathname === "/me/threads" && !url.searchParams.has("since"));
+    const cadenceRead = requests.find(({ method, url }) => method === "GET" && url.pathname === "/me/threads" && url.searchParams.has("since"));
+    assert.ok(monitoringRead);
+    assert.equal(cadenceRead.url.searchParams.get("since"), String(Math.floor((fixedTime - 36 * 60 * 60 * 1000) / 1000)));
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.Date = RealDate;
+  }
+});
+
+test("Threads account identity must match an expected ID or username before reading history or posting", async () => {
+  const originalFetch = globalThis.fetch;
+  const RealDate = globalThis.Date;
+  const fixedTime = RealDate.parse("2026-10-26T16:00:00.000Z");
+  globalThis.Date = class extends RealDate {
+    constructor(...args) { super(...(args.length ? args : [fixedTime])); }
+    static now() { return fixedTime; }
+  };
+
+  try {
+    const scenarios = [
+      { name: "correct identity", expectedId: "threads-user", expectedUsername: "pencil.proof", identity: { id: "threads-user", username: "pencil.proof" }, shouldPublish: true },
+      { name: "username-only expected identity", expectedUsername: "pencil.proof", identity: { id: "threads-user", username: "pencil.proof" }, shouldPublish: true },
+      { name: "wrong ID", expectedId: "other-user", expectedUsername: "pencil.proof", identity: { id: "threads-user", username: "pencil.proof" }, shouldPublish: false },
+      { name: "wrong username", expectedId: "threads-user", expectedUsername: "brand-other", identity: { id: "threads-user", username: "pencil.proof" }, shouldPublish: false },
+      { name: "missing expected identity", identity: { id: "threads-user", username: "pencil.proof" }, shouldPublish: false },
+      { name: "malformed identity", expectedId: "threads-user", expectedUsername: "pencil.proof", identity: { id: "threads-user" }, shouldPublish: false },
+    ];
+    for (const scenario of scenarios) {
+      const requests = [];
+      globalThis.fetch = async (input, init = {}) => {
+        const url = new URL(String(input));
+        const method = String(init.method ?? "GET").toUpperCase();
+        requests.push({ url, method });
+        if (url.pathname === "/me" && method === "GET") return Response.json(scenario.identity);
+        if (url.pathname === "/me/threads" && method === "GET") return Response.json({ data: [] });
+        if (url.pathname === "/me/threads" && method === "POST") return Response.json({ id: "automated-thread", permalink: "https://www.threads.net/@pencil.proof/post/automated-thread" });
+        throw new Error(`Unexpected provider request: ${method} ${url}`);
+      };
+      const env = {
+        SOCIAL_ZERO_AI_MODE: "true",
+        SOCIAL_PUBLISH_ENABLED: "true",
+        SOCIAL_REPLY_ENABLED: "false",
+        SOCIAL_PUBLISH_PLATFORMS: "threads",
+        SOCIAL_TIMEZONE: "UTC",
+        SOCIAL_ACTIVE_START_HOUR: "8",
+        SOCIAL_ACTIVE_END_HOUR: "19",
+        SOCIAL_POST_INTERVAL_HOURS: "36",
+        THREADS_ACCESS_TOKEN: "threads-token",
+        AI: { run: async () => { throw new Error("AI must not be called"); } },
+      };
+      if (scenario.expectedId) env.THREADS_USER_ID = scenario.expectedId;
+      if (scenario.expectedUsername) env.THREADS_EXPECTED_USERNAME = scenario.expectedUsername;
+      const values = new Map();
+      const state = new DirectSocialAutomationState({ storage: { get: async (key) => values.get(key), put: async (key, value) => values.set(key, value) } }, env);
+      const response = await state.fetch(new Request("https://social.internal/run", { method: "POST" }));
+      const result = await response.json();
+      assert.equal(response.status, 200, scenario.name);
+      assert.equal(result.summary.postsPublished.length === 1, scenario.shouldPublish, scenario.name);
+      assert.equal(requests.some(({ method, url }) => method === "GET" && url.pathname === "/me/threads"), scenario.shouldPublish, scenario.name);
+      assert.equal(requests.some(({ method, url }) => method === "POST" && url.pathname === "/me/threads"), scenario.shouldPublish, scenario.name);
+      if (!scenario.shouldPublish) assert.ok(result.summary.warnings.some((warning) => warning.includes("threads identity")), scenario.name);
+      assert.equal(requests.some(({ url }) => url.searchParams.has("access_token")), false, scenario.name);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.Date = RealDate;
+  }
+});
+
+test("Threads history follows a bounded cursor window and blocks when pagination remains incomplete", async () => {
+  const originalFetch = globalThis.fetch;
+  const RealDate = globalThis.Date;
+  const fixedTime = RealDate.parse("2026-10-26T16:00:00.000Z");
+  globalThis.Date = class extends RealDate {
+    constructor(...args) { super(...(args.length ? args : [fixedTime])); }
+    static now() { return fixedTime; }
+  };
+
+  try {
+    for (const platform of ["threads"]) {
+      const requests = [];
+      globalThis.fetch = async (input, init = {}) => {
+        const url = new URL(String(input));
+        const method = String(init.method ?? "GET").toUpperCase();
+        requests.push({ url, method });
+        if (url.pathname === "/me" && method === "GET") return Response.json({ id: "threads-user", username: "pencil.proof" });
+        if (url.host === "graph.threads.net" && url.pathname === "/me/threads" && method === "GET") {
+          const current = Number.parseInt(String(url.searchParams.get("after") ?? "cursor-0").replace("cursor-", ""), 10);
+          return Response.json({ data: [], paging: { next: "https://provider.invalid/next", cursors: { after: `cursor-${current + 1}` } } });
+        }
+        throw new Error(`Unexpected provider request: ${method} ${url}`);
+      };
+      const env = {
+        SOCIAL_ZERO_AI_MODE: "true",
+        SOCIAL_PUBLISH_ENABLED: "true",
+        SOCIAL_REPLY_ENABLED: "false",
+        SOCIAL_PUBLISH_PLATFORMS: platform,
+        SOCIAL_TIMEZONE: "UTC",
+        SOCIAL_ACTIVE_START_HOUR: "8",
+        SOCIAL_ACTIVE_END_HOUR: "19",
+        SOCIAL_POST_INTERVAL_HOURS: "36",
+        THREADS_USER_ID: "threads-user",
+        THREADS_ACCESS_TOKEN: "threads-token",
+        AI: { run: async () => { throw new Error("AI must not be called"); } },
+      };
+      const values = new Map();
+      const state = new DirectSocialAutomationState({ storage: { get: async (key) => values.get(key), put: async (key, value) => values.set(key, value) } }, env);
+      const response = await state.fetch(new Request("https://social.internal/run", { method: "POST" }));
+      const result = await response.json();
+      assert.equal(response.status, 200, platform);
+      assert.deepEqual(result.summary.postsPublished, [], platform);
+      assert.ok(result.summary.warnings.some((warning) => warning.includes("threads history could not be verified")), platform);
+      const threadReads = requests.filter(({ url, method }) => method === "GET" && url.pathname === "/me/threads" && url.searchParams.has("since"));
+      assert.equal(threadReads.length, 5, platform);
+      assert.ok(threadReads.every(({ url }) => url.searchParams.get("since") === String(Math.floor((fixedTime - 36 * 60 * 60 * 1000) / 1000))), platform);
+      assert.deepEqual(threadReads.map(({ url }) => url.searchParams.get("after")), [null, "cursor-1", "cursor-2", "cursor-3", "cursor-4"], platform);
+      assert.equal(requests.some(({ url }) => url.hostname === "provider.invalid"), false, platform);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.Date = RealDate;
+  }
+});
+
+test("malformed Threads history responses fail closed while valid empty feeds remain valid", async () => {
+  const originalFetch = globalThis.fetch;
+  const RealDate = globalThis.Date;
+  const fixedTime = RealDate.parse("2026-10-26T16:00:00.000Z");
+  globalThis.Date = class extends RealDate {
+    constructor(...args) { super(...(args.length ? args : [fixedTime])); }
+    static now() { return fixedTime; }
+  };
+
+  try {
+    for (const platform of ["threads"]) {
+      const env = {
+        SOCIAL_ZERO_AI_MODE: "true",
+        SOCIAL_PUBLISH_ENABLED: "false",
+        SOCIAL_REPLY_ENABLED: "false",
+        SOCIAL_PUBLISH_PLATFORMS: platform,
+        SOCIAL_TIMEZONE: "UTC",
+        SOCIAL_ACTIVE_START_HOUR: "8",
+        SOCIAL_ACTIVE_END_HOUR: "19",
+        SOCIAL_POST_INTERVAL_HOURS: "36",
+        THREADS_USER_ID: "threads-user",
+        THREADS_ACCESS_TOKEN: "threads-token",
+        AI: { run: async () => { throw new Error("AI must not be called"); } },
+      };
+      const runScenario = async (historyPayload) => {
+        globalThis.fetch = async (input, init = {}) => {
+          const url = new URL(String(input));
+          const method = String(init.method ?? "GET").toUpperCase();
+          if (url.pathname === "/me" && method === "GET") return Response.json({ id: "threads-user", username: "pencil.proof" });
+          if (method === "GET" && url.pathname === "/me/threads") {
+            return Response.json(historyPayload);
+          }
+          throw new Error(`Unexpected provider request for ${platform}: ${method} ${url}`);
+        };
+        const values = new Map();
+        const state = new DirectSocialAutomationState({ storage: { get: async (key) => values.get(key), put: async (key, value) => values.set(key, value) } }, env);
+        const response = await state.fetch(new Request("https://social.internal/run", { method: "POST" }));
+        return { response, result: await response.json() };
+      };
+      const malformed = await runScenario({ data: {} });
+      assert.equal(malformed.response.status, 200, platform);
+      assert.deepEqual(malformed.result.summary.postsPublished, [], platform);
+      assert.ok(malformed.result.summary.warnings.some((warning) => warning.includes("threads history could not be verified")), platform);
+      const empty = await runScenario({ data: [] });
+      assert.equal(empty.response.status, 200, platform);
+      assert.equal(empty.result.summary.warnings.some((warning) => warning.includes(`${platform} history`)), false, platform);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.Date = RealDate;
+  }
+});
+
 test("explicitly disabled direct replies still mark scanned comments seen outside zero-AI mode", async () => {
   const originalFetch = globalThis.fetch;
   const RealDate = globalThis.Date;
@@ -159,6 +484,7 @@ test("explicitly disabled direct replies still mark scanned comments seen outsid
   };
   globalThis.fetch = async (input) => {
     const url = new URL(String(input));
+    if (url.pathname === "/me") return Response.json({ id: "threads-user", username: "pencil.proof" });
     if (url.pathname === "/me/threads") return Response.json({ data: [{ id: "thread-old", text: "Recent post.", timestamp: "2026-10-26T15:00:00.000Z", is_reply: false }] });
     if (url.pathname === "/thread-old/insights") return Response.json({ data: [] });
     if (url.pathname === "/thread-old/replies") return Response.json({ data: [{ id: "thread-comment", text: "What does APR mean?", timestamp: "2026-10-26T15:30:00.000Z", username: "reader" }] });
@@ -201,6 +527,7 @@ test("zero-AI Threads publishing completes 20 scheduled cycles without recent re
     const url = new URL(String(input));
     const method = String(init.method ?? "GET").toUpperCase();
     if (url.host !== "graph.threads.net") throw new Error(`Unexpected provider request: ${method} ${url}`);
+    if (url.pathname === "/me" && method === "GET") return Response.json({ id: "threads-user", username: "pencil.proof" });
     if (url.pathname === "/me/threads" && method === "GET") return Response.json({ data: [] });
     if (url.pathname === "/me/threads" && method === "POST") {
       published.push(url.searchParams.get("text"));

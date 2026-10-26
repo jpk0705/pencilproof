@@ -584,20 +584,59 @@ function threadsToken(env) {
   return String(env.THREADS_ACCESS_TOKEN ?? "").trim();
 }
 
-async function getThreadsRecentPosts(env, _runtime, limit = 10) {
+async function getThreadsRecentPosts(env, _runtime, limit = 10, options = {}) {
   const params = new URLSearchParams({ fields: "id,text,timestamp,permalink,is_reply", limit: String(limit) });
-  const { payload } = await fetchJson(`${threadsHost(env)}/me/threads?${params}`, {
+  if (options.since != null) params.set("since", String(options.since));
+  const posts = [];
+  const maxPages = clampInteger(options.maxPages, 1, 1, 10);
+  const seenCursors = new Set();
+  let after = "";
+  for (let page = 0; page < maxPages; page += 1) {
+    const pageParams = new URLSearchParams(params);
+    if (after) pageParams.set("after", after);
+    const { payload } = await fetchJson(`${threadsHost(env)}/me/threads?${pageParams}`, {
+      headers: bearerHeaders(threadsToken(env)),
+    }, "Threads posts");
+    if (!Array.isArray(payload.data) || payload.data.some((item) => !item || typeof item !== "object" || !item.id)) {
+      throw new Error("Threads posts returned a malformed history response.");
+    }
+    posts.push(...payload.data
+      .filter((item) => item?.is_reply !== true)
+      .map((item) => ({
+        platform: "threads",
+        id: String(item.id),
+        post: String(item.text ?? ""),
+        created: String(item.timestamp ?? ""),
+        postUrl: String(item.permalink ?? ""),
+      })));
+    const hasNext = Boolean(payload.paging?.next) || payload.data.length >= limit;
+    if (!options.requireComplete || !hasNext) return posts;
+    const nextAfter = String(payload.paging?.cursors?.after ?? "").trim();
+    if (!nextAfter || seenCursors.has(nextAfter)) {
+      throw new Error("Threads history pagination was incomplete or ambiguous.");
+    }
+    if (page + 1 >= maxPages) throw new Error("Threads history exceeded the bounded pagination limit.");
+    seenCursors.add(nextAfter);
+    after = nextAfter;
+  }
+  throw new Error("Threads history pagination was incomplete.");
+}
+
+async function verifyThreadsIdentity(env) {
+  const expectedId = String(env.THREADS_USER_ID ?? "").trim();
+  const expectedUsername = String(env.THREADS_EXPECTED_USERNAME ?? "").trim().replace(/^@/, "").toLowerCase();
+  if (!expectedId && !expectedUsername) {
+    throw new Error("Configure THREADS_USER_ID or THREADS_EXPECTED_USERNAME before Threads monitoring or publishing.");
+  }
+  const { payload } = await fetchJson(`${threadsHost(env)}/me?fields=id,username`, {
     headers: bearerHeaders(threadsToken(env)),
-  }, "Threads posts");
-  return (Array.isArray(payload.data) ? payload.data : [])
-    .filter((item) => item?.id && item?.is_reply !== true)
-    .map((item) => ({
-      platform: "threads",
-      id: String(item.id),
-      post: String(item.text ?? ""),
-      created: String(item.timestamp ?? ""),
-      postUrl: String(item.permalink ?? ""),
-    }));
+  }, "Threads identity");
+  const actualId = String(payload.id ?? "").trim();
+  const actualUsername = String(payload.username ?? "").trim().replace(/^@/, "").toLowerCase();
+  if (!actualId || !actualUsername) throw new Error("Threads identity response was incomplete.");
+  if (expectedId && actualId !== expectedId) throw new Error("Threads token account ID does not match THREADS_USER_ID.");
+  if (expectedUsername && actualUsername !== expectedUsername) throw new Error("Threads token username does not match THREADS_EXPECTED_USERNAME.");
+  return { id: actualId, username: actualUsername };
 }
 
 async function getThreadsComments(env, _runtime, post) {
@@ -1104,17 +1143,35 @@ async function runAutomation(env, state, now = new Date()) {
   const lookbackDays = clampInteger(env.SOCIAL_REPLY_LOOKBACK_DAYS, DEFAULT_LOOKBACK_DAYS, 1, 60);
   const maxRepliesPerRun = clampInteger(env.SOCIAL_MAX_REPLIES_PER_RUN, DEFAULT_MAX_REPLIES_PER_RUN, 0, 20);
   const maxRepliesPerDay = clampInteger(env.SOCIAL_MAX_REPLIES_PER_DAY, DEFAULT_MAX_REPLIES_PER_DAY, 0, 100);
+  const intervalHours = clampInteger(env.SOCIAL_POST_INTERVAL_HOURS, DEFAULT_POST_INTERVAL_HOURS, 36, 720);
   const zeroAiMode = parseBoolean(env.SOCIAL_ZERO_AI_MODE, false);
   const replyEnabled = parseBoolean(env.SOCIAL_REPLY_ENABLED, true) && !zeroAiMode;
   const cutoff = now.getTime() - lookbackDays * 24 * 60 * 60 * 1000;
   const monitorPlatforms = activePlatforms.filter((platform) => REPLY_SUPPORTED.has(platform));
+  const publishHistory = new Map();
+  let threadsIdentityVerified = !activePlatforms.includes("threads");
+  if (activePlatforms.includes("threads")) {
+    try {
+      await verifyThreadsIdentity(env);
+      threadsIdentityVerified = true;
+    } catch {
+      summary.warnings.push("threads identity could not be verified; Threads activity is blocked.");
+    }
+  }
 
   outer: for (const platform of monitorPlatforms) {
+    if (platform === "threads" && !threadsIdentityVerified) {
+      publishHistory.set(platform, { verified: false, lastPostAt: null });
+      continue;
+    }
     let posts;
     try {
       posts = await getRecentPlatformPosts(env, runtime, platform, 10);
     } catch (error) {
-      summary.warnings.push(`${platform} history: ${safeErrorMessage(error)}`);
+      if (platform === "threads") publishHistory.set(platform, { verified: false, lastPostAt: null });
+      summary.warnings.push(platform === "threads"
+        ? "threads history could not be verified; Threads publishing is blocked."
+        : `${platform} history: ${safeErrorMessage(error)}`);
       continue;
     }
       const recentForMetrics = posts.slice(0, MAX_METRIC_POSTS_PER_RUN);
@@ -1193,21 +1250,51 @@ async function runAutomation(env, state, now = new Date()) {
   }
 
   const publishEnabled = parseBoolean(env.SOCIAL_PUBLISH_ENABLED, false);
-  const intervalHours = clampInteger(env.SOCIAL_POST_INTERVAL_HOURS, DEFAULT_POST_INTERVAL_HOURS, 36, 720);
+  if (publishEnabled && publishPlatforms.includes("threads") && threadsIdentityVerified) {
+    try {
+      const cadencePosts = await getThreadsRecentPosts(env, runtime, 10, {
+        requireComplete: true,
+        since: Math.floor((now.getTime() - intervalHours * 60 * 60 * 1000) / 1000),
+        maxPages: 5,
+      });
+      const cadenceTimes = cadencePosts.map((post) => Date.parse(String(post.created ?? "")));
+      const verified = cadenceTimes.every(Number.isFinite);
+      publishHistory.set("threads", {
+        verified,
+        lastPostAt: verified && cadenceTimes.length ? new Date(Math.max(...cadenceTimes)).toISOString() : null,
+      });
+      if (!verified) summary.warnings.push("threads publishing skipped: history has an unknown timestamp.");
+    } catch {
+      publishHistory.set("threads", { verified: false, lastPostAt: null });
+      summary.warnings.push("threads history could not be verified; Threads publishing is blocked.");
+    }
+  } else if (publishEnabled && publishPlatforms.includes("threads")) {
+    publishHistory.set("threads", { verified: false, lastPostAt: null });
+  }
   const maxPostsPerDay = clampInteger(env.SOCIAL_MAX_POSTS_PER_DAY, DEFAULT_MAX_POSTS_PER_DAY, 1, 10);
   const activeStartHour = clampInteger(env.SOCIAL_ACTIVE_START_HOUR, DEFAULT_ACTIVE_START_HOUR, 0, 23);
   const activeEndHour = clampInteger(env.SOCIAL_ACTIVE_END_HOUR, DEFAULT_ACTIVE_END_HOUR, 0, 23);
   const duePlatforms = publishEnabled
-    ? publishPlatforms.filter((platform) => shouldPublishNow({
-      now,
-      lastPostAt: state.lastPostAtByPlatform[platform] ?? state.lastPublishedByPlatform[platform]?.at ?? null,
-      intervalHours,
-      timeZone,
-      activeStartHour,
-      activeEndHour,
-      postsToday: Number(state.counters.postsByPlatform?.[platform] ?? 0),
-      maxPostsPerDay,
-    }))
+    ? publishPlatforms.filter((platform) => {
+      const history = publishHistory.get(platform);
+      if (platform === "threads" && !history?.verified) return false;
+      const knownPostAt = state.lastPostAtByPlatform[platform] ?? state.lastPublishedByPlatform[platform]?.at ?? null;
+      const knownTime = Date.parse(String(knownPostAt ?? ""));
+      const externalTime = Date.parse(String(history?.lastPostAt ?? ""));
+      const lastPostAt = platform === "threads" && Number.isFinite(externalTime) && (!Number.isFinite(knownTime) || externalTime > knownTime)
+        ? history.lastPostAt
+        : knownPostAt;
+      return shouldPublishNow({
+        now,
+        lastPostAt,
+        intervalHours,
+        timeZone,
+        activeStartHour,
+        activeEndHour,
+        postsToday: Number(state.counters.postsByPlatform?.[platform] ?? 0),
+        maxPostsPerDay,
+      });
+    })
     : [];
 
   for (const platform of duePlatforms) {
