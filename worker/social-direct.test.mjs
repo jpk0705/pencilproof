@@ -3,6 +3,7 @@ import test from "node:test";
 import { publicPilotUrl, routePostToPilot } from "./campaign-links.mjs";
 import {
   commentKey,
+  SocialAutomationState as DirectSocialAutomationState,
   detectConfiguredPlatforms,
   isLikelyOwnComment,
   isWithinActiveHours,
@@ -16,6 +17,7 @@ import {
 } from "./social-direct.mjs";
 import { parseMetricPayload } from "./social-metrics.mjs";
 import {
+  buildZeroAiSocialPost,
   buildFallbackPost,
   contentHistoryEntry,
   contentPrompt,
@@ -46,6 +48,201 @@ test("campaign links send social visitors to the free pilot with attribution", (
   assert.match(labeledPost, /utm_content=buyer-qa/);
   const readablePost = routePostToPilot("Hook sentence.\n\nExplanation sentence.", "facebook");
   assert.match(readablePost, /Hook sentence\.\n\nExplanation sentence\./);
+});
+
+test("zero-AI educational posts validate across platforms without fictional customer claims", () => {
+  for (const platform of ["facebook", "instagram", "threads"]) {
+    const history = [];
+    for (let index = 0; index < 20; index += 1) {
+      const generated = buildZeroAiSocialPost(
+        platform,
+        history,
+        new Date(Date.UTC(2026, 9, 1 + index)),
+      );
+      assert.equal(generated.validation.ok, true, `${platform}: ${generated.validation.reasons.join(", ")}`);
+      assert.equal(generated.validation.sentenceCount, 10);
+      assert.ok(generated.validation.paragraphCount >= 3);
+      if (platform === "threads") assert.ok(generated.validation.length <= 420);
+      assert.doesNotMatch(generated.post, /\b(?:a customer|one customer|a family|they compared|they noticed|they reviewed)\b/i);
+      if (generated.plan.context === "APR and loan term") {
+        assert.match(generated.post, /APR expresses (?:the )?(?:cost of borrowing|borrowing cost) as (?:a )?yearly rate/i);
+        assert.match(generated.post, /note(?: interest)? rate can differ from APR/i);
+      }
+      assert.equal(history.slice(-8).some((entry) => entry.post === generated.post), false);
+      history.push(contentHistoryEntry(platform, generated.plan, generated.post, new Date(Date.UTC(2026, 9, 1 + index))));
+    }
+  }
+});
+
+test("zero-AI mode publishes Threads and Instagram education without AI or replies", async () => {
+  const originalFetch = globalThis.fetch;
+  const RealDate = globalThis.Date;
+  const fixedTime = RealDate.parse("2026-10-26T16:00:00.000Z");
+  let aiCalls = 0;
+  const requests = [];
+  globalThis.Date = class extends RealDate {
+    constructor(...args) { super(...(args.length ? args : [fixedTime])); }
+    static now() { return fixedTime; }
+  };
+  globalThis.fetch = async (input, init = {}) => {
+    const url = new URL(String(input));
+    const method = String(init.method ?? "GET").toUpperCase();
+    requests.push({ url, method });
+    if (url.host === "graph.threads.net") {
+      if (url.pathname === "/me/threads" && method === "GET") {
+        return Response.json({ data: [{ id: "thread-old", text: "A recent PencilProof post.", timestamp: "2026-10-26T15:00:00.000Z", is_reply: false }] });
+      }
+      if (url.pathname === "/thread-old/replies") return Response.json({ data: [{ id: "thread-comment", text: "Should I compare the total?", timestamp: "2026-10-26T15:30:00.000Z", username: "reader" }] });
+      if (url.pathname === "/thread-old/insights") return Response.json({ data: [] });
+      if (url.pathname === "/me/threads" && method === "POST") return Response.json({ id: "thread-new", permalink: "https://www.threads.net/@pencil.proof/post/thread-new" });
+    }
+    if (url.host === "graph.instagram.com") {
+      if (url.pathname.endsWith("/instagram-user/media") && method === "GET") {
+        return Response.json({ data: [{ id: "instagram-old", caption: "A recent PencilProof post.", timestamp: "2026-10-26T15:00:00.000Z", permalink: "https://www.instagram.com/p/old/" }] });
+      }
+      if (url.pathname === "/v24.0/instagram-old/comments") return Response.json({ data: [{ id: "instagram-comment", text: "What does APR mean?", from: { id: "reader-id", username: "reader" } }] });
+      if (url.pathname === "/v24.0/instagram-old") return Response.json({ like_count: 1, comments_count: 1 });
+      if (url.pathname.endsWith("/instagram-user/media") && method === "POST") return Response.json({ id: "instagram-container" });
+      if (url.pathname === "/v24.0/instagram-container") return Response.json({ status_code: "FINISHED" });
+      if (url.pathname.endsWith("/instagram-user/media_publish")) return Response.json({ id: "instagram-new", permalink: "https://www.instagram.com/p/new/" });
+    }
+    throw new Error(`Unexpected provider request: ${method} ${url}`);
+  };
+
+  try {
+    const env = {
+      SOCIAL_ZERO_AI_MODE: "true",
+      SOCIAL_AUTOMATION_ENABLED: "true",
+      SOCIAL_PUBLISH_ENABLED: "true",
+      SOCIAL_REPLY_ENABLED: "true",
+      SOCIAL_PUBLISH_PLATFORMS: "threads,instagram",
+      SOCIAL_TIMEZONE: "UTC",
+      SOCIAL_ACTIVE_START_HOUR: "8",
+      SOCIAL_ACTIVE_END_HOUR: "19",
+      SOCIAL_POST_INTERVAL_HOURS: "36",
+      SOCIAL_MAX_POSTS_PER_DAY: "2",
+      THREADS_USER_ID: "threads-user",
+      THREADS_ACCESS_TOKEN: "threads-token",
+      INSTAGRAM_USER_ID: "instagram-user",
+      INSTAGRAM_ACCESS_TOKEN: "instagram-token",
+      INSTAGRAM_IMAGE_URL: "https://pencilproof.com/pencilproof-cover.png",
+      AI: { run: async () => { aiCalls += 1; throw new Error("AI must not be called"); } },
+    };
+    const values = new Map();
+    const state = new DirectSocialAutomationState({ storage: { get: async (key) => values.get(key), put: async (key, value) => values.set(key, value) } }, env);
+    const response = await state.fetch(new Request("https://social.internal/run", { method: "POST" }));
+    const result = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(aiCalls, 0);
+    assert.deepEqual(result.summary.postsPublished.map((item) => item.platform).sort(), ["instagram", "threads"]);
+    assert.equal(result.summary.repliesPosted, 0);
+    assert.equal(result.summary.aiCalls, 0);
+    const stored = values.get("social-direct-v1");
+    assert.equal(stored.seenComments.includes("threads:thread-comment"), false);
+    assert.equal(stored.seenComments.includes("instagram:instagram-comment"), false);
+    assert.equal(requests.some(({ method, url }) => method === "POST" && url.searchParams.has("reply_to_id")), false);
+    assert.equal(requests.some(({ method, url }) => method === "POST" && url.pathname.endsWith("/replies")), false);
+    assert.equal(result.summary.contentFallbacks, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.Date = RealDate;
+  }
+});
+
+test("explicitly disabled direct replies still mark scanned comments seen outside zero-AI mode", async () => {
+  const originalFetch = globalThis.fetch;
+  const RealDate = globalThis.Date;
+  const fixedTime = RealDate.parse("2026-10-26T16:00:00.000Z");
+  globalThis.Date = class extends RealDate {
+    constructor(...args) { super(...(args.length ? args : [fixedTime])); }
+    static now() { return fixedTime; }
+  };
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (url.pathname === "/me/threads") return Response.json({ data: [{ id: "thread-old", text: "Recent post.", timestamp: "2026-10-26T15:00:00.000Z", is_reply: false }] });
+    if (url.pathname === "/thread-old/insights") return Response.json({ data: [] });
+    if (url.pathname === "/thread-old/replies") return Response.json({ data: [{ id: "thread-comment", text: "What does APR mean?", timestamp: "2026-10-26T15:30:00.000Z", username: "reader" }] });
+    throw new Error(`Unexpected provider request: ${url}`);
+  };
+  try {
+    const env = {
+      SOCIAL_ZERO_AI_MODE: "false",
+      SOCIAL_PUBLISH_ENABLED: "false",
+      SOCIAL_REPLY_ENABLED: "false",
+      THREADS_USER_ID: "threads-user",
+      THREADS_ACCESS_TOKEN: "threads-token",
+      AI: { run: async () => { throw new Error("Replies are disabled"); } },
+    };
+    const values = new Map();
+    const state = new DirectSocialAutomationState({ storage: { get: async (key) => values.get(key), put: async (key, value) => values.set(key, value) } }, env);
+    const response = await state.fetch(new Request("https://social.internal/run", { method: "POST" }));
+    assert.equal(response.status, 200);
+    assert.equal(values.get("social-direct-v1").seenComments.includes("threads:thread-comment"), true);
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.Date = RealDate;
+  }
+});
+
+test("zero-AI Threads publishing completes 20 scheduled cycles without recent repeats", async () => {
+  const originalFetch = globalThis.fetch;
+  const RealDate = globalThis.Date;
+  const originalLog = console.log;
+  const start = RealDate.parse("2026-10-01T16:00:00.000Z");
+  let cycle = 0;
+  let aiCalls = 0;
+  const published = [];
+  globalThis.Date = class extends RealDate {
+    constructor(...args) { super(...(args.length ? args : [start + cycle * 48 * 60 * 60 * 1000])); }
+    static now() { return start + cycle * 48 * 60 * 60 * 1000; }
+  };
+  console.log = () => {};
+  globalThis.fetch = async (input, init = {}) => {
+    const url = new URL(String(input));
+    const method = String(init.method ?? "GET").toUpperCase();
+    if (url.host !== "graph.threads.net") throw new Error(`Unexpected provider request: ${method} ${url}`);
+    if (url.pathname === "/me/threads" && method === "GET") return Response.json({ data: [] });
+    if (url.pathname === "/me/threads" && method === "POST") {
+      published.push(url.searchParams.get("text"));
+      return Response.json({ id: `thread-${published.length}`, permalink: `https://www.threads.net/@pencil.proof/post/thread-${published.length}` });
+    }
+    throw new Error(`Unexpected provider request: ${method} ${url}`);
+  };
+
+  try {
+    const env = {
+      SOCIAL_ZERO_AI_MODE: "true",
+      SOCIAL_PUBLISH_ENABLED: "true",
+      SOCIAL_REPLY_ENABLED: "true",
+      SOCIAL_PUBLISH_PLATFORMS: "threads",
+      SOCIAL_TIMEZONE: "UTC",
+      SOCIAL_ACTIVE_START_HOUR: "8",
+      SOCIAL_ACTIVE_END_HOUR: "19",
+      SOCIAL_POST_INTERVAL_HOURS: "36",
+      SOCIAL_MAX_POSTS_PER_DAY: "2",
+      THREADS_USER_ID: "threads-user",
+      THREADS_ACCESS_TOKEN: "threads-token",
+      AI: { run: async () => { aiCalls += 1; throw new Error("AI must not be called"); } },
+    };
+    const values = new Map();
+    const state = new DirectSocialAutomationState({ storage: { get: async (key) => values.get(key), put: async (key, value) => values.set(key, value) } }, env);
+    for (cycle = 0; cycle < 20; cycle += 1) {
+      const response = await state.fetch(new Request("https://social.internal/run", { method: "POST" }));
+      const result = await response.json();
+      assert.equal(response.status, 200);
+      assert.equal(result.summary.postsPublished.length, 1, `cycle ${cycle}`);
+      assert.equal(result.summary.aiCalls, 0, `cycle ${cycle}`);
+      assert.equal(result.summary.contentPlans[0].validation.ok, true, `cycle ${cycle}`);
+      assert.ok(result.summary.contentPlans[0].validation.highestSimilarity < 0.72, `cycle ${cycle}`);
+      assert.equal(published.slice(-9, -1).includes(published.at(-1)), false, `cycle ${cycle} repeated a post within the history window`);
+    }
+    assert.equal(published.length, 20);
+    assert.equal(aiCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.Date = RealDate;
+    console.log = originalLog;
+  }
 });
 
 test("provider metrics normalize views, reach, engagement, and interactions", () => {

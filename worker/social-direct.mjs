@@ -5,6 +5,7 @@ import {
   postMetricsRecord,
 } from "./social-metrics.mjs";
 import {
+  buildZeroAiSocialPost,
   contentHistoryEntry,
   contentHistoryForPlatform,
   contentPrompt,
@@ -392,6 +393,7 @@ export function parseAiJson(text) {
 }
 
 async function aiJson(env, state, system, user, maxTokens = 320, platform = "") {
+  if (parseBoolean(env.SOCIAL_ZERO_AI_MODE, false)) throw new Error("Social zero-AI mode blocks Workers AI");
   if (!env.AI?.run) throw new Error("Workers AI binding is not configured");
   reserveAiCall(env, state, platform);
   const model = String(env.SOCIAL_AI_MODEL ?? DEFAULT_MODEL).trim() || DEFAULT_MODEL;
@@ -422,6 +424,7 @@ async function decideReply(env, state, comment) {
 
 async function generatePost(env, state, platform, now = new Date()) {
   const history = contentHistoryForPlatform(state, platform);
+  if (parseBoolean(env.SOCIAL_ZERO_AI_MODE, false)) return buildZeroAiSocialPost(platform, history, now);
   const primaryPlan = selectContentPlan(now, platform, history);
   const attempt = async (plan, promptHistory = history) => {
     const parsed = await aiJson(
@@ -1101,7 +1104,8 @@ async function runAutomation(env, state, now = new Date()) {
   const lookbackDays = clampInteger(env.SOCIAL_REPLY_LOOKBACK_DAYS, DEFAULT_LOOKBACK_DAYS, 1, 60);
   const maxRepliesPerRun = clampInteger(env.SOCIAL_MAX_REPLIES_PER_RUN, DEFAULT_MAX_REPLIES_PER_RUN, 0, 20);
   const maxRepliesPerDay = clampInteger(env.SOCIAL_MAX_REPLIES_PER_DAY, DEFAULT_MAX_REPLIES_PER_DAY, 0, 100);
-  const replyEnabled = parseBoolean(env.SOCIAL_REPLY_ENABLED, true);
+  const zeroAiMode = parseBoolean(env.SOCIAL_ZERO_AI_MODE, false);
+  const replyEnabled = parseBoolean(env.SOCIAL_REPLY_ENABLED, true) && !zeroAiMode;
   const cutoff = now.getTime() - lookbackDays * 24 * 60 * 60 * 1000;
   const monitorPlatforms = activePlatforms.filter((platform) => REPLY_SUPPORTED.has(platform));
 
@@ -1153,7 +1157,7 @@ async function runAutomation(env, state, now = new Date()) {
           continue;
         }
         if (!replyEnabled || state.counters.replies >= maxRepliesPerDay || summary.repliesPosted >= maxRepliesPerRun) {
-          if (!replyEnabled) seen.add(key);
+          if (!replyEnabled && !zeroAiMode) seen.add(key);
           continue;
         }
 
@@ -1338,12 +1342,14 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/health") {
+      const zeroAiMode = parseBoolean(env.SOCIAL_ZERO_AI_MODE, false);
       return responseJson({
         ok: true,
         mode: "direct-zero-cost",
         automationEnabled: parseBoolean(env.SOCIAL_AUTOMATION_ENABLED, true),
         publishEnabled: parseBoolean(env.SOCIAL_PUBLISH_ENABLED, false),
-        repliesEnabled: parseBoolean(env.SOCIAL_REPLY_ENABLED, true),
+        zeroAiMode,
+        repliesEnabled: parseBoolean(env.SOCIAL_REPLY_ENABLED, true) && !zeroAiMode,
         configuredPlatforms: detectConfiguredPlatforms(env),
         paidPlatformsEnabled: false,
       });
@@ -1354,6 +1360,7 @@ export default {
       const status = await response.json();
       return responseJson({
         mode: "direct-zero-cost",
+        zeroAiMode: parseBoolean(env.SOCIAL_ZERO_AI_MODE, false),
         lastRunAt: status.lastRunAt ?? null,
         lastPostAt: status.lastPostAt ?? null,
         lastError: status.lastError ?? null,

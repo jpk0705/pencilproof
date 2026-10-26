@@ -418,6 +418,116 @@ const STRUCTURE_FALLBACKS = {
   ],
 };
 
+const ZERO_AI_POSTS = [
+  {
+    context: "total of payments",
+    facebook: "Where does the total of payments come from? It adds the scheduled installments across the loan term. A monthly payment shows only one installment. A longer term can reduce each installment while increasing the number of payments. Start with the amount financed. Check the APR and term beside it. Count the scheduled payments. Ask for the total of payments in writing. Compare that total across written offers. Keep the vehicle price separate from the financing cost.",
+    threads: "Where does total of payments come from? It adds every scheduled installment. A monthly payment shows one installment. A longer term can lower each installment. It also increases the payment count. Start with amount financed. Check the APR and term. Count all scheduled payments. Ask for the total in writing. Compare written offers carefully.",
+  },
+  {
+    context: "optional products",
+    facebook: "Which details belong on an itemized product list? Each optional product should appear by name. Its price should be visible beside it. Ask whether the price is paid separately or financed. If financed, it changes the amount financed. Review the APR and payment count too. Ask for a quote with and without the product. Compare the total of payments in both versions. Keep both written quotes together. That makes the price difference easier to identify.",
+    threads: "Which details belong on an itemized product list? Each optional product has a name. Its price should appear beside it. Ask whether it is paid separately or financed. Financing changes amount financed. Check APR and payment count. Request a quote with and without it. Compare both totals of payments. Keep both written quotes. Verify each line before signing.",
+  },
+  {
+    context: "trade value and payoff",
+    facebook: "How does a trade affect the next loan? Write down the trade value first. Record the current payoff separately. Subtract payoff from trade value to see the difference. A positive difference can reduce the next amount financed. A negative difference can increase it if carried forward. Keep cash down on its own line. Check how the quote applies each amount. Compare the resulting amount financed. Ask for the calculation in writing.",
+    threads: "How does a trade affect the next loan? Record trade value first. Record the payoff separately. Subtract payoff from trade value. Positive equity can reduce amount financed. Negative equity may be carried forward. Check how each figure is applied. Compare the new amount financed. Ask for the math in writing. Verify all quote lines.",
+  },
+  {
+    context: "APR and loan term",
+    facebook: "What do APR and term explain? APR expresses the cost of borrowing as a yearly rate. The note interest rate can differ from APR. The term tells how many months the loan lasts. Together these figures help determine scheduled payment. Payment alone does not show total borrowing cost. Write down APR and note rate if both are shown. Count the scheduled payments. Compare the total of payments too. Ask the lender to explain any unclear figure.",
+    threads: "What do APR and term explain? APR expresses borrowing cost as a yearly rate. The note rate can differ from APR. Term counts the loan months. Together they help determine payment. Payment alone does not show total cost. Write down APR and note rate. Count all scheduled payments. Compare the total of payments. Ask about unclear figures.",
+  },
+  {
+    context: "amount financed",
+    facebook: "What makes amount financed differ from vehicle price? It is the balance being borrowed under the loan. It can differ from the vehicle price. Taxes, fees, trade equity, cash down, and selected products can affect the calculation. Find each of those lines on the quote. Check whether an item is paid separately or financed. Compare the amount financed with the APR and term. Then review the payment count. Ask for the total of payments. Keep a copy of the written figures.",
+    threads: "What makes amount financed differ from vehicle price? It is the balance borrowed. Taxes and fees affect the calculation. Trade equity and cash down matter too. Selected products may be financed. Find each line on the quote. Check the APR and term. Count all scheduled payments. Ask for total of payments. Keep the written figures.",
+  },
+  {
+    context: "quote revisions",
+    facebook: "Which figures should you compare across revised quotes? Put the versions side by side. Match the vehicle and selling price first. Check discounts, taxes, and official fees next. Compare trade value and payoff separately. Find every optional product by name. Then compare APR and term. Check the amount financed and payment count. Ask which exact line changed and why. Keep both copies with the explanation.",
+    threads: "Which figures should you compare across revised quotes? Put both versions side by side. Compare selling price and discounts. Check taxes and fees. Compare trade value and payoff. List optional products by name. Check the APR and term. Compare amount financed too. Ask which line changed and why. Keep both written copies.",
+  },
+  {
+    context: "dealer fees",
+    facebook: "How should you check each fee on a quote? Separate government charges from dealer charges. Read each fee name and amount. Ask what service or requirement it represents. Check whether it appears in the advertised price or is added later. Do not combine fees with optional products. Keep each product listed by name. Review taxes and credits separately. Compare the written out-the-door total. Ask for any unclear fee to be explained in writing.",
+    threads: "How should you check each fee on a quote? Separate government and dealer charges. Read each fee name. Check the amount beside it. Ask what it represents. Check whether it is included in the advertised price. Keep optional products separate. Review taxes and credits. Compare the written out-the-door total. Keep the explanation in writing.",
+  },
+  {
+    context: "payment comparison",
+    facebook: "Can a lower installment mean a higher total? Compare the loan terms behind each payment. Write down the APR for both offers. Count the scheduled payments. Check the amount financed on each quote. Review trade figures and cash down separately. Identify every optional product. Ask for the total of payments in writing. Compare the totals as well as the installments. Use the figures that match the same vehicle and terms.",
+    threads: "Can a lower installment mean a higher total? Compare loan terms first. Write down each APR. Count all scheduled payments. Check the amount financed. Record the cash down amount. List each optional product. Ask for total of payments. Compare totals and installments. Match the same vehicle and terms.",
+  },
+  {
+    context: "out-the-door price",
+    facebook: "Which figures make up an out-the-door price? Ask for the vehicle price in writing. List taxes separately. Show each government charge by name. Show each dealer charge by name. Keep optional products on separate lines. Check discounts and rebates. Add the listed amounts. Compare the same vehicle and equipment. Request the full total before discussing financing.",
+    threads: "Which figures make up out-the-door price? Ask for vehicle price in writing. List taxes separately. Name each government charge. Name each dealer charge. Separate optional products. Check discounts and rebates. Add the listed amounts. Match vehicle and equipment. Request the full total before financing.",
+  },
+  {
+    context: "rebate eligibility",
+    facebook: "Which rebate terms should you verify? Read the eligibility conditions for each offer. Ask which offers apply to this vehicle. Check whether an offer depends on financing. Confirm the amount shown on the written quote. Keep rebates separate from discounts. Compare the selling price before and after each credit. Check whether the total changes. Ask for any condition in writing. Use only the offers that fit the stated terms.",
+    threads: "Which rebate terms should you verify? Read each offer's eligibility conditions. Ask which offers apply. Check financing conditions. Confirm each amount on the quote. Keep rebates separate from discounts. Compare the selling price. Check how each credit changes totals. Request conditions in writing. Use offers matching their terms.",
+  },
+  {
+    context: "cash down",
+    facebook: "What changes when you add cash down? Record the amount you plan to pay. Find the cash-down line on the quote. Check how it changes the amount financed. Keep it separate from a trade credit. Compare the payment count and term. Review the total of payments too. Ask whether any amount is due at signing. Confirm each figure on the written copy. Use the same assumptions when comparing offers.",
+    threads: "What changes when you add cash down? Record the planned amount. Find the cash-down line. Check its effect on amount financed. Keep it separate from trade credit. Compare payment count and term. Review total of payments. Ask what is due at signing. Confirm each written figure. Match assumptions across offers.",
+  },
+  {
+    context: "amount due at signing",
+    facebook: "What is included in amount due at signing? Ask for every upfront amount by name. Separate cash down from taxes and fees. Check whether a first payment is included. Keep optional products itemized. Compare this total with the loan amount. Ask which items are paid now. Ask which items are financed. Confirm the due date and payment method with the seller. Keep the written breakdown with the quote.",
+    threads: "What is included in amount due at signing? Ask for each upfront amount by name. Separate cash down from taxes. List fees separately. Check whether first payment is included. Itemize optional products. Compare this with amount financed. Ask which items are paid now. Ask which are financed. Confirm due date and payment method. Keep the written breakdown.",
+  },
+  {
+    context: "finance charge",
+    facebook: "How can you read the finance charge? Find that figure on the loan disclosure. Compare it with the amount financed. Check the APR and term beside it. Count the scheduled payments. A longer term changes how many installments are due. Payment amount alone does not show the total. Ask how the figure was calculated. Compare the total of payments too. Keep the lender's written explanation.",
+    threads: "How can you read the finance charge? Find it on the loan disclosure. Compare it with amount financed. Check APR and term. Count scheduled payments. A longer term changes payment count. Payment amount alone is incomplete. Ask how the charge was calculated. Compare total of payments. Keep the written explanation.",
+  },
+  {
+    context: "fee treatment",
+    facebook: "Where does each fee appear in the quote? Read the fee name and amount. Check whether it is paid upfront or financed. Ask how it changes the amount due. Keep dealer fees apart from optional products. Review government charges on their own lines. Check whether a fee is included in the advertised price. Compare the out-the-door totals. Ask about any unclear label. Save the written explanation with the quote.",
+    threads: "Where does each fee appear in the quote? Read its name and amount. Check whether it is paid upfront. Check whether it is financed. Ask how it changes amount due. Separate dealer fees from products. List government charges separately. Compare out-the-door totals. Ask about unclear labels. Keep the explanation in writing.",
+  },
+  {
+    context: "same-vehicle comparison",
+    facebook: "What makes two vehicle offers comparable? Match the year, model, trim, and equipment. Compare the selling price first. Read taxes and fees separately. List optional products by name. Compare trade value and payoff. Then check APR and term. Count each offer's scheduled payments. Compare the total of payments. Keep both written quotes for reference.",
+    threads: "What makes two vehicle offers comparable? Match year, model, trim, and equipment. Compare selling price first. Read taxes and fees separately. List optional products by name. Compare trade value and payoff. Check APR and term. Count scheduled payments. Compare total of payments. Keep both written quotes.",
+  },
+  {
+    context: "final paperwork review",
+    facebook: "Why compare the final paperwork with the quote? Confirm the vehicle and selling price. Check each discount and credit. Read taxes and fees by line. Verify every optional product and price. Compare trade value and payoff. Confirm cash due at signing. Check the APR and term. Match the amount financed and payment count. Ask about any difference before signing.",
+    threads: "Why compare final paperwork with the quote? Confirm vehicle and selling price. Check discounts and credits. Read taxes and fees. Verify each product and price. Compare trade value and payoff. Confirm cash due at signing. Check APR and term. Match amount financed and payment count. Ask about differences before signing.",
+  },
+];
+
+export function buildZeroAiSocialPost(platform = "", history = [], now = new Date()) {
+  const normalized = normalizedPlatform(platform);
+  const records = recentMetadata(history);
+  const seed = daySeed(now) + normalized.length;
+  const rejected = [];
+  for (let offset = 0; offset < ZERO_AI_POSTS.length; offset += 1) {
+    const item = ZERO_AI_POSTS[(seed + offset) % ZERO_AI_POSTS.length];
+    const post = formatSocialPost(normalized === "threads" ? item.threads : item.facebook);
+    const plan = {
+      platform: normalized,
+      context: item.context,
+      angle: "fixed factual buyer education",
+      takeaway: firstSentence(post),
+      structure: "finance_lesson",
+      structureLabel: "factual quote review guide",
+      openingStyle: "direct question",
+      hook: firstSentence(post),
+      contentFormat: "fixed educational copy",
+      callToAction: "Review the written quote with the free PencilProof scan.",
+    };
+    const validation = validateSocialPost(post, plan, records, normalized);
+    if (validation.ok) return { post, plan, validation, rewritten: false, fallback: true };
+    rejected.push(`${item.context}: ${validation.reasons.join(", ")}`);
+  }
+  throw new Error(`No distinct zero-AI post passed ${normalized} validation: ${rejected.join("; ")}`);
+}
+
 function normalizedPlatform(platform) {
   const value = String(platform ?? "").trim().toLowerCase();
   return value === "facebook page" || value === "facebook_page" ? "facebook" : value;

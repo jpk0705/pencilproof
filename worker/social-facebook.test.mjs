@@ -12,6 +12,51 @@ import {
 import socialWorker from "./social-facebook.mjs";
 import { formatMetricValue, mergeNewestPostMetrics } from "./social-metrics.mjs";
 
+async function runScheduledFacebookTest(overrides = {}, aiResult = { response: JSON.stringify({ post: "What figure changed on this quote? Compare the written selling price first. Read taxes and fees separately. Keep trade value beside the payoff. Record cash down on its own line. List optional products by name. Confirm the amount financed. Compare APR and term. Count the scheduled payments. Ask for total of payments in writing." }) }) {
+  const originalFetch = globalThis.fetch;
+  const RealDate = globalThis.Date;
+  const fixedTime = RealDate.parse("2026-10-26T16:00:00.000Z");
+  let aiCalls = 0;
+  let postsWritten = 0;
+  globalThis.Date = class extends RealDate {
+    constructor(...args) { super(...(args.length ? args : [fixedTime])); }
+    static now() { return fixedTime; }
+  };
+  globalThis.fetch = async (input, init = {}) => {
+    const url = new URL(String(input));
+    const method = String(init.method ?? "GET").toUpperCase();
+    if (url.pathname === "/v24.0/facebook-page/feed" && method === "GET") return Response.json({ data: [] });
+    if (url.pathname === "/v24.0/facebook-page/feed" && method === "POST") {
+      postsWritten += 1;
+      return Response.json({ id: "facebook-new", permalink_url: "https://www.facebook.com/page/new" });
+    }
+    throw new Error(`Unexpected provider request: ${method} ${url}`);
+  };
+  try {
+    const env = {
+      SOCIAL_PUBLISH_ENABLED: "true",
+      SOCIAL_REPLY_ENABLED: "false",
+      SOCIAL_PUBLISH_PLATFORMS: "facebook",
+      SOCIAL_TIMEZONE: "UTC",
+      SOCIAL_ACTIVE_START_HOUR: "8",
+      SOCIAL_ACTIVE_END_HOUR: "19",
+      SOCIAL_POST_INTERVAL_HOURS: "36",
+      SOCIAL_MAX_POSTS_PER_DAY: "2",
+      FACEBOOK_PAGE_ID: "facebook-page",
+      FACEBOOK_PAGE_ACCESS_TOKEN: "facebook-token",
+      AI: { run: async () => { aiCalls += 1; return aiResult; } },
+      ...overrides,
+    };
+    const values = new Map();
+    const state = new SocialAutomationState({ storage: { get: async (key) => values.get(key), put: async (key, value) => values.set(key, value) } }, env);
+    const response = await state.fetch(new Request("https://social.internal/facebook-run", { method: "POST" }));
+    return { response, result: await response.json(), aiCalls, postsWritten };
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.Date = RealDate;
+  }
+}
+
 test("Facebook requires both Page ID and Page access token", () => {
   assert.equal(facebookConfigured({ FACEBOOK_PAGE_ID: "123", FACEBOOK_PAGE_ACCESS_TOKEN: "token" }), true);
   assert.equal(facebookConfigured({ FACEBOOK_PAGE_ID: "123" }), false);
@@ -28,6 +73,140 @@ test("combined configured platforms includes Facebook once", () => {
 
 test("Facebook comment keys are namespaced", () => {
   assert.equal(facebookCommentKey({ commentId: "456" }), "facebook:456");
+});
+
+test("health reports the default-off zero-AI flag and effective reply state", async () => {
+  const defaultResponse = await socialWorker.fetch(new Request("https://social.internal/health"), {});
+  const defaultHealth = await defaultResponse.json();
+  assert.equal(defaultHealth.zeroAiMode, false);
+  assert.equal(defaultHealth.repliesEnabled, true);
+
+  const zeroAiResponse = await socialWorker.fetch(new Request("https://social.internal/health"), {
+    SOCIAL_ZERO_AI_MODE: "true",
+    SOCIAL_REPLY_ENABLED: "true",
+  });
+  const zeroAiHealth = await zeroAiResponse.json();
+  assert.equal(zeroAiHealth.zeroAiMode, true);
+  assert.equal(zeroAiHealth.repliesEnabled, false);
+});
+
+test("zero-AI mode publishes factual Facebook education and skips automatic replies", async () => {
+  const originalFetch = globalThis.fetch;
+  const RealDate = globalThis.Date;
+  const fixedTime = RealDate.parse("2026-10-26T16:00:00.000Z");
+  let aiCalls = 0;
+  const requests = [];
+  globalThis.Date = class extends RealDate {
+    constructor(...args) { super(...(args.length ? args : [fixedTime])); }
+    static now() { return fixedTime; }
+  };
+  globalThis.fetch = async (input, init = {}) => {
+    const url = new URL(String(input));
+    const method = String(init.method ?? "GET").toUpperCase();
+    requests.push({ url, method });
+    if (url.pathname === "/v24.0/facebook-page/feed" && method === "GET") {
+      return Response.json({ data: [{ id: "facebook-old", message: "A recent PencilProof post.", created_time: "2026-10-26T15:00:00.000Z", permalink_url: "https://www.facebook.com/page/old", from: { id: "facebook-page" } }] });
+    }
+    if (url.pathname === "/v24.0/facebook-old") return Response.json({ comments: { summary: { total_count: 1 } }, reactions: { summary: { total_count: 1 } }, shares: { count: 0 } });
+    if (url.pathname === "/v24.0/facebook-old/comments") {
+      return Response.json({ data: [{ id: "facebook-comment", message: "What does the total mean?", created_time: "2026-10-26T15:30:00.000Z", from: { id: "reader-id", name: "Reader" } }] });
+    }
+    if (url.pathname === "/v24.0/facebook-page/feed" && method === "POST") {
+      return Response.json({ id: "facebook-new", permalink_url: "https://www.facebook.com/page/new" });
+    }
+    throw new Error(`Unexpected provider request: ${method} ${url}`);
+  };
+
+  try {
+    const env = {
+      SOCIAL_ZERO_AI_MODE: "true",
+      SOCIAL_PUBLISH_ENABLED: "true",
+      SOCIAL_REPLY_ENABLED: "true",
+      SOCIAL_PUBLISH_PLATFORMS: "facebook",
+      SOCIAL_TIMEZONE: "UTC",
+      SOCIAL_ACTIVE_START_HOUR: "8",
+      SOCIAL_ACTIVE_END_HOUR: "19",
+      SOCIAL_POST_INTERVAL_HOURS: "36",
+      SOCIAL_MAX_POSTS_PER_DAY: "2",
+      FACEBOOK_PAGE_ID: "facebook-page",
+      FACEBOOK_PAGE_ACCESS_TOKEN: "facebook-token",
+      AI: { run: async () => { aiCalls += 1; throw new Error("AI must not be called"); } },
+    };
+    const values = new Map();
+    const state = new SocialAutomationState({ storage: { get: async (key) => values.get(key), put: async (key, value) => values.set(key, value) } }, env);
+    const response = await state.fetch(new Request("https://social.internal/facebook-run", { method: "POST" }));
+    const result = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(aiCalls, 0);
+    assert.equal(result.summary.postPublished, true);
+    assert.equal(result.summary.aiCalls, 0);
+    assert.equal(result.summary.repliesPosted, 0);
+    assert.equal(result.summary.contentFallbacks, 1);
+    assert.equal(values.get("social-facebook-v1").seenComments.includes("facebook:facebook-comment"), false);
+    assert.equal(requests.some(({ method, url }) => method === "POST" && url.pathname === "/v24.0/facebook-comment/comments"), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.Date = RealDate;
+  }
+});
+
+test("explicitly disabled Facebook replies still mark scanned comments seen outside zero-AI mode", async () => {
+  const originalFetch = globalThis.fetch;
+  const RealDate = globalThis.Date;
+  const fixedTime = RealDate.parse("2026-10-26T16:00:00.000Z");
+  globalThis.Date = class extends RealDate {
+    constructor(...args) { super(...(args.length ? args : [fixedTime])); }
+    static now() { return fixedTime; }
+  };
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (url.pathname === "/v24.0/facebook-page/feed") {
+      return Response.json({ data: [{ id: "facebook-old", message: "Recent post.", created_time: "2026-10-26T15:00:00.000Z", from: { id: "facebook-page" } }] });
+    }
+    if (url.pathname === "/v24.0/facebook-old") return Response.json({ comments: { summary: { total_count: 1 } }, reactions: { summary: { total_count: 0 } }, shares: { count: 0 } });
+    if (url.pathname === "/v24.0/facebook-old/comments") {
+      return Response.json({ data: [{ id: "facebook-comment", message: "What does APR mean?", created_time: "2026-10-26T15:30:00.000Z", from: { id: "reader-id", name: "Reader" } }] });
+    }
+    throw new Error(`Unexpected provider request: ${url}`);
+  };
+  try {
+    const env = {
+      SOCIAL_ZERO_AI_MODE: "false",
+      SOCIAL_PUBLISH_ENABLED: "false",
+      SOCIAL_REPLY_ENABLED: "false",
+      FACEBOOK_PAGE_ID: "facebook-page",
+      FACEBOOK_PAGE_ACCESS_TOKEN: "facebook-token",
+      AI: { run: async () => { throw new Error("Replies are disabled"); } },
+    };
+    const values = new Map();
+    const state = new SocialAutomationState({ storage: { get: async (key) => values.get(key), put: async (key, value) => values.set(key, value) } }, env);
+    const response = await state.fetch(new Request("https://social.internal/facebook-run", { method: "POST" }));
+    assert.equal(response.status, 200);
+    assert.equal(values.get("social-facebook-v1").seenComments.includes("facebook:facebook-comment"), true);
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.Date = RealDate;
+  }
+});
+
+test("zero-AI flag defaults off and preserves AI-generated publishing", async () => {
+  const run = await runScheduledFacebookTest();
+  assert.equal(run.response.status, 200);
+  assert.equal(run.aiCalls, 1);
+  assert.equal(run.result.summary.aiCalls, 1);
+  assert.equal(run.result.summary.postPublished, true);
+  assert.equal(run.result.summary.contentFallbacks, 0);
+  assert.equal(run.postsWritten, 1);
+});
+
+test("existing Facebook AI call cap remains enforced when zero-AI mode is off", async () => {
+  const run = await runScheduledFacebookTest({ SOCIAL_FACEBOOK_AI_MAX_CALLS_PER_DAY: "0" });
+  assert.equal(run.response.status, 200);
+  assert.equal(run.aiCalls, 0);
+  assert.equal(run.result.summary.aiCalls, 0);
+  assert.equal(run.result.summary.postPublished, false);
+  assert.equal(run.postsWritten, 0);
+  assert.match(run.result.summary.warnings.join(" "), /Facebook AI daily cap reached/);
 });
 
 test("Facebook AI JSON parsing tolerates surrounding prose", () => {
