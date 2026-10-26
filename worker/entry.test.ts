@@ -263,13 +263,14 @@ test("internal automation status reads the local run ledger without calling Rese
   env.RESEND_API_KEY = "re_test";
   env.MARKETING_FROM_EMAIL = "support@example.com";
   env.MARKETING_BUSINESS_ADDRESS = "123 Example Street";
+  env.MARKETING_AUTOMATION_PAUSED = "true";
   env.ACCOUNTS = {
     idFromName: (name: string) => name,
     get: () => ({
       fetch: async (request: Request) => {
         assert.equal(new URL(request.url).pathname, "/operations-status");
         return Response.json({
-          emailDeliveries: { sent: 0, byDay: {}, byCampaign: {}, pendingClaims: 0 },
+          emailDeliveries: { sent: 7, byDay: { "2026-08-17": 7 }, byCampaign: { educational: 7 }, pendingClaims: 0 },
           marketingAutomation: {
             startedAt: new Date().toISOString(),
             finishedAt: new Date().toISOString(),
@@ -288,9 +289,12 @@ test("internal automation status reads the local run ledger without calling Rese
     );
     assert.equal(response.status, 200);
     const body = await response.json() as Record<string, any>;
+    assert.equal(body.email.automation.state, "paused");
+    assert.equal(body.email.automation.schedulePaused, true);
+    assert.equal(body.email.automation.expectedSchedule, null);
     assert.equal(body.email.automation.lastRun.status, "healthy");
     assert.equal(body.email.automation.lastRun.details.sent, 0);
-    assert.equal(body.email.localDeliveries.sent, 0);
+    assert.equal(body.email.localDeliveries.sent, 7);
     assert.equal(body.email.provider, undefined);
   } finally {
     globalThis.fetch = originalFetch;

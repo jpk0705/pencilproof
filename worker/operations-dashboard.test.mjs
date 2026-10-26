@@ -107,6 +107,23 @@ test("stale heartbeat and an account mismatch become visible incidents", () => {
   assert.ok(snapshot.incidents.some((incident) => incident.system === "instagram"));
 });
 
+test("paused marketing email is explained without a missed-run incident", async () => {
+  const input = healthyInput();
+  input.businessStatus.email.automation = {
+    state: "paused",
+    schedulePaused: true,
+    automaticRepair: null,
+    lastRun: { finishedAt: "2026-08-28T17:00:00.000Z", status: "healthy" },
+  };
+  const snapshot = buildOperationsSnapshot(input);
+  assert.equal(snapshot.automation.email.state, "paused");
+  assert.equal(snapshot.incidents.some((incident) => incident.system === "email automation"), false);
+  const html = await operationsStatusPage(snapshot).text();
+  assert.match(html, /Automatic marketing campaigns are paused/);
+  assert.match(html, /Historical delivery records remain available/);
+  assert.doesNotMatch(html, /latest expected email run is not confirmed healthy|waiting for the first synchronized snapshot/);
+});
+
 test("traffic recommendations do not call a zero-conversion source the winner", async () => {
   const input = healthyInput();
   input.businessStatus.traffic.funnel = { visitors: 59, pageViews: 192, scanUsers: 0, scanStarts: 0, manualEntryUsers: 0, manualEntryStarts: 0, manualReadyUsers: 0, manualEntriesReady: 0, previewUsers: 0, checkoutUsers: 1, purchasers: 0 };

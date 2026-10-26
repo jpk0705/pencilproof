@@ -918,7 +918,10 @@ const emailAutomationSnapshot = (env: Env, account: Record<string, any>, now: Da
   const finishedAt = Date.parse(String(automation?.finishedAt ?? ""));
   const heartbeatCurrent = Boolean(expectedRun && Number.isFinite(finishedAt) && finishedAt >= expectedRun.getTime() - (10 * 60 * 1000));
   const configured = Boolean(env.RESEND_API_KEY && env.MARKETING_FROM_EMAIL && env.MARKETING_BUSINESS_ADDRESS);
-  const automationState = !configured
+  const schedulePaused = env.MARKETING_AUTOMATION_PAUSED?.toLowerCase() === "true";
+  const automationState = schedulePaused
+    ? "paused"
+    : !configured
     ? "needs_attention"
     : !expectedRun
       ? "waiting"
@@ -933,10 +936,11 @@ const emailAutomationSnapshot = (env: Env, account: Record<string, any>, now: Da
     automation: {
       state: automationState,
       configured,
-      expectedSchedule: "Monday, Wednesday, and Friday at 17:00 UTC (10 AM PDT / 9 AM PST), with an idempotent retry 10 minutes later",
-      lastExpectedRunAt: expectedRun?.toISOString() ?? null,
+      schedulePaused,
+      expectedSchedule: schedulePaused ? null : "Monday, Wednesday, and Friday at 17:00 UTC (10 AM PDT / 9 AM PST), with an idempotent retry 10 minutes later",
+      lastExpectedRunAt: schedulePaused ? null : expectedRun?.toISOString() ?? null,
       lastRun: automation,
-      automaticRepair: "The scheduler retries the same campaign 10 minutes later without duplicating completed deliveries. Transient Resend rate limits and server errors are retried once with an idempotency key, and failed delivery claims are released safely.",
+      automaticRepair: schedulePaused ? null : "The scheduler retries the same campaign 10 minutes later without duplicating completed deliveries. Transient Resend rate limits and server errors are retried once with an idempotency key, and failed delivery claims are released safely.",
     },
     localDeliveries: account.emailDeliveries ?? { sent: 0, byDay: {}, byCampaign: {}, pendingClaims: 0 },
   };

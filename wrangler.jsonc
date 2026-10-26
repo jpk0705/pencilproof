@@ -6,7 +6,7 @@
   "main": "./worker/entry.ts",
   "compatibility_date": "2026-07-26",
   "triggers": {
-    "crons": ["0 17 * * MON,WED,FRI", "10 17 * * MON,WED,FRI"]
+    "crons": []
   },
   "keep_vars": true,
   "ratelimits": [
@@ -62,6 +62,7 @@
   },
   "vars": {
     "ACCESS_MAX_AGE_SECONDS": "2592000",
+    "MARKETING_AUTOMATION_PAUSED": "true",
     "PUBLIC_SITE_ORIGIN": "https://pencilproof.com",
     "SITE_ORIGIN": "https://audit.pencilproof.com",
     "STRIPE_PRICE_ID": "price_1Tu1GEEopq0gcXsNeXF2QMry",

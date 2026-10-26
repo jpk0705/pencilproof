@@ -162,6 +162,25 @@ test("scheduled marketing runs record a healthy heartbeat with zero eligible rec
   });
 });
 
+test("paused marketing scheduler does not invoke account services or queue delivery work", () => {
+  let accountCalls = 0;
+  const env = {
+    ACCOUNTS: {
+      idFromName: (name: string) => name,
+      get: () => ({ fetch: async () => { accountCalls += 1; return Response.json({}); } }),
+    },
+    MARKETING_AUTOMATION_PAUSED: "true",
+  } as unknown as Env;
+  let queued = 0;
+  worker.scheduled(
+    { scheduledTime: Date.UTC(2026, 7, 17, 17, 0, 0) },
+    env,
+    { waitUntil: () => { queued += 1; } },
+  );
+  assert.equal(accountCalls, 0);
+  assert.equal(queued, 0);
+});
+
 class MemoryStorage {
   private readonly values = new Map<string, unknown>();
 

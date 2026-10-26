@@ -108,6 +108,7 @@ export interface Env {
   MARKETING_REPLY_TO?: string;
   MARKETING_BUSINESS_ADDRESS?: string;
   MARKETING_ALERT_EMAIL?: string;
+  MARKETING_AUTOMATION_PAUSED?: string;
 }
 
 const AI_IMPORT_PROMPT = `You are PencilProof's document extraction engine for US automobile dealer buyer's orders, finance worksheets, F&I menus, lease worksheets, and payment quotes.
@@ -4050,6 +4051,7 @@ export const handleRequest = async (request: Request, env: Env) => {
 export default {
   fetch: handleRequest,
   scheduled: (controller: { scheduledTime: number }, env: Env, context: { waitUntil(promise: Promise<unknown>): void }) => {
+    if (env.MARKETING_AUTOMATION_PAUSED?.toLowerCase() === "true") return;
     context.waitUntil(runMarketingCampaign(env, controller.scheduledTime));
   },
 };
