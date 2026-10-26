@@ -22,6 +22,22 @@ export default function DealerQuoteReviewGuide() {
         </div>
       </section>
 
+      <section className="section shell faq-section" aria-labelledby="written-price-request">
+        <div className="section-intro compact"><p className="kicker">COPY, EDIT, AND SEND</p><h2 id="written-price-request">What if a dealer won’t give you an out-the-door price?</h2><p>The FTC recommends asking the dealer to confirm the vehicle is available and send its out-the-door price in writing. Ask for the total before financing and have taxes, fees, and any required charges itemized.</p></div>
+        <div className="faq-grid">
+          <article><h2>A message you can use</h2><p>“I’m interested in [year, make, model, stock number]. Please confirm it is available and send the out-the-door price in writing, with taxes and each fee listed. Please show optional products separately and list any rebate or discount conditions. I’m not including a trade or financing in this price request.”</p></article>
+          <article><h2>If they ask for a deposit</h2><p>Before paying, ask for the written price, what the deposit holds, how long it holds the vehicle, and the receipt or agreement’s cancellation and refund terms. Keep a copy. Deposit rules and contract obligations depend on the document and location; do not assume a deposit guarantees a price or is refundable.</p></article>
+          <article><h2>If you already paid</h2><p>Save the receipt, original quote, and messages. Ask for an itemized revised price and a written explanation of each changed line. Check your signed paperwork for the agreed price and deposit terms before deciding what to do next.</p></article>
+          <article><h2>If the written total changes</h2><p>Compare the vehicle, selling price, taxes, fees, products, rebates, and deposit credit line by line. Ask the dealer to explain the difference in writing. Do not sign paperwork with figures you do not understand; the FTC advises comparing signing documents with the terms sent earlier.</p></article>
+        </div>
+      </section>
+
+      <GuideWorksheetExample title="Fictional example: a changed total after a deposit" explanation="Illustration only. A deposit is shown as a credit once; ask the dealer to explain each changed amount and check your own written agreement." lines={[{label:"Earlier written out-the-door total",value:"$28,600"},{label:"New optional products",value:"+$1,200"},{label:"New fee to explain",value:"+$500"},{label:"Deposit already paid",value:"−$500"},{label:"Revised amount due",value:"$29,800",emphasis:true}]} question="Which written terms changed, and where is my $500 deposit credited?" />
+
+      <section className="section shell route-guide-section" aria-labelledby="ftc-guidance">
+        <div className="section-intro compact"><p className="kicker">SOURCE AND LIMITS</p><h2 id="ftc-guidance">Keep the price request and contract in writing.</h2><p>This is general car-shopping education, not a determination of your legal rights or whether a deposit must be returned. See the <a className="text-link" href="https://consumer.ftc.gov/articles/car-dealer-ads-and-promotions-know-you-go" target="_blank" rel="noreferrer">FTC’s advice on car dealer ads and written prices</a> and its <a className="text-link" href="https://consumer.ftc.gov/articles/financing-or-leasing-car" target="_blank" rel="noreferrer">guidance on financing, signing, and changed paperwork</a>.</p></div>
+      </section>
+
       <section className="section shell faq-section" aria-labelledby="quote-review-checklist">
         <div className="section-intro compact"><p className="kicker">THE SHORT CHECKLIST</p><h2 id="quote-review-checklist">Six questions make a dense worksheet easier to understand.</h2><p>You do not need to decide whether a deal is good or bad at a glance. First make the numbers visible, then verify what changed and what is included.</p></div>
         <div className="faq-grid">
@@ -37,7 +53,7 @@ export default function DealerQuoteReviewGuide() {
       <GuideWorksheetExample title="A lower vehicle price can still produce a higher balance" explanation="This fictional worksheet shows why every line matters. The $28,000 selling price is not the amount financed after charges, products, and credits." lines={[{label:"Selling price",value:"$28,000"},{label:"Tax + government/doc fees",value:"+$2,835"},{label:"Optional products",value:"+$2,400"},{label:"Cash down",value:"−$3,000"},{label:"Illustrative amount financed",value:"$30,235",emphasis:true}]} question="Please show me each line that takes the selling price to the amount financed." />
 
       <section className="section route-guide-section">
-        <div className="shell section-intro compact"><p className="kicker">NEXT STEP</p><h2>Bring your own quote to the free scan.</h2><p>PencilProof shows what it can detect before checkout. You confirm the imported values, and the final audit remains an educational estimate—not a dealer approval or financial recommendation.</p><TrackedLink analyticsCategory="guide_dealer_quote_review_bottom" className="button button-primary" href="/analyze">Upload your quote free <span aria-hidden="true">→</span></TrackedLink></div>
+        <div className="shell section-intro compact"><p className="kicker">NEXT STEP</p><h2>Compare the written quote you received.</h2><p>Scan a quote or revised buyer’s order for free, then verify every detected value against the original. The complete educational audit is a one-time $39 purchase; if BETA1 is available, secure checkout confirms the $1 offer before payment. No scan or payment is needed to send the price request above.</p><TrackedLink analyticsCategory="guide_dealer_quote_review_bottom" className="button button-primary" href="/analyze">Start the free scan <span aria-hidden="true">→</span></TrackedLink></div>
       </section>
       <SiteFooter />
     </main>

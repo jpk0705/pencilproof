@@ -1437,6 +1437,7 @@ export default function AnalyzePage() {
               <input type="file" accept={DEAL_IMPORT_ACCEPT} disabled={dealImport.status === "loading"} onChange={handleDealFileChange} />
               Choose PDF or image
             </label>
+            {!isPaidAuditHost && !pendingImport && selectedOfferType !== "lease" ? <a className="pdf-upload-button" href="#manual-quote-entry" onClick={() => track({ event: "cta_clicked", category: "manual_entry_link" })}>Enter figures manually</a> : null}
           </div>
         </div>
         {!isPaidAuditHost ? <div className="scan-benefits" aria-label="What you get from the free scan">
@@ -1636,7 +1637,7 @@ export default function AnalyzePage() {
 
       {!pendingImport && selectedOfferType !== "lease" ? <div className="analyzer-layout shell">
         <form className="deal-form" onSubmit={(event) => event.preventDefault()}>
-          <section className="form-section">
+          <section className="form-section" id="manual-quote-entry">
             <div className="form-section-title"><span>01</span><div><h2>Vehicle & price</h2><p>Start with the top of the buyer&apos;s order or dealer worksheet.</p></div></div>
             <label className="input-field full-field"><span>Vehicle description</span><input aria-label="Vehicle description" type="text" placeholder="e.g. 2026 Honda CR-V EX-L" value={deal.vehicle} onChange={(event) => { trackManualEntryStarted(); setSampleLoaded(false); setDeal((current) => ({ ...current, vehicle: event.target.value })); }} /></label>
             <div className="field-grid">
