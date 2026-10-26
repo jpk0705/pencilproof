@@ -24,7 +24,7 @@ export default function PilotPage() {
             <TrackedLink analyticsCategory="public_pilot_hero" className="button button-primary" href={pilotAnalyzeUrl}>Review your quote free <Arrow /></TrackedLink>
             <Link className="text-link" href="/how-it-works">See how it works <Arrow /></Link>
           </div>
-          <p className="hero-caution">No payment is required to see the detected values. You review and correct the import before any checkout decision.</p>
+          <p className="hero-caution">No account or payment is needed for the free scan. Want the complete audit? Enter <strong>BETA1</strong> at checkout for the $1 beta offer while it remains active (regularly $39, one-time).</p>
         </div>
       </section>
 

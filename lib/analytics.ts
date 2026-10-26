@@ -25,6 +25,9 @@ type QueuedAnalyticsEvent = AnalyticsEvent & {
 
 let flushing = false;
 
+const isLocalPreview = () => typeof window !== "undefined"
+  && ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
+
 const sessionId = () => {
   if (typeof window === "undefined") return "";
   const key = "pencilproof:analytics-session";
@@ -103,7 +106,7 @@ const send = async (event: QueuedAnalyticsEvent) => {
 };
 
 export const flushAnalyticsQueue = async () => {
-  if (typeof window === "undefined" || flushing) return;
+  if (typeof window === "undefined" || isLocalPreview() || flushing) return;
   flushing = true;
   try {
     while (true) {
@@ -124,7 +127,7 @@ export const flushAnalyticsQueue = async () => {
 };
 
 export const track = (event: AnalyticsEvent) => {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined" || isLocalPreview()) return;
   const query = new URLSearchParams(window.location.search);
   const utmSource = query.get("utm_source");
   const utmMedium = query.get("utm_medium");

@@ -110,6 +110,15 @@ assert.doesNotMatch(freeQuotePreviewSource, /event: "audit_completed"/);
 assert.match(analyzePageSource, /const importDealFile = async[\s\S]*file\.size > 15 \* 1024 \* 1024[\s\S]*track\(\{ event: "scan_started" \}\)[\s\S]*extractDealFromFile\(/);
 assert.match(analyzePageSource, /event: "scan_completed"/);
 assert.match(analyzePageSource, /value: Math\.round\(performance\.now\(\) - scanStartedAt\)/);
+assert.match(analyzePageSource, /aprEntered: boolean/);
+assert.match(analyzePageSource, /field === "apr"\s*\?\s*deal\.aprEntered/);
+assert.match(analyzePageSource, /apr: pendingImport\.fields\.apr \?\? 0,\s*aprEntered: pendingImport\.fields\.apr !== undefined/);
+assert.match(analyzePageSource, /amountFinanced && fields\.apr !== undefined && fields\.term/);
+assert.match(analyzePageSource, /!deal\.aprEntered && !isCashDeal/);
+assert.match(analyzePageSource, /deal\.aprEntered \|\| isCashDeal/);
+assert.match(analyzePageSource, /loaded\.aprEntered = typeof data\.aprEntered === "boolean"/);
+assert.match(analyzePageSource, /: loaded\.apr > 0;/);
+assert.match(analyzePageSource, /setNumber\("apr", ""\)/);
 assert.doesNotMatch(analyzePageSource, /PreCheckoutFeedback/);
 assert.doesNotMatch(analyzePageSource, /preCheckoutFeedbackCompleted/);
 assert.doesNotMatch(analyzePageSource, /type CheckoutPayload = \{[^}]*fileName/);
@@ -838,6 +847,8 @@ const paymentWithMistakenTaxRate = paymentFor(quoteBaseWithoutTax + 9.375, 12.99
 const paymentWithTaxAmount = paymentFor(quoteBaseWithoutTax + 4137.47, 12.99, 75);
 closeTo(paymentWithTaxAmount - paymentWithMistakenTaxRate, 80.66, 0.01);
 closeTo(paymentFor(30462.63, 8.49, 1), 30462.63);
+closeTo(paymentFor(30000, 0, 60), 500);
+closeTo(paymentFor(30462.63, 0, 1), 30462.63);
 
 const rav4AmountFinanced =
   36100 + 3474.63 + 725 + 85 + 2495 + 995 + 699 - 5000;

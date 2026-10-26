@@ -47,6 +47,7 @@ type Deal = {
   cashDown: number;
   rebate: number;
   apr: number;
+  aprEntered: boolean;
   outsideApr: number;
   term: number;
   quotedPayment: number;
@@ -152,6 +153,7 @@ const sample: Deal = {
   cashDown: 5000,
   rebate: 0,
   apr: 8.49,
+  aprEntered: true,
   outsideApr: 0,
   term: 72,
   quotedPayment: 739.95,
@@ -173,6 +175,7 @@ const blank: Deal = {
   cashDown: 0,
   rebate: 0,
   apr: 0,
+  aprEntered: false,
   outsideApr: 0,
   term: 60,
   quotedPayment: 0,
@@ -424,6 +427,9 @@ export default function AnalyzePage() {
         for (const field of numericDealFields) {
           if (typeof data[field] === "number" && Number.isFinite(data[field])) loaded[field] = data[field] as never;
         }
+        loaded.aprEntered = typeof data.aprEntered === "boolean"
+          ? data.aprEntered
+          : loaded.apr > 0;
         savedAuditKey.current = JSON.stringify(loaded);
         setSampleLoaded(false);
         setDeal(loaded);
@@ -570,7 +576,11 @@ export default function AnalyzePage() {
 
   const setNumber = (field: keyof Deal, value: string) => {
     setSampleLoaded(false);
-    setDeal((current) => ({ ...current, [field]: value === "" ? 0 : Number(value) }));
+    setDeal((current) => ({
+      ...current,
+      [field]: value === "" ? 0 : Number(value),
+      ...(field === "apr" ? { aprEntered: value !== "" } : {}),
+    }));
   };
 
   const saveCurrentQuote = () => {
@@ -629,9 +639,11 @@ export default function AnalyzePage() {
   const manualCheckoutFields = useMemo(() => {
     const fields = Object.fromEntries(
       Object.entries(deal).filter(([field, value]) =>
-        field !== "outsideApr" && (
+        field !== "outsideApr" && field !== "aprEntered" && (
           field === "vehicle" || field === "vin"
             ? typeof value === "string" && value.trim().length > 0
+            : field === "apr"
+              ? deal.aprEntered
             : typeof value === "number" && Number.isFinite(value) && value > 0
         ),
       ),
@@ -894,7 +906,7 @@ export default function AnalyzePage() {
         )
       : 0;
     const calculatedPayment =
-      amountFinanced && fields.apr && fields.term
+      amountFinanced && fields.apr !== undefined && fields.term
         ? paymentFor(amountFinanced, fields.apr, fields.term)
         : 0;
     const paymentDifference =
@@ -938,7 +950,12 @@ export default function AnalyzePage() {
       return;
     }
     setSampleLoaded(false);
-    setDeal((current) => ({ ...current, ...pendingImport.fields }));
+    setDeal((current) => ({
+      ...current,
+      ...pendingImport.fields,
+      apr: pendingImport.fields.apr ?? 0,
+      aprEntered: pendingImport.fields.apr !== undefined,
+    }));
     setPendingImport(null);
     setDealImport((current) => ({
       ...current,
@@ -993,11 +1010,11 @@ export default function AnalyzePage() {
     const missingInformation = [
       !deal.sellingPrice ? "selling price" : "",
       !deal.tax ? "sales-tax amount" : "",
-      !deal.apr && !isCashDeal ? "dealer APR" : "",
+      !deal.aprEntered && !isCashDeal ? "dealer APR" : "",
       !deal.term ? "loan term" : "",
       !deal.quotedPayment ? "dealer's printed payment" : "",
     ].filter(Boolean);
-    const hasMinimumData = Boolean(deal.sellingPrice && deal.term && (deal.apr || isCashDeal));
+    const hasMinimumData = Boolean(deal.sellingPrice && deal.term && (deal.aprEntered || isCashDeal));
     const paymentStatus = !deal.quotedPayment
       ? { label: "Not checked", tone: "note" as const, detail: "Enter the payment printed on the quote." }
       : Math.abs(paymentGap) <= PAYMENT_MATCH_TOLERANCE
@@ -1241,7 +1258,7 @@ export default function AnalyzePage() {
   const tradeRequest = deal.tradeValue > 0 || deal.tradePayoff > 0 || deal.cashDown > 0
     ? `Show the trade allowance of ${dollarsAndCents(deal.tradeValue)}, trade payoff of ${dollarsAndCents(deal.tradePayoff)}, resulting trade equity of ${dollarsAndCents(analysis.tradeEquity)}, and cash down of ${dollarsAndCents(deal.cashDown)} as separate lines.`
     : "Show any trade allowance, trade payoff, trade equity, and cash down as separate lines if they apply.";
-  const dealerApr = deal.apr > 0 ? `${deal.apr.toFixed(2)}%` : "not entered";
+  const dealerApr = deal.aprEntered ? `${deal.apr.toFixed(2)}%` : "not entered";
   const rateRequest = isCashDeal
     ? "Confirm this is a cash purchase with one payment and no APR or financing charge."
     : `Confirm the final APR of ${dealerApr} and ${deal.term}-month term, subject to lender approval. If other lender-approved rate options are available, show them separately with their payment impact.`;
@@ -1317,7 +1334,7 @@ export default function AnalyzePage() {
       `Selling price: ${dollarsAndCents(deal.sellingPrice)}`,
       `Estimated amount financed: ${dollarsAndCents(analysis.amountFinanced)}`,
       isCashDeal ? `Estimated cash total: ${dollarsAndCents(analysis.calculatedPayment)}` : `Estimated payment: ${dollarsAndCents(analysis.calculatedPayment)} per month`,
-      isCashDeal ? "Purchase type: cash" : `APR / term: ${deal.apr.toFixed(2)}% / ${deal.term} months`,
+      isCashDeal ? "Purchase type: cash" : `APR / term: ${dealerApr} / ${deal.term} months`,
       `Trade equity: ${dollarsAndCents(analysis.tradeEquity)}`,
       `Optional products entered: ${dollarsAndCents(analysis.addons)}`,
       "",
@@ -1601,7 +1618,7 @@ export default function AnalyzePage() {
         <p className="pdf-import-note">Best results: use a dealer-generated PDF or a bright, sharp, straight-on image with the full figures visible. PencilProof reads images locally first and uses the secured vision importer only when local extraction is incomplete or ambiguous. OCR and vision can make mistakes, so compare every imported value with the original.</p>
       </section>
 
-      {!pendingImport && selectedOfferType !== "lease" && isPaidAuditHost ? <div className="analyzer-layout shell">
+      {!pendingImport && selectedOfferType !== "lease" ? <div className="analyzer-layout shell">
         <form className="deal-form" onSubmit={(event) => event.preventDefault()}>
           <section className="form-section">
             <div className="form-section-title"><span>01</span><div><h2>Vehicle & price</h2><p>Start with the top of the buyer&apos;s order or dealer worksheet.</p></div></div>
@@ -1634,7 +1651,7 @@ export default function AnalyzePage() {
               <MoneyField label="Trade loan payoff" field="tradePayoff" value={deal.tradePayoff} onChange={setNumber} />
             </div>
             <div className="field-grid field-grid-four">
-              <label className="input-field"><span>Dealer APR</span><div className="input-money input-percent"><input aria-label="Dealer APR" inputMode="decimal" type="number" min="0" step="0.01" value={deal.apr || ""} onChange={(event) => setNumber("apr", event.target.value)} /><i>%</i></div><small>{isCashDeal ? "Cash purchase: one payment at 0%" : "Use the rate printed on the quote"}</small></label>
+              <label className="input-field"><span>Dealer APR</span><div className="input-money input-percent"><input aria-label="Dealer APR" inputMode="decimal" type="number" min="0" step="0.01" value={deal.aprEntered ? deal.apr : ""} onChange={(event) => setNumber("apr", event.target.value)} /><i>%</i></div><small>{isCashDeal ? "Cash purchase: one payment at 0%" : "Use the rate printed on the quote"}</small></label>
               <div className="input-field credit-score-field" aria-live="polite">
                 <span>Credit score estimate</span>
                 <div className="credit-score-estimator">
@@ -1644,13 +1661,13 @@ export default function AnalyzePage() {
                   </div>
                   <label className="credit-score-vehicle-type"><span>Vehicle type</span><select aria-label="Vehicle type for rate estimate" value={creditVehicleType} onChange={(event) => setCreditVehicleType(event.target.value as CreditVehicleType)}><option value="new">New vehicle</option><option value="used">Used vehicle</option></select></label>
                   <div className="credit-score-rate">
-                    <div><span>Dealer APR</span><strong>{isCashDeal ? "Cash" : deal.apr > 0 ? `${deal.apr.toFixed(2)}%` : "Not entered"}</strong></div>
+                    <div><span>Dealer APR</span><strong>{isCashDeal ? "Cash" : deal.aprEntered ? `${deal.apr.toFixed(2)}%` : "Not entered"}</strong></div>
                     <div><span>Market estimate</span><strong>{isCashDeal ? "—" : `${creditScoreEstimatedApr.toFixed(2)}%`}</strong></div>
                   </div>
                   <small className="credit-score-note">{isCashDeal ? "Cash purchase: no financing rate estimate." : "Based on Experian Q1 2026 national averages; actual lender terms vary by credit history, term, vehicle, down payment, and lender."}</small>
                 </div>
               </div>
-              <label className="input-field"><span>Loan term</span><select aria-label="Loan term" value={deal.term} onChange={(event) => { setNumber("term", event.target.value); if (Number(event.target.value) === 1) setNumber("apr", "0"); }}>{[1, 24, 30, 36, 39, 42, 48, 54, 60, 63, 66, 72, 75, 78, 83, 84, 96].map((term) => <option key={term} value={term}>{term === 1 ? "1 payment (cash)" : `${term} months`}</option>)}</select></label>
+              <label className="input-field"><span>Loan term</span><select aria-label="Loan term" value={deal.term} onChange={(event) => { setNumber("term", event.target.value); if (Number(event.target.value) === 1) setNumber("apr", ""); }}>{[1, 24, 30, 36, 39, 42, 48, 54, 60, 63, 66, 72, 75, 78, 83, 84, 96].map((term) => <option key={term} value={term}>{term === 1 ? "1 payment (cash)" : `${term} months`}</option>)}</select></label>
               <MoneyField label={isCashDeal ? "Cash due / finance amount" : "Dealer's quoted monthly payment"} field="quotedPayment" value={deal.quotedPayment} onChange={setNumber} hint={isCashDeal ? "The one payment shown on the quote" : "Keeps the amount printed on the quote for comparison"} />
             </div>
             <div className="live-payment" aria-live="polite">
@@ -1661,9 +1678,10 @@ export default function AnalyzePage() {
           {!isPaidAuditHost ? (
             <div className="public-manual-checkout">
               <div>
-                <span>FREE SCAN COMPLETE</span>
+                <span>MANUAL QUOTE ENTRY</span>
                 <strong>Ready to continue?</strong>
                 <p>Your entered figures stay in this browser. Continue to secure checkout to unlock the complete Full Quote Audit after payment.</p>
+                {!manualCheckoutFields.ready ? <p>Enter the selling price or quoted payment and at least two other numeric figures above to continue.</p> : null}
                 <p><strong>BETA1:</strong> enter this code in secure checkout for the $1 beta offer while it remains active.</p>
               </div>
               <button

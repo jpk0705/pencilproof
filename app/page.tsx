@@ -25,9 +25,9 @@ export default function Home() {
             <TrackedLink analyticsCategory="home_hero" className="button button-primary" href="/analyze">
               Scan my dealer quote free <Arrow />
             </TrackedLink>
-            <Link className="text-link" href="/who-it-helps">Who it helps <Arrow /></Link>
+            <Link className="text-link" href="/pricing">See pricing <Arrow /></Link>
           </div>
-          <p className="hero-caution">No payment or account is required for the free scan. Your document is read locally first, and you decide whether the complete audit is useful.</p>
+          <p className="hero-caution">The scan is free—no account or payment needed. The Full Quote Audit is $39 once; if BETA1 is available, secure checkout confirms the $1 offer before payment. Your document is read locally first.</p>
           <div className="proof-row" aria-label="Product highlights">
             <span><b>Free scan first</b> before checkout</span>
             <span><b>Top issues in one view</b> clear next questions</span>
