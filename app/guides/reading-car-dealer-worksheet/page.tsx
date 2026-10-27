@@ -20,7 +20,7 @@ export default function ReadingDealerWorksheetGuide() {
           <p className="kicker">DEALER WORKSHEET GUIDE</p>
           <h1>How to read a car dealer worksheet without getting lost in the numbers.</h1>
           <p>A worksheet can show the vehicle, price, trade, fees, products, financing terms, and payment in different places. Start by finding each input, then check how the inputs connect before you decide what to ask.</p>
-          <div className="page-actions"><TrackedLink analyticsCategory="guide_reading_worksheet" className="button button-primary" href="/pilot">Review your quote free <Arrow /></TrackedLink><Link className="text-link" href="/guides/dealer-quote-review">See the short checklist <Arrow /></Link></div>
+          <div className="page-actions"><TrackedLink analyticsCategory="guide_reading_worksheet" className="button button-primary" href="/analyze">Review your quote free <Arrow /></TrackedLink><Link className="text-link" href="/guides/dealer-quote-review">See the short checklist <Arrow /></Link></div>
         </div>
       </section>
 
@@ -39,7 +39,7 @@ export default function ReadingDealerWorksheetGuide() {
       <GuideWorksheetExample title="Read from price to payment—not backward from payment" explanation="A fictional worksheet becomes easier to audit when the figures are grouped into price, charges, credits, and financing terms." lines={[{label:"Selling price",value:"$31,500"},{label:"Tax + fees + products",value:"+$4,210"},{label:"Trade equity + cash",value:"−$5,000"},{label:"Amount financed",value:"$30,710"},{label:"APR / term",value:"6.90% / 60 months",emphasis:true}]} question="Can you provide this same structure on the buyer's order with every product itemized?" />
 
       <section className="section route-guide-section">
-        <div className="shell section-intro compact"><p className="kicker">MAKE IT EASIER</p><h2>Let PencilProof organize the worksheet for you.</h2><p>Upload a PDF or photo for a free scan, review the detected values, and correct anything that needs attention before deciding whether a full audit is useful.</p><TrackedLink analyticsCategory="guide_reading_worksheet_bottom" className="button button-primary" href="/pilot">Start with the free scan <Arrow /></TrackedLink></div>
+        <div className="shell section-intro compact"><p className="kicker">MAKE IT EASIER</p><h2>Let PencilProof organize the worksheet for you.</h2><p>Upload a PDF or photo for a free scan, review the detected values, and correct anything that needs attention before deciding whether a full audit is useful.</p><TrackedLink analyticsCategory="guide_reading_worksheet_bottom" className="button button-primary" href="/analyze">Start with the free scan <Arrow /></TrackedLink></div>
       </section>
       <SiteFooter />
     </main>
