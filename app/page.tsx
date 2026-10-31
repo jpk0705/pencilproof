@@ -25,6 +25,7 @@ export default function Home() {
             <TrackedLink analyticsCategory="home_hero" className="button button-primary" href="/analyze">
               Scan my dealer quote free <Arrow />
             </TrackedLink>
+            <TrackedLink analyticsCategory="home_manual_entry" className="text-link" href="/analyze#manual-quote-entry">Enter figures manually <Arrow /></TrackedLink>
             <Link className="text-link" href="/pricing">See pricing <Arrow /></Link>
           </div>
           <p className="hero-caution">The scan is free—no account or payment needed. The Full Quote Audit is $39 once; if BETA1 is available, secure checkout confirms the $1 offer before payment. Your document is read locally first.</p>
