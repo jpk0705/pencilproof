@@ -1,7 +1,7 @@
 // PencilProof secure audit deployment configuration
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "pencilproof-audit",
+  "name": "pencilproof",
   "main": "./worker/index.ts",
   "compatibility_date": "2026-07-26",
   "keep_vars": true,
