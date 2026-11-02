@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import SampleAuditDemo from "@/app/components/SampleAuditDemo";
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import {
   DEAL_IMPORT_ACCEPT,
@@ -1418,6 +1419,11 @@ export default function AnalyzePage() {
           </div>
         ) : null}
       </header>
+
+      {!isPaidAuditHost ? <details className="pdf-import shell" aria-label="Illustrative sample audit">
+        <summary><strong>See an example audit</strong> — illustrative figures only; this does not use or change your quote.</summary>
+        <SampleAuditDemo showCta={false} />
+      </details> : null}
 
       <section className="pdf-import shell" aria-labelledby="pdf-import-title">
         <div className="pdf-import-main">

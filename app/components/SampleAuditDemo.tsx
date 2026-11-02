@@ -7,7 +7,7 @@ const Arrow = () => <span aria-hidden="true">→</span>;
 
 type DemoView = "summary" | "questions";
 
-export default function SampleAuditDemo() {
+export default function SampleAuditDemo({ showCta = true }: { showCta?: boolean }) {
   const [view, setView] = useState<DemoView>("summary");
 
   return (
@@ -62,7 +62,7 @@ export default function SampleAuditDemo() {
 
       <div className="deal-card-foot">
         <span>Example figures for illustration.</span>
-        <Link href="https://pencilproof.com/analyze">Try your quote free <Arrow /></Link>
+        {showCta ? <Link href="https://pencilproof.com/analyze">Try your quote free <Arrow /></Link> : null}
       </div>
     </div>
   );
