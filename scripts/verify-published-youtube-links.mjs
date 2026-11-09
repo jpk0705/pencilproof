@@ -23,16 +23,25 @@ export async function verifyPublishedTargets(outputRoot, paths = PUBLISHED_PATHS
     if (!/^\/(?:[a-z0-9-]+\/)*[a-z0-9-]+$/.test(path)) {
       throw new Error(`Invalid published path: ${path}`);
     }
-    const htmlPath = join(outputRoot, ...path.slice(1).split("/"), "index.html");
-    try {
-      const html = await readFile(htmlPath, "utf8");
-      if (!/<html(?:\s|>)/i.test(html) || /<title>\s*404\b/i.test(html)) {
-        failures.push(`${path} (invalid or 404 HTML)`);
+    const basePath = join(outputRoot, ...path.slice(1).split("/"));
+    const candidates = [join(basePath, "index.html"), `${basePath}.html`];
+    let valid = false;
+    let invalid = false;
+    for (const htmlPath of candidates) {
+      try {
+        const html = await readFile(htmlPath, "utf8");
+        if (/<html(?:\s|>)/i.test(html) && !/<title>\s*404\b/i.test(html)) {
+          valid = true;
+          break;
+        }
+        invalid = true;
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
       }
-    } catch (error) {
-      if (error.code !== "ENOENT") throw error;
-      failures.push(`${path} (missing ${htmlPath})`);
     }
+    if (!valid) failures.push(invalid
+      ? `${path} (invalid or 404 HTML; checked ${candidates.join(" and ")})`
+      : `${path} (missing ${candidates.join(" and ")})`);
   }
   if (failures.length) throw new Error(`Published YouTube target check failed:\n${failures.join("\n")}`);
   return paths.length;
